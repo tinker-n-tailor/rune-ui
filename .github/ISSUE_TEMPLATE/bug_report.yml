@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in Rune UI does not work.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Tell what you saw and what you expected. A screenshot helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can I see it too?
+      description: The steps that make the problem happen.
+      placeholder: |
+        1. Press F9.
+        2. Select the minimap.
+        3. ...
+  - type: input
+    id: mod-version
+    attributes:
+      label: Rune UI version
+      description: The log shows it in the line "[RuneUI] starting".
+      placeholder: "1.0"
+    validations:
+      required: true
+  - type: input
+    id: ue4ss-version
+    attributes:
+      label: UE4SS version
+    validations:
+      required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: Game version
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other mods
+      description: Write the other mods you use. Other HUD mods can conflict with Rune UI.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Drag the file UE4SS.log here. It is in RSDragonwilds\Binaries\Win64\ue4ss.
+    validations:
+      required: true
