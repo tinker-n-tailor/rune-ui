@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
 -- F9 opens the editor. A timer applies the layout; the selected element blinks and a panel lists the keys.
 
-local VERSION = "1.0"
+local VERSION = "1.0.1"
 local LayoutFile = "runeui_layout.txt"   -- X,Y of inside elements mean a move on screen
 local OldLayoutFile = "hudeditor_layout_v2.txt"   -- the mod's file before 0.60 (named HudEditor); read if no new one
 
@@ -210,11 +210,29 @@ local function ClassName(obj)
     return ok and n or "?"
 end
 
+-- One search for every widget per scan, sorted by class. One search per class (about 30) took up to 1 s on UE4SS
+-- builds without hash tables: the stutter reports of 28-09-2026. This one took 45 ms and found the same widgets.
+local Found = {}   -- class name -> widgets, from the last scan
+-- class address -> class name: the name is read once per class, not once per widget (5000 widgets, 19 ms a scan
+-- on a UE4SS with hash tables, 28-09-2026). Emptied on a new world, in case a class is unloaded and its address reused.
+local ClassNames = {}
+local function ClassAddress(W) return W:GetClass():GetAddress() end
+local function SearchWidgets()
+    Found = {}
+    for _, W in pairs(FindAllOf("UserWidget") or {}) do
+        local ok, a = pcall(ClassAddress, W)   -- one object that cannot be read must not stop the scan
+        if ok and a then
+            local c = ClassNames[a]
+            if not c then c = ClassName(W) ClassNames[a] = c end
+            local t = Found[c]
+            if t then t[#t + 1] = W else Found[c] = { W } end
+        end
+    end
+end
+
 local function FindClass(className, pathEnds, useParent)
     local out = {}
-    local found = FindAllOf(className)
-    if not found then return out end
-    for _, W in pairs(found) do
+    for _, W in ipairs(Found[className] or {}) do
         -- one object that cannot be read (a world being unloaded) must not stop the whole scan (27-09-2026)
         pcall(function()
             if not (W and W:IsValid()) then return end
@@ -242,6 +260,7 @@ local function AddInstance(E, W)
 end
 
 local function FindAll()
+    SearchWidgets()
     for _, E in ipairs(Elements) do
         E.Instances, E.Keys = {}, {}
         if E.Custom == true and Avatar.W and Avatar.W:IsValid() then AddInstance(E, Avatar.W) end
@@ -1299,7 +1318,7 @@ do
 end
 RuneMap = LoadPart("runemap")
 local Survival = LoadPart("survival")
-local MapCtx = { Log = Log, ById = ById, Asset = Asset }
+local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode end }
 local SurvivalCtx = { Log = Log, ById = ById }
 local MapErrorLogged, SurvivalErrorLogged = false, false
 
@@ -1320,7 +1339,7 @@ local function ForgetWorld(sameWorld)
         -- the editor panel of the old world is off the screen: build a new one on the next F9
         Overlay.W, Overlay.LastState, Overlay.Open = nil, "", false
         -- these remember widgets by full name; the old world's widgets are gone
-        OrigOpacity, Touched, Unclipped, BuffRowDone = {}, {}, {}, {}
+        OrigOpacity, Touched, Unclipped, BuffRowDone, ClassNames = {}, {}, {}, {}, {}
     end
     if RuneMap then pcall(RuneMap.Forget, sameWorld) end
     if Survival then pcall(Survival.Forget) end
@@ -1328,35 +1347,70 @@ local function ForgetWorld(sameWorld)
     SettleUntil = os.clock() + 3
     Log(sameWorld and "player restart: old handles dropped" or "new world: old handles dropped")
 end
-local function ControllerName()
+local LocalPlayer = nil   -- the local player object lives as long as the game
+local function SearchController()
     -- the local player's controller only: in co-op a friend's controller joining or leaving must not look
     -- like a new world; one unreadable controller is skipped, not taken as a change
-    local name = ""
     for _, P in pairs(FindAllOf("PlayerController") or {}) do
         local ok, n = pcall(function()
             local full = P:GetFullName()
-            if not string.find(full, "Default__", 1, true) and P:IsLocalController() then return full end
+            if not string.find(full, "Default__", 1, true) and P:IsLocalController() then
+                LocalPlayer = P.Player
+                return full
+            end
         end)
-        if ok and n then name = n break end
+        if ok and n then return n end
     end
-    return name
+    return ""
 end
--- The local controller is searched on every tick. It goes away the moment a travel starts, before the old
--- world is torn down. Reading the viewport's world instead was lighter, but it changes only once the new world
--- stands, and the game crashed on entering a world in between (27-09-2026, 0.49). Keep this search.
+-- The local controller's name, read on every tick; "" while a world is loading. The controller goes away the
+-- moment a travel starts, before the old world is torn down. Reading the viewport's world instead changed only
+-- once the new world stood, and the game crashed on entering a world in between (27-09-2026, 0.49).
+-- A search of all controllers on every tick cost 36 ms a tick on UE4SS builds without hash tables (the stutter
+-- of 28-09-2026). So once the local player is known, its link to the controller is read instead: in the test
+-- build of 28-09-2026 the link and the search changed on the same tick in every travel.
+local function ControllerName()
+    if not (LocalPlayer and LocalPlayer:IsValid()) then return SearchController() end
+    local ok, n = pcall(function()
+        local pc = LocalPlayer.PlayerController
+        if pc and pc:IsValid() and pc:IsLocalController() then return pc:GetFullName() end
+        return ""
+    end)
+    if ok then return n end
+    LocalPlayer = nil
+    return SearchController()
+end
 local function WatchWorld()
     local name = ControllerName()
     if name ~= LastController then LastController = name ForgetWorld(false) end
 end
 
+-- One line in UE4SS.log every 60 s: what the mod costs the game (stutter reports, 28-09-2026)
+local Perf = { From = os.clock(), Ticks = 0, Sum = 0, Max = 0, Watch = 0, Scans = 0, ScanSum = 0, ScanMax = 0 }
+local function PerfLog(now)
+    local P, widgets = Perf, 0
+    for _, E in ipairs(Elements) do widgets = widgets + #E.Instances end
+    Log(string.format("perf: %d ticks, avg %.1f ms, max %.0f ms; world watch avg %.2f ms; %d scans, avg %.0f ms, max %.0f ms; %d widgets; lua %.0f KB",
+        P.Ticks, P.Sum / math.max(1, P.Ticks) * 1000, P.Max * 1000, P.Watch / math.max(1, P.Ticks) * 1000,
+        P.Scans, P.ScanSum / math.max(1, P.Scans) * 1000, P.ScanMax * 1000, widgets, collectgarbage("count")))
+    Perf = { From = now, Ticks = 0, Sum = 0, Max = 0, Watch = 0, Scans = 0, ScanSum = 0, ScanMax = 0 }
+end
+
+local LoggedEditMode = false
 local function TickBody()
     local now = os.clock()
-    if not TickAlive then TickAlive = true Log("timer running") end
+    if not TickAlive then
+        TickAlive = true
+        Log("timer running" .. (IsInGameThread and (IsInGameThread() and " on the game thread" or " off the game thread") or ""))
+    end
+    if EditMode ~= LoggedEditMode then LoggedEditMode = EditMode Log(EditMode and "edit mode on" or "edit mode off") end
     WatchWorld()   -- first: nothing below may read a handle into a world that is gone
+    Perf.Watch = Perf.Watch + (os.clock() - now)
 
-    -- each scan searches all objects once per element class; every 2 s is enough outside the editor (lag, 27-09-2026)
-    if now - LastScan > (EditMode and 0.5 or 2.0) then
+    -- one search for all widgets every 2 s, in the editor too: faster scans stuttered (27-09 and 28-09-2026)
+    if now - LastScan > 2.0 then
         LastScan = now
+        local scanFrom = os.clock()
         local okFind, errFind = pcall(FindAll)
         if not okFind and not ApplyErrorLogged then ApplyErrorLogged = true Log("finding widgets failed: " .. tostring(errFind)) end
         if now > SettleUntil then
@@ -1366,6 +1420,8 @@ local function TickBody()
             pcall(EnsureBuffRow)
             pcall(FindBuffEntries)
         end
+        local scan = os.clock() - scanFrom
+        Perf.Scans, Perf.ScanSum, Perf.ScanMax = Perf.Scans + 1, Perf.ScanSum + scan, math.max(Perf.ScanMax, scan)
     end
     -- try every 3 s for the first 3 minutes (the main menu); a full scan of images is too heavy to repeat forever
     if not MenuArt and now < 180 and now > (NextArtTry or 0) then NextArtTry = now + 3 pcall(CaptureMenuArt) end
@@ -1386,27 +1442,40 @@ local function TickBody()
     if SaveRequested then SaveRequested = false SaveLayout() end
 
     UpdateOverlay()
+
+    local took = os.clock() - now
+    Perf.Ticks, Perf.Sum, Perf.Max = Perf.Ticks + 1, Perf.Sum + took, math.max(Perf.Max, took)
+    if now - Perf.From > 60 then PerfLog(now) end
 end
 
 local TickErrorLogged = false
--- While the game thread is busy (a world loading), the timer keeps firing. Only one step waits in the queue at a
--- time, so hundreds of them do not run at once when the world is up. A step that waited 5 s is taken as lost.
-local QueuedAt = nil
-local function Tick()
-    local run = function()
-        QueuedAt = nil
-        local ok, err = pcall(TickBody)
-        if not ok and not TickErrorLogged then TickErrorLogged = true Log("timer step failed: " .. tostring(err)) end
-    end
-    ExecuteWithDelay(50, Tick)   -- first: an error below must not stop the timer
-    if not ExecuteInGameThread then
-        run()
-    elseif not QueuedAt or os.clock() - QueuedAt > 5 then
-        QueuedAt = os.clock()
-        ExecuteInGameThread(run)
-    end
+local function TimerStep()   -- not "Step": that is the editor's move step
+    local ok, err = pcall(TickBody)
+    if not ok and not TickErrorLogged then TickErrorLogged = true Log("timer step failed: " .. tostring(err)) end
 end
-ExecuteWithDelay(2000, Tick)
+-- The whole step on the game thread. The older timer below runs part of it on UE4SS's own thread, at the same
+-- moment as the game thread's part: Lua cannot do that, and it crashed the game inside UE4SS.dll (27-09 and
+-- 28-09-2026, with "Ref was not function" errors in the log). The call throws when UE4SS has no game thread hook.
+if LoopInGameThreadWithDelay and ExecuteInGameThreadWithDelay
+    and pcall(ExecuteInGameThreadWithDelay, 2000, function() LoopInGameThreadWithDelay(50, TimerStep) end) then
+    Log("timer: on the game thread")
+else
+    Log("timer: old UE4SS, the timer runs on two threads; a newer UE4SS experimental build is more stable")
+    -- While the game thread is busy (a world loading), the timer keeps firing. Only one step waits in the queue at a
+    -- time, so hundreds of them do not run at once when the world is up. A step that waited 5 s is taken as lost.
+    local QueuedAt = nil
+    local function Tick()
+        local run = function() QueuedAt = nil TimerStep() end
+        ExecuteWithDelay(50, Tick)   -- first: an error below must not stop the timer
+        if not ExecuteInGameThread then
+            run()
+        elseif not QueuedAt or os.clock() - QueuedAt > 5 then
+            QueuedAt = os.clock()
+            ExecuteInGameThread(run)
+        end
+    end
+    ExecuteWithDelay(2000, Tick)
+end
 
 -- A player restart (entering a world, respawning) can rebuild the game's HUD: drop every handle into it
 -- first. Widgets added before the restart and read after it crashed the game on entering (27-09-2026).
@@ -1418,14 +1487,14 @@ RegisterHook("/Script/Engine.PlayerController:ClientRestart", function()
 end)
 ---------------------------------------------------------------- keys (Windows key codes; they only change state, the loop above does the work)
 
+-- Key binds run on UE4SS's own thread, beside the game thread's step: they only change numbers and flags, and
+-- make nothing new (no text, no tables), so they cannot start Lua's memory cleanup under the step (28-09-2026).
+-- The step logs the editor opening and closing.
 RegisterKeyBind(120, function()
     EditMode = not EditMode
-    if EditMode then
-        Log("edit mode on")
-    else
+    if not EditMode then
         SaveRequested = true
         RestoreAllRequested = true
-        Log("edit mode off")
     end
 end)
 
@@ -1475,10 +1544,11 @@ RegisterKeyBind(189, function() Resize(-0.05) end)
 
 RegisterKeyBind(46, function() if EditMode then Elements[Selected].Visible = false end end)
 RegisterKeyBind(45, function() if EditMode then Elements[Selected].Visible = true end end)
+local NoDefaults = {}
 RegisterKeyBind(8, function()
     if not EditMode then return end
     local E = Elements[Selected]
-    local d = Defaults[E.Id] or {}
+    local d = Defaults[E.Id] or NoDefaults
     E.X, E.Y, E.Scale, E.Visible = d.X or 0, d.Y or 0, d.Scale or 1.0, (d.Visible ~= false)
 end)
 

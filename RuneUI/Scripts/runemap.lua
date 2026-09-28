@@ -323,7 +323,18 @@ local function BuildRing(ctx, tree, map)
     local mb = StaticConstructObject(Obj("/Script/UMG.SizeBox"), tree, FName("RU_MapBox"))
     mb:SetWidthOverride(D)
     mb:SetHeightOverride(D)
-    mb:SetContent(map)
+    -- The game's map widget cost about 20 FPS at any zoom (28-09-2026). A retainer box draws it into a picture
+    -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (chosen by Ivan).
+    local okRB, errRB = pcall(function()
+        local rb = StaticConstructObject(Obj("/Script/UMG.RetainerBox"), tree, FName("RU_MapRetainer"))
+        rb:SetRenderingPhase(0, 2)
+        rb:SetContent(map)
+        mb:SetContent(rb)
+    end)
+    if okRB then ctx.Log("runemap: drawn every second frame") else
+        ctx.Log("runemap: retainer box failed, drawn every frame: " .. tostring(errRB))
+        mb:SetContent(map)
+    end
     AddCentred(ov, mb)
     -- diamonds from the menu's trim on the left, right and bottom; the needle on top of everything
     local top = StaticConstructObject(Obj("/Script/UMG.CanvasPanel"), tree, FName("RU_MapMarks"))
@@ -397,7 +408,7 @@ local function Build(ctx)
     -- a new name on every build: the old widget may still exist under GameInstance, and making an object
     -- with the name of a live one makes the engine replace it in place, which can crash the game
     M.Builds = (M.Builds or 0) + 1
-    M.Shown, M.LastDeg, M.NeedleSlot, M.NeedleImg = nil, nil, nil, nil
+    M.Shown, M.Visible, M.LastDeg, M.NeedleSlot, M.NeedleImg = nil, nil, nil, nil, nil
     local step = "player"
     local view = nil
     local ok, err = pcall(function()
@@ -446,8 +457,8 @@ end
 ---------------------------------------------------------------- creatures on the map
 
 -- Red diamonds for enemies, green for neutral animals. Each creature gets the map plugin's own icon, so the
--- plugin draws it in the right place every frame; the mod only adds icons and hides dead ones, once a
--- second. (The MiniMap addon draws its diamonds from a native hook, which breaks with every game patch.)
+-- plugin draws it in the right place every frame; the mod only adds icons and hides dead ones, every 2 s while
+-- the map is on screen. (The MiniMap addon draws its diamonds from a native hook, which breaks with every game patch.)
 local ICON_CLASS = "/Script/MinimapPlugin.MapIconComponent"
 local CREATURE_SIZE = 8       -- used only when the icon has no default size to scale from
 local CREATURE_SHARE = 0.6    -- of the default size, which looked far too big; this one was right (27-09-2026)
@@ -600,8 +611,10 @@ function M.Tick(ctx)
     end
     if M.PendingZoom then ApplyZoom(ctx) end
     if M.SetUpAt and os.clock() > M.SetUpAt then M.SetUpAt = nil SetUpAgain(ctx) end
-    if os.clock() > (M.NextCreatures or 0) then
-        M.NextCreatures = os.clock() + 1.0   -- the scan walks every object; the plugin moves the icons itself
+    if M.Visible and os.clock() > (M.NextCreatures or 0) then
+        -- the scan walks every object (up to 30 ms on UE4SS builds without hash tables, 28-09-2026); the plugin
+        -- moves the icons itself
+        M.NextCreatures = os.clock() + 2.0
         local okC, errC = pcall(ScanCreatures, ctx)
         if not okC then Once(ctx, "creatures", "runemap: creatures failed: " .. tostring(errC)) end
     end
@@ -618,7 +631,6 @@ function M.Tick(ctx)
                 ctx.Log("runemap: back from a menu, map set up again")
             end
             M.Shown = shown
-            M.UW:SetVisibility(shown and 3 or 1)
             -- the creature icons at once, not at the next scan: the big map must never show them
             if not shown then
                 for _, c in pairs(Creatures) do
@@ -628,6 +640,16 @@ function M.Tick(ctx)
             end
         end
     end)
+    -- Hidden in the editor: off the screen, not only see-through. The gold rings are outlines, and the game draws
+    -- outlines at full strength inside a see-through parent: the rings stayed on screen (28-09-2026).
+    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing())
+    if visible ~= M.Visible then
+        -- shown again after a hidden stretch: set the map up again, as after the big map (the set-up needs a map on
+        -- screen, and a collapsed one is not)
+        if visible and M.Visible == false then M.SetUpAt = os.clock() + 0.3 end
+        M.Visible = visible
+        pcall(function() M.UW:SetVisibility(visible and 3 or 1) end)
+    end
     if os.clock() < (M.NextClock or 0) then return end
     M.NextClock = os.clock() + 0.5
     local okC, fill, ns = pcall(ReadClock, ctx)

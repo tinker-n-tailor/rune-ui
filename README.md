@@ -36,6 +36,8 @@ Rune UI needs the experimental build of UE4SS. The CurseForge app installs UE4SS
 
 If Rune UI does not show, open `Win64\ue4ss\UE4SS.log`. If the log shows "Fatal Error", UE4SS is the old version. Do steps 1 and 2 again.
 
+If the log shows "timer: old UE4SS", your UE4SS build is older than the mod needs. The game can stutter or crash. Do steps 1 and 2 again.
+
 When the CurseForge app installs or removes a mod, it can put UE4SS 3.0.1 back. If your mods stop working after that, do steps 1 and 2 again.
 
 Other mods that change the HUD can conflict with Rune UI. Two mods that move the same part of the HUD fight each other.
@@ -60,6 +62,8 @@ Press F9 in the game. A panel on the left shows the keys and every element. The 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an `avatar.png` in the `RuneUI` folder.
 
 "Creatures on RuneMap" and "Icons beside the bars" only switch a thing on or off. Delete and Insert work on them. The arrows and + / - do nothing.
+
+When you hide RuneMap, the mod takes the map off the screen. The game then does not draw the map, and you get back the frames that it costs.
 
 "Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings.
 
@@ -86,6 +90,8 @@ Beside the bars, the mod shows your level in the game's green diamond. To show y
 
 The map shows no fog, because it has no record of the places that you visited. It shows the terrain around you as it is.
 
+The game's minimap widget costs frames: about 20 FPS in a test, at every zoom. So the mod draws the map every second frame. This gives back about half of the cost, but the map moves a little less smoothly when the camera turns.
+
 Creatures show as small diamonds: red for enemies, green for neutral animals. The map shows every creature that the game has loaded near you, also behind hills and walls. The diamonds are not shown on the big map (M). To hide them, hide the element "Creatures on RuneMap" in the editor. A list of animal names in `runemap.lua` decides which creatures are neutral.
 
 The mod reads the time from the material of the game's day and night dial: `Fill Amount` is the part of the day that is gone, and `Night Start` is where the night begins. An error in the map does not stop the rest of the mod. The log shows when the map is ready, or the step that failed, with the prefix `runemap`.
@@ -101,6 +107,16 @@ Each bar is a plain box: a dark track behind the fill. The health bar is on top 
 ### Buffs
 
 Each buff is a round icon with 20 short dashes around it. The dashes show the time that is left. They take the buff's colour from the game, for example green for poison.
+
+### Speed
+
+Every 2 s, the mod finds the parts of the HUD with one search of all widgets. The time of a search depends on the UE4SS build. In a test, a search took about 15 ms with a recent experimental build. An older build reads every object in the game, and a search took 50 ms or more.
+
+To see a world change, the mod reads the controller of the local player on every step. It does not search for it.
+
+The timer of the mod runs on the game thread, with `LoopInGameThreadWithDelay`. An older UE4SS does not have this function. Then the log shows "timer: old UE4SS", and the timer uses two threads. Two threads in one Lua state can crash the game.
+
+Once a minute, the log gets a line that starts with `perf:`. It shows the time of the mod's steps and searches, the number of widgets that the mod moves, and the memory that Lua uses.
 
 ### Files that the mod writes (in `Win64`)
 
@@ -120,7 +136,7 @@ CurseForge does not accept `.png` files in a Dragonwilds mod. So the tool also w
 
 `node tools/make-zip.js` builds the release zip, `RuneUI-<version>.zip`, in the repo root. The same zip goes to CurseForge and Nexus Mods. It adds `LICENSE` as `LICENSE.txt` and leaves out the `.png` files. It stops if the zip would hold a file type that CurseForge does not accept. `RuneUI/README.txt` is the short README for players inside the zip. When you change the install steps or the keys here, change them there too.
 
-`node tools/check-lua.js` checks the Lua files without the game: the syntax, and that every global name is a Lua or UE4SS one. It needs `npm install --no-save luaparse` first.
+`node tools/check-lua.js` checks the Lua files without the game: the syntax, that every global name is a Lua or UE4SS one, and that no top-level local name is declared twice. It needs `npm install --no-save luaparse` first.
 
 The pictures of this README are in `docs`.
 

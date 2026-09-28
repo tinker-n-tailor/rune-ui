@@ -14,6 +14,8 @@ Rune UI needs the experimental build of UE4SS. The CurseForge app installs UE4SS
 
 If Rune UI does not show, open Win64\ue4ss\UE4SS.log. If the log shows "Fatal Error", UE4SS is the old version. Do steps 1 and 2 again.
 
+If the log shows "timer: old UE4SS", your UE4SS build is older than the mod needs. The game can stutter or crash. Do steps 1 and 2 again.
+
 When the CurseForge app installs or removes a mod, it can put UE4SS 3.0.1 back. If your mods stop working after that, do steps 1 and 2 again.
 
 Other mods that change the HUD can conflict with Rune UI. Two mods that move the same part of the HUD fight each other.
