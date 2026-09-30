@@ -105,19 +105,34 @@ local function TextsUnder(W, list, depth)
     end
     return list
 end
+M.TextsUnder = TextsUnder   -- the immersive mode reads the numbers on the bars with it
+M.Find = Find               -- and finds the tool bar's slot frames with this
 
 -- One half of the coloured ring in a box that shows only its own side of the ring
-local function Half(tree, name, tex, colour, right)
+local function Half(tree, name, tex, colour, right, size)
     local cv = New("CanvasPanel", tree, name .. "Canvas")
-    local img = Picture(tree, name .. "Img", tex, RING)
+    local img = Picture(tree, name .. "Img", tex, size)
     img:SetColorAndOpacity(colour)
     local s = cv:AddChildToCanvas(img)
     s:SetAutoSize(false)
-    s:SetSize({ X = RING, Y = RING })
-    s:SetPosition({ X = right and -RING / 2 or 0, Y = 0 })
-    local clip = Sized(tree, name, RING / 2, RING, cv)
+    s:SetSize({ X = size, Y = size })
+    s:SetPosition({ X = right and -size / 2 or 0, Y = 0 })
+    local clip = Sized(tree, name, size / 2, size, cv)
     clip:SetClipping(1)   -- clip to its box
     return clip, img
+end
+
+-- The ring without its icon: the dark back, the coloured ring in two halves, and the centre. art holds the
+-- three pictures as Back, Half and Centre. The buffs in main.lua are drawn with it too (1.2).
+function M.Ring(tree, n, size, art, colour)
+    local ov = New("Overlay", tree, n .. "Stack")
+    Add(ov, Picture(tree, n .. "Back", art.Back, size), 2, 2)
+    local right, rImg = Half(tree, n .. "R", art.Half, colour, true, size)
+    local left, lImg = Half(tree, n .. "L", art.Half, colour, false, size)
+    Add(ov, right, 3, 0)
+    Add(ov, left, 1, 0)
+    Add(ov, Picture(tree, n .. "Centre", art.Centre, size), 2, 2)
+    return ov, rImg, lImg
 end
 
 local Built = {}       -- one entry per kind: { Right, Left, Texts, Value }
@@ -144,13 +159,7 @@ local function Decorate(ctx, U)
             local dia = LoadArt(ctx, tree, "runemap_diamond.png")
             if not (bar and back and half and centre) then error("missing part: bar=" .. tostring(bar ~= nil)) end
             local n = tag .. "_" .. i
-            local ov = New("Overlay", tree, n .. "Stack")
-            Add(ov, Picture(tree, n .. "Back", back, RING), 2, 2)
-            local right, rImg = Half(tree, n .. "R", half, K.Colour, true)
-            local left, lImg = Half(tree, n .. "L", half, K.Colour, false)
-            Add(ov, right, 3, 0)
-            Add(ov, left, 1, 0)
-            Add(ov, Picture(tree, n .. "Centre", centre, RING), 2, 2)
+            local ov, rImg, lImg = M.Ring(tree, n, RING, { Back = back, Half = half, Centre = centre }, K.Colour)
             local ourIcon
             if icon then
                 pcall(function()
@@ -170,12 +179,13 @@ local function Decorate(ctx, U)
             end)
             Add(root, box, 2, 1)        -- over the game's ring: centred, at the top of the element
             bar:SetRenderOpacity(0.0)   -- only once ours is in: the game's ring stays alive for the game, unseen
-            if dia then Add(root, Picture(tree, n .. "Dia", dia, DIAMOND), 2, 1, { Left = 0, Top = RING - 2 - DIAMOND / 2, Right = 0, Bottom = 0 }) end
+            local diaImg = dia and Picture(tree, n .. "Dia", dia, DIAMOND)
+            if diaImg then Add(root, diaImg, 2, 1, { Left = 0, Top = RING - 2 - DIAMOND / 2, Right = 0, Bottom = 0 }) end
             -- no numbers: the ring shows how full it is (in-game review, 27-09-2026). The game still writes
             -- them, and the ring reads them.
             pcall(function() Find(root, "SizeBox_1"):SetRenderOpacity(0.0) end)
             Built[i] = { Right = rImg, Left = lImg, Icon = ourIcon, Texts = texts, Value = nil, Name = K.Name, Colour = K.Colour,
-                GameRing = Find(bar, "RadialImage"), GameIcon = icon }
+                GameRing = Find(bar, "RadialImage"), GameIcon = icon, Box = box, Dia = diaImg }
             local parts = {}
             for _, T in ipairs(texts) do pcall(function() table.insert(parts, "'" .. T:GetText():ToString() .. "'") end) end
             ctx.Log(string.format("survival: %s ring ready (numbers %s; low colours %s)", K.Name, table.concat(parts, " "), (icon and Built[i].GameRing) and "followed" or "not found"))
@@ -218,6 +228,7 @@ local function Warn(b)
     if b.Icon then b.Icon:SetColorAndOpacity(icon) end
 end
 
+-- Shows the share p (0..1) of the ring, clockwise from the top. b holds the two half pictures as Right and Left.
 local function Turn(b, p)
     local deg = p * 360
     if p <= 0.5 then
@@ -229,6 +240,10 @@ local function Turn(b, p)
         b.Left:SetRenderOpacity(1.0)
     end
 end
+M.Turn = Turn
+
+-- The rings as built, by kind: Value is the share full (nil until read), Box and Dia the ring and its diamond
+function M.Rings() return Built end
 
 -- Leaving the world: drop the handles into it before the engine frees them (see main.lua)
 function M.Forget()
@@ -239,9 +254,10 @@ end
 function M.Tick(ctx)
     if os.clock() < (M.Next or 0) then return end
     M.Next = os.clock() + 0.5   -- the values change over minutes
-    local U = ctx.ById("survival").Instances[1]
+    local E = ctx.ById("survival")
+    local U = E.Instances[1]
     if not (U and U:IsValid()) then return end
-    local name = U:GetFullName()
+    local name = E.Keys[1]   -- its full name, read by main.lua's search
     -- alive while any ring stands: one ring that failed must not stop the others from turning
     local function Alive()
         for _, b in pairs(Built) do if b.Right and b.Right:IsValid() then return true end end

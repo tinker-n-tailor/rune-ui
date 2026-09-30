@@ -1,10 +1,14 @@
 -- RuneMap, the minimap (design sketch, 27-09-2026): the game's own minimap widget, fed by our own map view,
 -- in a gold ring that is also the clock. The middle of the night is at the top and noon at the bottom; the
 -- ring keeps the game's own share of night (about a fifth), so dawn sits near 1 o'clock and dusk near 11.
--- A gold needle on the ring points at the time of day.
+-- A gold needle on the ring points at the time of day, and a mark on the inner ring shows north.
+-- F8 (1.1, main.lua) turns the map on or off and sets faces north, the north mark, the creatures, the resources
+-- (resources.lua), the zoom and how often the map draws.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
-local M = { W = nil, Fails = 0 }
+-- Dirty, ResetWanted and PendingZoom are set by key handlers: kept in the table as false, never nil, so
+-- setting them never grows the table on UE4SS's key thread
+local M = { W = nil, Fails = 0, Dirty = false, ResetWanted = false, PendingZoom = false }
 
 local D = 180                  -- map diameter; the art tool draws the band for the same size
 local BOX = D + 44             -- the whole element: map, day band and gold rings
@@ -20,8 +24,10 @@ local VIEW_CLASS = "/Script/MinimapPlugin.MapViewComponent"
 
 -- the map settings, taken from the MiniMap addon (27-09-2026)
 -- InitialMapSize: without the addon it stayed 0 and the map drew nothing, not even the arrow. IconScale: the
--- map icons (camps, boats) looked too big at 1, and 10% big at 0.6 (27-09-2026).
-local MAP_SETTINGS = { bIsCircular = true, AutoLocateMapView = 4, IconScale = 0.54, FloorDistance = 300,
+-- map icons (camps, boats) looked too big at 1, and 10% big at 0.6 (27-09-2026). 0.54 was still much too big for
+-- the dungeons and the other game icons, and 0.3 super small (Ivan, 29-09-2026). It scales our own icons too.
+local ICON_SCALE = 0.4
+local MAP_SETTINGS = { bIsCircular = true, AutoLocateMapView = 4, IconScale = ICON_SCALE, FloorDistance = 300,
     InitialMapSize = { X = D, Y = D } }
 -- the addon's view settings: without them (test of 27-09-2026) the view kept RotationMode 0 and the map
 -- stopped turning with the camera
@@ -53,14 +59,47 @@ function M.ZoomLevel()
 end
 function M.ZoomBy(factor) M.PendingZoom = (M.PendingZoom or 1) * factor end   -- key handlers: applied in Tick
 
-local function ApplyZoom(ctx)
-    local z = math.max(ZOOM_MIN, math.min(ZOOM_MAX, M.ZoomLevel() * M.PendingZoom))
-    M.PendingZoom = nil
-    M.Zoom = z
-    pcall(function() M.View:SetZoomScale(z) end)
+local function SaveZoom(z)
     local f = io.open(ZOOM_FILE, "w")
     if f then f:write(string.format("%.3f\n", z)) f:close() end
 end
+local function ApplyZoom(ctx)
+    local z = math.max(ZOOM_MIN, math.min(ZOOM_MAX, M.ZoomLevel() * M.PendingZoom))
+    M.PendingZoom = false
+    M.Zoom = z
+    pcall(function() M.View:SetZoomScale(z) end)
+    SaveZoom(z)
+end
+
+-- The F8 settings (1.1). Map: off means the mod does not build the map at all, which hiding it in F9 still does
+-- (Ivan, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
+-- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
+-- creatures (Ivan asked to hide them, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
+-- Kept in a file like the zoom. The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them.
+local SETTINGS_FILE = "runeui_map.txt"
+-- neutral creatures start hidden: they take room on the map (Ivan, 29-09-2026)
+local SETTING_START = { Map = true, North = false, Mark = true, Smooth = false, Neutral = false, Ore = true, Herbs = true,
+    Essence = true, Trees = true }
+M.Set = {}
+for k, v in pairs(SETTING_START) do M.Set[k] = v end
+do
+    local f = io.open(SETTINGS_FILE, "r")
+    if f then
+        for line in f:lines() do
+            local k, v = string.match(line, "^(%a+)=(%d)")
+            if k and type(M.Set[k]) == "boolean" then M.Set[k] = (v == "1") end
+        end
+        f:close()
+    end
+end
+local function SaveSettings()
+    local f = io.open(SETTINGS_FILE, "w")
+    if not f then return end
+    for k in pairs(SETTING_START) do f:write(k .. "=" .. (M.Set[k] and "1" or "0") .. "\n") end
+    f:close()
+end
+-- Backspace in F8, from a key handler: only a flag; Tick does the rest
+function M.Reset() M.ResetWanted = true end
 
 local Logged = {}
 local function Once(ctx, key, msg)
@@ -105,6 +144,11 @@ local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
 local ART_NIGHT_START = 0.795
 local NEEDLE_W, NEEDLE_H = 10, 30
 local R_NEEDLE = D / 2 + 13   -- the tip just inside the inner gold ring, the cap outside the outer one
+local R_NORTH, NORTH_SIZE = D / 2 + 2, 17   -- the north mark: on the inner gold ring
+-- The camera's yaw at which north is at the top of the ring. The view needs InheritedYawOffset 90 to put the
+-- camera's forward at the top, so the map's own top (north on the big map) is yaw -90. Checked in game by
+-- Ivan, 29-09-2026: the mark and "Faces north" agree with the big map (M).
+local NORTH_YAW = -90
 
 local function LoadArt(ctx, name)
     local f = io.open(ART_DIR .. name, "rb")
@@ -171,6 +215,7 @@ local function MakeView(ctx, pawn)
     end)
     if not okA then ctx.Log("runemap: attach failed: " .. tostring(errA)) end
     for k, v in pairs(VIEW_SETTINGS) do pcall(function() comp[k] = v end) end
+    if M.Set.North then pcall(function() comp.RotationMode = 0 end) end   -- F8: faces north
     -- HeightProxy tells the view how high the player stands, which picks the floor of terrain to draw.
     -- Without it the terrain parts arrive (test of 27-09-2026) but nothing is drawn. It is the player's own
     -- body, but only if it is the kind the property holds (a wrong kind of object in an object property
@@ -191,7 +236,8 @@ local function MakeView(ctx, pawn)
 end
 
 -- The terrain pictures. The level hands them to the maps that exist when it loads; ours comes later and got
--- none (first test: icons and labels, but a plain brown map). So they are added by hand, once per build.
+-- none (first test: icons and labels, but a plain brown map). Later the plugin adds them itself; ours are added
+-- only when the map still has none at its first set-up (SetUpAgain).
 -- The kind of object AddMapBackground takes, read from the function itself (the second test showed that
 -- /Script/MinimapPlugin.MapBackgroundComponent does not exist, so the name is not guessed any more).
 local function BackgroundClass(ctx)
@@ -233,6 +279,15 @@ end
 local function AddBackgrounds(ctx, map)
     local want = BackgroundClass(ctx)
     local seen, added, firstErr = {}, 0, nil
+    -- the pieces the map already holds are skipped: every set-up added them again (2 pieces, 6 on the map after two
+    -- set-ups, 29-09-2026), and the map worked through every copy
+    local held = 0
+    pcall(function()
+        map.Backgrounds:ForEach(function(_, e)
+            local b = e:get()
+            if b and b:IsValid() then seen[b:GetFullName()] = true held = held + 1 end
+        end)
+    end)
     -- only a live object of exactly the kind the function takes goes in: a wrong one could crash the game
     local function Try(item)
         if not (item and item:IsValid()) then return end
@@ -268,7 +323,8 @@ local function AddBackgrounds(ctx, map)
     for _, c in pairs(FindAllOf(wantName) or {}) do
         if string.find(c:GetFullName(), ":PersistentLevel.", 1, true) then pcall(Try, c) end
     end
-    ctx.Log(string.format("runemap: backgrounds added %d (%s)%s", added, wantName, firstErr and (", first error: " .. firstErr) or ""))
+    ctx.Log(string.format("runemap: backgrounds added %d, %d already on the map (%s)%s", added, held, wantName,
+        firstErr and (", first error: " .. firstErr) or ""))
 end
 
 local function MakeMap(ctx, PC, view)
@@ -280,8 +336,8 @@ local function MakeMap(ctx, PC, view)
     for k, v in pairs(MAP_SETTINGS) do pcall(function() map[k] = v end) end
     local okV, errV = pcall(function() map:SetMapView(view) end)
     if not okV then ctx.Log("runemap: SetMapView failed: " .. tostring(errV)) end
-    -- the terrain goes in before the calls below, so they set the map up with it (the addon's map had it first)
-    pcall(AddBackgrounds, ctx, map)
+    -- no terrain of ours here: the map plugin adds the pieces itself within a second, and ours were a second copy
+    -- (log of 29-09-2026). SetUpAgain adds ours only if the map still has none.
     -- the addon calls these after SetMapView; the first test (without them) stayed on "waiting for map view"
     local calls = {
         -- fog off: ours has no record of where the player has been, so the fog covered the whole map and it
@@ -315,9 +371,13 @@ local function BuildRing(ctx, tree, map)
         bb:SetContent(Picture(tree, "RU_MapBandArt", bandTex, BOX))
         AddCentred(ov, bb)
     end
+    -- the rings are kept: their outline ignores the widget's opacity, so the F9 opacity is set on them too
     local okR, errR = pcall(function()
-        AddCentred(ov, (Disc(tree, "RU_MapRingOut", D + 34, NONE, GOLD, 2.5)))
-        AddCentred(ov, (Disc(tree, "RU_MapRingIn", D + 4, NONE, GOLD, 2)))
+        local box
+        box, M.RingOut = Disc(tree, "RU_MapRingOut", D + 34, NONE, GOLD, 2.5)
+        AddCentred(ov, box)
+        box, M.RingIn = Disc(tree, "RU_MapRingIn", D + 4, NONE, GOLD, 2)
+        AddCentred(ov, box)
     end)
     if not okR then ctx.Log("runemap: gold rings not drawn: " .. tostring(errR)) end
     local mb = StaticConstructObject(Obj("/Script/UMG.SizeBox"), tree, FName("RU_MapBox"))
@@ -325,11 +385,13 @@ local function BuildRing(ctx, tree, map)
     mb:SetHeightOverride(D)
     -- The game's map widget cost about 20 FPS at any zoom (28-09-2026). A retainer box draws it into a picture
     -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (chosen by Ivan).
+    -- F8 "Smooth" turns the retainer off, so the map draws every frame again (see ApplySettings).
     local okRB, errRB = pcall(function()
         local rb = StaticConstructObject(Obj("/Script/UMG.RetainerBox"), tree, FName("RU_MapRetainer"))
         rb:SetRenderingPhase(0, 2)
         rb:SetContent(map)
         mb:SetContent(rb)
+        M.Retainer = rb
     end)
     if okRB then ctx.Log("runemap: drawn every second frame") else
         ctx.Log("runemap: retainer box failed, drawn every frame: " .. tostring(errRB))
@@ -348,12 +410,25 @@ local function BuildRing(ctx, tree, map)
     end
     -- the creature diamonds: hidden pictures here hold them, so the engine keeps them while map icons use them
     M.EnemyTex, M.NeutralTex = LoadArt(ctx, "creature_enemy.png"), LoadArt(ctx, "creature_neutral.png")
-    for i, t in ipairs({ M.EnemyTex or false, M.NeutralTex or false }) do
+    -- and the resource shapes (resources.lua), held the same way
+    M.ResTex = { Ore = LoadArt(ctx, "resource_ore.png"), Herbs = LoadArt(ctx, "resource_herb.png"),
+        Essence = LoadArt(ctx, "resource_essence.png"), Trees = LoadArt(ctx, "resource_tree.png") }
+    for i, t in ipairs({ M.EnemyTex or false, M.NeutralTex or false, M.ResTex.Ore or false, M.ResTex.Herbs or false,
+        M.ResTex.Essence or false, M.ResTex.Trees or false }) do
         if t then
             local keep = Picture(tree, "RU_MapKeep" .. i, t, 1)
             keep:SetVisibility(1)   -- collapsed
             AddCentred(ov, keep)
         end
+    end
+    -- the north mark on the inner gold ring (1.1, shape A of the design sketch of 28-09-2026); under the needle
+    local northTex = LoadArt(ctx, "runemap_north.png")
+    if northTex then
+        local okM, errM = pcall(function()
+            M.NorthImg = Picture(tree, "RU_MapNorth", northTex, NORTH_SIZE)
+            M.NorthSlot = Place(top, M.NorthImg, C, C - R_NORTH, NORTH_SIZE, NORTH_SIZE)
+        end)
+        if not okM then ctx.Log("runemap: north mark not drawn: " .. tostring(errM)) end
     end
     -- the clock hand, chosen over the sun and the moon (design sketch, 27-09-2026): a gold needle
     -- across the band that points at the map's centre
@@ -394,14 +469,91 @@ local function ReadClock(ctx)
     return fill % 1, ns
 end
 
+---------------------------------------------------------------- F8 settings, the north mark and the opacity
+
+-- handles into the ring of the last build, dropped with it
+local function DropParts()
+    M.NorthSlot, M.NorthImg, M.RingOut, M.RingIn, M.Retainer = nil, nil, nil, nil, nil
+    M.Applied, M.LastNorth, M.Op = nil, nil, nil
+    M.TerrainAt = nil   -- a new map notes its own count (SetUpAgain)
+    M.CreatureWay = nil -- and tries the first way to find creatures again: one failure must not hold for the world
+end
+
+-- the F8 settings onto the live map: when one changed, and once after each build
+local function ApplySettings(ctx)
+    local S = M.Set
+    local key = (S.North and 1 or 0) + (S.Mark and 2 or 0) + (S.Smooth and 4 or 0)
+    if key == M.Applied then return end
+    M.Applied = key
+    local okV = pcall(function() M.View.RotationMode = S.North and 0 or 1 M.Map:BroadcastMapView() end)
+    -- smooth: no retainer, the map draws every frame; the older call if this UE has no switch
+    local okR = M.Retainer and pcall(function() M.Retainer:SetRetainRendering(not S.Smooth) end)
+    if M.Retainer and not okR then pcall(function() M.Retainer:SetRenderingPhase(0, S.Smooth and 1 or 2) end) end
+    if M.NorthImg then pcall(function() M.NorthImg:SetVisibility(S.Mark and 3 or 1) end) end
+    M.LastNorth = nil
+    ctx.Log(string.format("runemap: faces north %s%s, north mark %s, %s", tostring(S.North), okV and "" or " (not set)",
+        tostring(S.Mark), S.Smooth and "drawn every frame" or "drawn every second frame"))
+end
+
+-- The mark slides round the inner ring as the camera turns: the view sits on the camera arm, so its yaw is the
+-- camera's. Facing north, the map's top is north, so the mark stays at the top.
+local function UpdateNorth()
+    if not (M.NorthSlot and M.Set.Mark) then return end
+    local deg = 0
+    if not M.Set.North then
+        local ok, yaw = pcall(function() return M.View:K2_GetComponentRotation().Yaw end)
+        if not ok or type(yaw) ~= "number" then return end
+        deg = (NORTH_YAW - yaw) % 360
+    end
+    if M.LastNorth and math.abs(deg - M.LastNorth) < 0.5 then return end
+    M.LastNorth = deg
+    local x, y = OnRing(R_NORTH, deg)
+    M.NorthSlot:SetPosition({ X = x - NORTH_SIZE / 2, Y = y - NORTH_SIZE / 2 })
+end
+
+-- The F9 opacity. The whole map through its user widget, which leaves the editor's blinking (render opacity)
+-- alone; the gold rings by their own colour, since outlines ignore the widget's opacity (LEARNINGS, 28-09-2026).
+-- The immersive mode's fade comes in here too (ctx.Fade), for the same reason.
+local function ApplyOpacity(ctx)
+    local op = (ctx.ById("runemap").Opacity or 1) * ctx.Fade()
+    if op == M.Op then return end
+    M.Op = op
+    pcall(function() M.UW:SetColorAndOpacity({ R = 1, G = 1, B = 1, A = op }) end)
+    for _, img in ipairs({ M.RingOut or false, M.RingIn or false }) do
+        if img then
+            pcall(function()
+                local b = img.Brush
+                b.OutlineSettings.Color = { SpecifiedColor = { R = GOLD.R, G = GOLD.G, B = GOLD.B, A = op }, ColorUseRule = 0 }
+                img:SetBrush(b)
+            end)
+        end
+    end
+end
+
 ---------------------------------------------------------------- build and update
 
 -- A second set-up once the map is on screen: the quest, bed and teleporter icons showed only after the
 -- terrain was added again and the map set up again (second F7 test of 27-09-2026).
 local function SetUpAgain(ctx)
-    pcall(AddBackgrounds, ctx, M.Map)
-    local ok, err = pcall(function() M.Map:ReinitShape() M.Map:RetryMapSize() M.Map:ForceLayoutPrepass() end)
+    local map = M.Map
+    -- ours only on a map with no terrain yet: every add made another copy of the same pieces (29-09-2026)
+    local n = 0
+    pcall(function() n = map.Backgrounds:GetArrayNum() end)
+    if n == 0 then pcall(AddBackgrounds, ctx, map) end
+    local ok, err = pcall(function() map:ReinitShape() map:RetryMapSize() map:ForceLayoutPrepass() end)
     if not ok then ctx.Log("runemap: set up again failed: " .. tostring(err)) end
+    -- The plugin adds the terrain pictures again each time the big map (M) opens: 2 more each visit, 12 after five
+    -- (log of 29-09-2026), and the map draws every copy. The first set-up after a build notes how many there are;
+    -- later ones take the extra copies (the newest, at the end) off the map's canvas. The plugin's Backgrounds array
+    -- still grows by 2 a visit (small). ReinitShape and RetryMapSize ran on the trimmed canvas in game without a crash.
+    pcall(function()
+        local canvas = map.Canvas_Backgrounds
+        local kids = canvas:GetChildrenCount()
+        -- a count of 0 (terrain not there yet) is not noted: the next trim would take every picture off
+        if not M.TerrainAt then if kids > 0 then M.TerrainAt = kids end return end
+        for i = kids - 1, M.TerrainAt, -1 do canvas:GetChildAt(i):RemoveFromParent() end
+        if kids > M.TerrainAt then Once(ctx, "terraincopies", "runemap: extra terrain copies taken off the map") end
+    end)
 end
 
 local function Build(ctx)
@@ -409,6 +561,7 @@ local function Build(ctx)
     -- with the name of a live one makes the engine replace it in place, which can crash the game
     M.Builds = (M.Builds or 0) + 1
     M.Shown, M.Visible, M.LastDeg, M.NeedleSlot, M.NeedleImg = nil, nil, nil, nil, nil
+    DropParts()
     local step = "player"
     local view = nil
     local ok, err = pcall(function()
@@ -435,7 +588,10 @@ local function Build(ctx)
         local E = ctx.ById("runemap")
         local slot = canvas:AddChildToCanvas(size)
         slot:SetAutoSize(true)
-        slot:SetPosition({ X = E.Center.X - BOX / 2, Y = E.Center.Y - BOX / 2 })
+        -- tied to the top right corner, so it stays there on a wide screen (Nexus, 29-09-2026); the spot is measured
+        -- on a 16:9 screen, 1920 units wide
+        slot:SetAnchors({ Minimum = { X = 1, Y = 0 }, Maximum = { X = 1, Y = 0 } })
+        slot:SetPosition({ X = E.Center.X - BOX / 2 - 1920, Y = E.Center.Y - BOX / 2 })
         step = "screen"
         uw:AddToViewport(40)
         uw:SetVisibility(3)
@@ -461,7 +617,9 @@ end
 -- the map is on screen. (The MiniMap addon draws its diamonds from a native hook, which breaks with every game patch.)
 local ICON_CLASS = "/Script/MinimapPlugin.MapIconComponent"
 local CREATURE_SIZE = 8       -- used only when the icon has no default size to scale from
-local CREATURE_SHARE = 0.6    -- of the default size, which looked far too big; this one was right (27-09-2026)
+-- of the default size, which looked far too big; 0.6 was right at an icon scale of 0.54 (27-09-2026), so our icons
+-- keep that size when the scale changes (the resources use the same)
+local CREATURE_SHARE = 0.6 * 0.54 / ICON_SCALE
 -- ponytail: neutral by the creature's class name; switch to the game's own flag if one is found
 local NEUTRAL = { "Deer", "Stag", "Rabbit", "Hare", "Chicken", "Sheep", "Cow", "Goat", "Frog", "Bird", "Fish", "Magpie", "Kebbit",
     "Critter", "Ambient", "Passive", "Squirrel" }
@@ -479,6 +637,60 @@ local function Dead(A)
     return ok2 and v2 == true
 end
 
+-- The creatures near the player (Ivan, 29-09-2026: look only around the player). The walk through every object
+-- the game holds (FindAllOf) took up to 30 ms (28-09-2026). The game's overlap query gives only the pawns within
+-- CREATURE_RADIUS of the player. If UE4SS cannot make that call, the game's own list of creatures, then the walk.
+-- The first way that works stays. Herbs and ore could be found the same way later.
+local CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map (Ivan, 29-09-2026)
+-- An out parameter from UE4SS 3.0.1: it fills the table passed in with the actors, 1 to n (log of 29-09-2026).
+-- An element may come as the object or as a holder of it (e:get()).
+local function OutActors(out)
+    local list = {}
+    for _, e in ipairs(out) do
+        if pcall(function() return e:GetFullName() end) then list[#list + 1] = e
+        else
+            local ok, o = pcall(function() return e:get() end)
+            if ok and o then list[#list + 1] = o end
+        end
+    end
+    return list
+end
+local CREATURE_WAYS = {
+    { "the overlap query", function(cls)
+        local out = {}
+        -- true when anything overlaps; then an empty table means UE4SS gave the list some other way
+        local hit = Obj("/Script/Engine.Default__KismetSystemLibrary"):SphereOverlapActors(M.Pawn,
+            M.Pawn:K2_GetActorLocation(), CREATURE_RADIUS, { 2 }, cls, {}, out)   -- 2: the pawn object type
+        local list = OutActors(out)
+        if hit == true and #list == 0 then error("an overlap, but no actors in the table") end
+        return list
+    end },
+    { "the game's list", function(cls)
+        local out = {}
+        Obj("/Script/Engine.Default__GameplayStatics"):GetAllActorsOfClass(M.Pawn, cls, out)
+        return OutActors(out)
+    end },
+    { "the walk", function() return FindAllOf("DominionAICharacter") or {} end },
+}
+local function NearCreatures(ctx)
+    local cls = Obj("/Script/Dominion.DominionAICharacter")
+    for i = M.CreatureWay or 1, #CREATURE_WAYS do
+        local way = CREATURE_WAYS[i]
+        local ok, list = pcall(function()
+            if i < 3 and not (cls and cls:IsValid()) then error("no creature class") end
+            return way[2](cls)
+        end)
+        if ok then
+            if M.WayLogged ~= i then M.WayLogged = i ctx.Log("runemap: creatures found by " .. way[1]) end
+            M.CreatureWay = i
+            return list
+        end
+        ctx.Log("runemap: creatures by " .. way[1] .. " failed: " .. tostring(list))
+        M.CreatureWay = i + 1
+    end
+    return {}
+end
+
 local function ScanCreatures(ctx)
     if not (M.EnemyTex and M.NeutralTex) then return end
     local cls = Obj(ICON_CLASS)
@@ -488,7 +700,7 @@ local function ScanCreatures(ctx)
     -- the world, which reads like a radar (28-09-2026).
     local show = ctx.ById("creatures").Visible ~= false and M.Shown == true
     local seen, added = {}, 0
-    for _, A in pairs(FindAllOf("DominionAICharacter") or {}) do
+    for _, A in pairs(NearCreatures(ctx)) do
         pcall(function()
             local n = A:GetFullName()
             if not string.find(n, ":PersistentLevel.", 1, true) or string.find(n, "Default__", 1, true) then return end
@@ -503,7 +715,8 @@ local function ScanCreatures(ctx)
                 local icon = A:AddComponentByClass(cls, false, T, false)
                 -- no icon when the creature is being removed (log, 28-09-2026): try again on the next scan
                 if not (icon and icon:IsValid()) then return end
-                local okT, errT = pcall(function() icon:SetIconTexture(IsNeutral(kind) and M.NeutralTex or M.EnemyTex) end)
+                local neutral = IsNeutral(kind)
+                local okT, errT = pcall(function() icon:SetIconTexture(neutral and M.NeutralTex or M.EnemyTex) end)
                 if not okT then Once(ctx, "icontex", "runemap: creature icon picture failed: " .. tostring(errT)) end
                 -- The plugin's own size unit is unknown: its default drew them far too big, 8 drew nothing
                 -- (27-09-2026). So the size is a share of the icon's own default. SetIconSize takes two values
@@ -514,18 +727,24 @@ local function ScanCreatures(ctx)
                 if not pcall(function() icon:SetIconSize(size, size) end) then
                     pcall(function() icon:SetIconSize(size, true) end)
                 end
-                c ={ Icon = icon, Shown = nil }
+                c = { Icon = icon, Shown = nil, Neutral = neutral }
                 Creatures[n] = c
             end
-            local want = show and not Dead(A)
+            local want = show and not Dead(A) and (M.Set.Neutral or not c.Neutral)   -- F8: enemies only
             if want ~= c.Shown and c.Icon:IsValid() then
                 c.Shown = want
                 pcall(function() c.Icon:SetIconVisible(want) end)
             end
         end)
     end
-    -- gone from the world: forget them now, before the engine frees them
-    for n in pairs(Creatures) do if not seen[n] then Creatures[n] = nil end end
+    -- out of reach or gone from the world: its icon goes too (a creature coming back would get a second one), and
+    -- the handle is forgotten before the engine frees it
+    for n, c in pairs(Creatures) do
+        if not seen[n] then
+            pcall(function() if c.Icon:IsValid() then c.Icon:K2_DestroyComponent(c.Icon) end end)
+            Creatures[n] = nil
+        end
+    end
 end
 
 -- Take our icons off the creatures while the world still stands (a respawn, a new body): otherwise each
@@ -546,9 +765,12 @@ function M.Forget(sameWorld)
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
     M.W, M.UW, M.Map, M.Pawn, M.View, M.PC = nil, nil, nil, nil, nil, nil
     M.Fails = 0
-    M.EnemyTex, M.NeutralTex = nil, nil
-    M.SetUpAt, M.NeedleSlot, M.NeedleImg = nil, nil, nil
+    M.EnemyTex, M.NeutralTex, M.ResTex = nil, nil, nil
+    M.SetUpAt, M.NeedleSlot, M.NeedleImg, M.NextRes = nil, nil, nil, 0   -- a new world scans for resources at once
+    DropParts()
     if sameWorld then DropCreatureIcons() else Creatures = {} end
+    if M.Res then pcall(sameWorld and M.Res.Drop or M.Res.Forget) end
+    M.CreatureWay, M.WayLogged = nil, nil   -- a way that failed while a world loaded gets a new try
 end
 
 -- Build only once the world is up: the HUD bars exist and the player has a body. Before that (main menu,
@@ -584,7 +806,39 @@ local function PawnChanged()
     return ok and changed
 end
 
+-- The map off the screen, with its view and the creature icons. Only while its world still stands (a new body in
+-- the same world, or the map turned off); after a world change the engine has already taken it away.
+local function TakeOff()
+    if M.UW and M.PC and M.PC:IsValid() then
+        pcall(function() M.UW:RemoveFromParent() end)
+        -- the old body may stay (another body possessed): its map view goes too, or it keeps a second one.
+        -- Not while the HUD is hidden: the big map (M) may be using our view then.
+        if M.Shown ~= false then
+            pcall(function() if M.View and M.View:IsValid() then M.View:K2_DestroyComponent(M.View) end end)
+        end
+        M.View = nil
+        DropCreatureIcons()
+        if M.Res then pcall(M.Res.Drop) end
+    end
+    M.UW, M.W = nil, nil
+end
+
 function M.Tick(ctx)
+    if M.ResetWanted then
+        M.ResetWanted = false
+        for k, v in pairs(SETTING_START) do M.Set[k] = v end
+        M.Zoom, M.PendingZoom, M.Dirty = 2, 1, true   -- the starting zoom; the map applies it
+        SaveZoom(2)   -- saved now, also when the map cannot build
+    end
+    -- a switch in F8 shows at once; a held arrow key scans at most every 0.3 s (a scan costs a few ms)
+    if M.Dirty then M.Dirty = false SaveSettings() M.NextRes = math.min(M.NextRes or 0, os.clock() + 0.3) end
+    if not M.Set.Map then
+        -- off in F8: nothing built, nothing searched. Turned on again, the build below runs as after a world change.
+        if M.UW or M.W then TakeOff() M.Pawn, M.Map, M.Visible = nil, nil, nil ctx.Log("runemap: off") end
+        if M.PendingZoom then ApplyZoom(ctx) end   -- the zoom keys still change the saved zoom
+        M.Fails = 0
+        return
+    end
     if (M.Fails or 0) >= 3 then return end   -- three failed builds in this round
     if M.W and os.clock() > (M.NextPawnCheck or 0) then
         M.NextPawnCheck = os.clock() + 2
@@ -593,30 +847,32 @@ function M.Tick(ctx)
     if not (M.W and M.W:IsValid() and M.Pawn and M.Pawn:IsValid()) then
         if os.clock() < (M.NextBuild or 0) then return end
         M.NextBuild = os.clock() + 2
-        -- take the old map off the screen only while its world still stands (a new body in the same world)
-        if M.UW and M.PC and M.PC:IsValid() then
-            pcall(function() M.UW:RemoveFromParent() end)
-            -- the old body may stay (another body possessed): its map view goes too, or it keeps a second one.
-            -- Not while the HUD is hidden: the big map (M) may be using our view then.
-            if M.Shown ~= false then
-                pcall(function() if M.View and M.View:IsValid() then M.View:K2_DestroyComponent(M.View) end end)
-            end
-            M.View = nil
-            DropCreatureIcons()
-        end
-        M.UW, M.W = nil, nil
+        TakeOff()
         local okR, ready = pcall(Ready, ctx)
         if okR and ready then Build(ctx) end
         return
     end
     if M.PendingZoom then ApplyZoom(ctx) end
+    ApplySettings(ctx)
+    ApplyOpacity(ctx)
     if M.SetUpAt and os.clock() > M.SetUpAt then M.SetUpAt = nil SetUpAgain(ctx) end
     if M.Visible and os.clock() > (M.NextCreatures or 0) then
-        -- the scan walks every object (up to 30 ms on UE4SS builds without hash tables, 28-09-2026); the plugin
-        -- moves the icons itself
+        -- every 2 s, around the player (NearCreatures); the plugin moves the icons itself
         M.NextCreatures = os.clock() + 2.0
-        local okC, errC = pcall(ScanCreatures, ctx)
-        if not okC then Once(ctx, "creatures", "runemap: creatures failed: " .. tostring(errC)) end
+        if ctx.ById("creatures").Visible == false then
+            -- off: no icons and no search at all (the search ran with Creatures off too, 29-09-2026)
+            if next(Creatures) then DropCreatureIcons() end
+        else
+            local okC, errC = pcall(ScanCreatures, ctx)
+            if not okC then Once(ctx, "creatures", "runemap: creatures failed: " .. tostring(errC)) end
+        end
+    end
+    -- ore, herbs, essence and rare trees (resources.lua): every 10 s; they do not move, only get used up. A scan
+    -- cost 4 to 5 ms in the game (29-09-2026), too much every 3 s.
+    if M.Res and M.Visible and os.clock() > (M.NextRes or 0) then
+        M.NextRes = os.clock() + 10.0
+        local okR, errR = pcall(M.Res.Scan, ctx, M)
+        if not okR then Once(ctx, "resources", "runemap: resources failed: " .. tostring(errR)) end
     end
     -- hide with the game's HUD (menus, the big map)
     pcall(function()
@@ -637,12 +893,15 @@ function M.Tick(ctx)
                     c.Shown = nil   -- the next scan decides again
                     pcall(function() if c.Icon:IsValid() then c.Icon:SetIconVisible(false) end end)
                 end
+                if M.Res then pcall(M.Res.HideAll) end
             end
         end
     end)
     -- Hidden in the editor: off the screen, not only see-through. The gold rings are outlines, and the game draws
     -- outlines at full strength inside a see-through parent: the rings stayed on screen (28-09-2026).
-    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing())
+    -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans (review of
+    -- 29-09-2026); it fades through its colour only on the way out and back in.
+    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0
     if visible ~= M.Visible then
         -- shown again after a hidden stretch: set the map up again, as after the big map (the set-up needs a map on
         -- screen, and a collapsed one is not)
@@ -650,6 +909,7 @@ function M.Tick(ctx)
         M.Visible = visible
         pcall(function() M.UW:SetVisibility(visible and 3 or 1) end)
     end
+    if M.Visible then UpdateNorth() end   -- every step, not at the clock's 2 per second: it follows the camera
     if os.clock() < (M.NextClock or 0) then return end
     M.NextClock = os.clock() + 0.5
     local okC, fill, ns = pcall(ReadClock, ctx)
@@ -669,5 +929,8 @@ function M.Tick(ctx)
     M.NeedleSlot:SetPosition({ X = x - NEEDLE_W / 2, Y = y - NEEDLE_H / 2 })
     M.NeedleImg:SetRenderTransformAngle(deg)   -- the picture points down, at the centre when on top
 end
+
+-- for resources.lua (main.lua sets M.Res): the helpers it shares with the creatures
+M.H = { Obj = Obj, OutActors = OutActors, IconClass = ICON_CLASS, Share = CREATURE_SHARE }
 
 return M

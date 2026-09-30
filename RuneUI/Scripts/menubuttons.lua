@@ -1,0 +1,195 @@
+-- The menu buttons (chat, map, spell book, building, bag) in the ring style of food, water and rest (design sketch
+-- A, Ivan 29-09-2026): the gold rim and dark centre of survival.lua's ring, the game's own icon in cream on top, and
+-- the key in a small dark box under it. The bag's ring fills with the bag's weight, gold, red past 90%.
+-- The row is the game's (HorizontalBox_436 in the input legend's world page); main.lua moves it as "menubtn".
+-- What each button holds (widget dump, 29-09-2026): Overlay_371 with the grey circle (BackgroundImage) and the
+-- icon (ContextualImage); the bag adds its weight ring (EncumbranceRadialImage, a material with FillBar 0..1),
+-- the ring's track and a weight icon; the key is drawn by ContextualInput under it.
+-- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
+
+local M = {}
+
+local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local RING = 64      -- the button's box is 75 units; the game's grey circle fills about 64 of it
+local ICON = 62      -- the game's icon picture, with wide empty edges; 75 (the whole box) overlapped the rim (in game 29-09-2026)
+local GAME_PARTS = { BackgroundImage = true, EncumbranceBackgroundImage = true, EncumbranceRadialImage = true }
+local ICON_PARTS = { ContextualImage = true, WeightImage = true }   -- copied in cream on top of our ring
+local KEYS = { InputLegend_Contextual_OpenChat = "Enter", InputLegend_Contextual_MapQuest = "M",
+    InputLegend_Contextual_SpellBook = "Q", InputLegend_Contextual_BuildMenu = "B", InputLegend_Contextual_InventoryEntry = "Tab" }
+local FULL = 0.9     -- the bag ring turns red past this
+
+local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
+local function Lin(r, g, b) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = 1.0 } end
+local CREAM = Lin(0.945, 0.902, 0.784)                 -- #f1e6c8, the survival icons' tint
+local GOLD = { R = 0.95, G = 0.77, B = 0.38, A = 1.0 } -- the game's own weight ring colour (dump)
+local RED = Lin(0.85, 0.22, 0.16)
+
+local function Obj(path) return StaticFindObject(path) end
+local function New(cls, outer, name) return StaticConstructObject(Obj("/Script/UMG." .. cls), outer, FName(name)) end
+local Logged = {}
+local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
+
+local function LoadArt(ctx, outer, name)
+    local KRL = Obj("/Script/Engine.Default__KismetRenderingLibrary")
+    local ok, tex = pcall(function() return KRL:ImportFileAsTexture2D(outer, ART_DIR .. name) end)
+    if ok and tex and tex:IsValid() then return tex end
+    Once(ctx, "art" .. name, "menu buttons: picture not loaded: " .. name .. " " .. tostring(tex))
+end
+
+local function Picture(tree, name, tex, size)
+    local img = New("Image", tree, name)
+    img:SetBrushFromTexture(tex, false)
+    local b = img.Brush
+    b.ImageSize = { X = size, Y = size }
+    img:SetBrush(b)
+    return img
+end
+
+local Built = {}   -- one per button: { Name, Right, Left (the ring's halves), Fill (the bag's material) }
+M.Host, M.Builds, M.Chat = nil, 0, nil
+
+-- the key's name from the game's key widget, else the default key
+local function KeyName(ctx, entry)
+    local name = entry:GetFName():ToString()
+    local ok, s = pcall(function() return ctx.Find(entry, "DomActionWidget"):GetDisplayText():ToString() end)
+    Once(ctx, "key" .. name, "menu buttons: " .. name .. " key text '" .. tostring(ok and s or "?") .. "'")
+    if ok and s and s ~= "" then return s end
+    return KEYS[name] or "?"
+end
+
+local function Decorate(ctx, row)
+    M.Builds = M.Builds + 1
+    local tag = "RU_Mb" .. M.Builds .. "_" .. os.time()   -- a new name each build (see survival.lua)
+    Built = {}
+    for i = 0, row:GetChildrenCount() - 1 do
+        local entry = row:GetChildAt(i)
+        local ename = entry:GetFName():ToString()
+        local ok, err = pcall(function()
+            local tree = entry.WidgetTree
+            local ov = ctx.Find(entry, "Overlay_371")
+            local outer = ctx.Find(entry, "Overlay_41")
+            if not (ov and outer) then error("no button box") end
+            local art = { Back = LoadArt(ctx, tree, "upkeep_back.png"), Half = LoadArt(ctx, tree, "upkeep_half.png"),
+                Centre = LoadArt(ctx, tree, "upkeep_centre.png") }
+            local cap = LoadArt(ctx, tree, "keycap.png")
+            if not (art.Back and art.Half and art.Centre and cap) then error("pictures missing") end
+            -- ours from an earlier round first (a player restart keeps the game's widgets)
+            for _, panel in ipairs({ ov, outer }) do
+                for c = panel:GetChildrenCount() - 1, 0, -1 do
+                    local w = panel:GetChildAt(c)
+                    if string.find(w:GetFName():ToString(), "RU_Mb", 1, true) == 1 then w:RemoveFromParent() end
+                end
+            end
+            local n = tag .. "_" .. i
+            local stack, rImg, lImg = ctx.Ring(tree, n, RING, art, GOLD)
+            -- the game's icons, copied in cream; the game's circle, ring and icons stay alive but unseen
+            local icons = {}
+            for c = 0, ov:GetChildrenCount() - 1 do
+                local w = ov:GetChildAt(c)
+                local wn = w:GetFName():ToString()
+                if ICON_PARTS[wn] then
+                    local tex = w.Brush.ResourceObject
+                    local pic = Picture(tree, n .. wn, tex, ICON)
+                    pic:SetColorAndOpacity(CREAM)
+                    icons[#icons + 1] = pic
+                end
+                if GAME_PARTS[wn] or ICON_PARTS[wn] then w:SetRenderOpacity(0.0) end
+            end
+            local box = New("SizeBox", tree, n)
+            box:SetWidthOverride(RING)
+            box:SetHeightOverride(RING)
+            box:SetContent(stack)
+            local s = ov:AddChildToOverlay(box)
+            s:SetHorizontalAlignment(2)
+            s:SetVerticalAlignment(2)
+            for _, pic in ipairs(icons) do
+                local si = ov:AddChildToOverlay(pic)
+                si:SetHorizontalAlignment(2)
+                si:SetVerticalAlignment(2)
+            end
+            -- the key: the game's key box unseen, ours at the bottom of the button
+            pcall(function() ctx.Find(entry, "ScaleBox_0"):SetRenderOpacity(0.0) end)
+            local border = New("Border", tree, n .. "Key")
+            border:SetBrushFromTexture(cap)
+            local b = border.Background
+            b.DrawAs = 1   -- box: nine pieces
+            b.Margin = { Left = 0.5, Top = 0.5, Right = 0.5, Bottom = 0.5 }
+            b.ImageSize = { X = 8, Y = 8 }
+            border:SetBrush(b)
+            border:SetPadding({ Left = 8, Top = 3, Right = 8, Bottom = 3 })   -- roomier, smaller text (Ivan, 29-09-2026)
+            border:SetContent(ctx.Text(tree, n .. "KeyText", 9, CREAM, KeyName(ctx, entry)))
+            local ks = outer:AddChildToOverlay(border)
+            ks:SetHorizontalAlignment(2)
+            ks:SetVerticalAlignment(3)   -- bottom
+            ks:SetPadding({ Left = 0, Top = 0, Right = 0, Bottom = 6 })
+            local fill
+            pcall(function() fill = ctx.Find(entry, "EncumbranceRadialImage").Brush.ResourceObject end)
+            Built[#Built + 1] = { Name = ename, Right = rImg, Left = lImg, Fill = fill, Value = nil, Red = nil }
+        end)
+        if not ok then ctx.Log("menu buttons: " .. ename .. " failed: " .. tostring(err)) end
+    end
+    ctx.Log("menu buttons: " .. #Built .. " rings")
+end
+
+-- the bag's weight, 0..1, from the game's ring material
+local function Weight(fill)
+    local v
+    fill.ScalarParameterValues:ForEach(function(_, e)
+        local p = e:get()
+        if p.ParameterInfo.Name:ToString() == "FillBar" then v = p.ParameterValue end
+    end)
+    return v
+end
+
+function M.Forget()
+    Built = {}
+    M.Host, M.Tried, M.Chat, M.List = nil, nil, nil, nil
+end
+
+function M.Tick(ctx)
+    if os.clock() < (M.Next or 0) then return end
+    M.Next = os.clock() + 0.5
+    -- the chat's message count: the immersive mode shows the row when it grows
+    local okC, errC = pcall(function()
+        local chat = ctx.Chat()
+        -- the list is found once per chat widget: the walk to it cost dozens of calls, twice a second (30-09-2026)
+        local L = M.List
+        if not (L and L.Addr == chat:GetAddress() and L.W:IsValid()) then
+            L = { Addr = chat:GetAddress(), W = ctx.Find(chat, "MessageListView") }
+            M.List = L
+        end
+        local n = L.W:GetNumItems()
+        if n ~= M.Chat and (M.ChatLogs or 0) < 5 then M.ChatLogs = (M.ChatLogs or 0) + 1 ctx.Log("menu buttons: chat messages " .. tostring(n)) end
+        M.Chat = n
+    end)
+    if not okC then M.List = nil Once(ctx, "chat", "menu buttons: chat not read: " .. tostring(errC)) end
+    local E = ctx.ById("menubtn")
+    local row = E.Instances[1]
+    if not (row and row:IsValid()) then return end
+    local name = E.Keys[1]   -- its full name, read by main.lua's search
+    local function Alive()
+        for _, b in ipairs(Built) do if b.Right and b.Right:IsValid() then return true end end
+        return false
+    end
+    if name ~= M.Host or not Alive() then
+        if name == M.Host and M.Tried then return end
+        M.Host = name
+        Decorate(ctx, row)
+        M.Tried = not Alive()
+    end
+    for _, b in ipairs(Built) do
+        pcall(function()
+            local p = 0
+            if b.Fill and b.Fill:IsValid() then p = Weight(b.Fill) or 0 end
+            if p ~= b.Value then b.Value = p ctx.Turn(b, math.max(0, math.min(1, p))) end
+            local red = p > FULL
+            if red ~= b.Red then
+                b.Red = red
+                b.Right:SetColorAndOpacity(red and RED or GOLD)
+                b.Left:SetColorAndOpacity(red and RED or GOLD)
+            end
+        end)
+    end
+end
+
+return M

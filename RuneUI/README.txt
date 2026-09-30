@@ -1,6 +1,6 @@
 Rune UI
 A UE4SS Lua mod for RuneScape: Dragonwilds.
-Move, resize and hide every part of the HUD, right in the game. With a new map, new rings and new bars in the game's own style.
+Move, resize, fade and hide every part of the HUD, right in the game. With a new map, new rings and new bars in the game's own style.
 
 INSTALL
 
@@ -30,10 +30,26 @@ PgUp / PgDn       select an element
 Arrows            move the element
 Home / End        change the move step (1 to 100)
 + / -             change the size, 5% per press
+, / .             make the element more or less see-through, 10% per press (100% to 20%)
 Delete / Insert   hide / show the element
 Backspace         reset the element to the starting layout
+F8                go to the map settings
 F9                save and close the editor
 ] / [             zoom RuneMap in / out (this works outside the editor too)
+
+Press F8 in the game for the settings of RuneMap. The panel opens under the map. Each change shows on the map.
+
+Up / Down         select a setting
+Left / Right      change the setting
+] / [             zoom RuneMap in / out
+Backspace         reset the map settings
+F8                save and close the map settings
+
+Faces north       Off: the map turns with the camera. On: north stays at the top.
+North mark        On: a mark on the gold ring shows where north is.
+Creatures         On: diamonds for the creatures near you.
+Zoom              the same zoom as the [ and ] keys
+Drawing           Faster: the map draws every second frame. Smooth: every frame. Switching might decrease performance.
 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an avatar.png in the RuneUI folder.
 
@@ -42,6 +58,7 @@ FILES THAT THE MOD WRITES (IN WIN64)
 runeui_layout.txt    the saved layout
 runeui_menuart.txt   the pictures and the font of the main menu, for the editor panel
 runeui_mapzoom.txt   the zoom of RuneMap
+runeui_map.txt       the other map settings of F8
 
 When the game starts, the mod also writes its pictures into its own Art folder. It writes a picture only when it is missing or different.
 
