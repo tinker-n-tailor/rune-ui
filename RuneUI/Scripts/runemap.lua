@@ -25,7 +25,7 @@ local VIEW_CLASS = "/Script/MinimapPlugin.MapViewComponent"
 -- the map settings, taken from the MiniMap addon (27-09-2026)
 -- InitialMapSize: without the addon it stayed 0 and the map drew nothing, not even the arrow. IconScale: the
 -- map icons (camps, boats) looked too big at 1, and 10% big at 0.6 (27-09-2026). 0.54 was still much too big for
--- the dungeons and the other game icons, and 0.3 super small (Ivan, 29-09-2026). It scales our own icons too.
+-- the dungeons and the other game icons, and 0.3 super small (playtest, 29-09-2026). It scales our own icons too.
 local ICON_SCALE = 0.4
 local MAP_SETTINGS = { bIsCircular = true, AutoLocateMapView = 4, IconScale = ICON_SCALE, FloorDistance = 300,
     InitialMapSize = { X = D, Y = D } }
@@ -45,24 +45,13 @@ local NONE  = { R = 0, G = 0, B = 0, A = 0 }
 -- ring angle (degrees clockwise from the top) for a point of the day cycle (0 = dawn); ns is where night starts
 local function FillToDeg(f, ns) return ((f - (ns + 1) / 2) * 360) % 360 end
 
--- Zoom: the [ and ] keys (main.lua), kept in a file so it survives a restart. 2 is the addon's ZoomScale.
-local ZOOM_FILE = "runeui_mapzoom.txt"
+-- Zoom: the [ and ] keys (main.lua). It lives in main.lua's settings file with the F8 settings (Attach below).
+-- 2 is the addon's ZoomScale.
 local ZOOM_MIN, ZOOM_MAX = 0.5, 32   -- 8 was not far enough out (in-game test, 27-09-2026)
-function M.ZoomLevel()
-    if not M.Zoom then
-        M.Zoom = 2
-        local f = io.open(ZOOM_FILE, "r") or io.open("hudeditor_mapzoom.txt", "r")   -- the file before 0.60
-        if f then M.Zoom = tonumber(f:read("*l") or "") or 2 f:close() end
-        M.Zoom = math.max(ZOOM_MIN, math.min(ZOOM_MAX, M.Zoom))   -- a hand-edited file stays in range
-    end
-    return M.Zoom
-end
+function M.ZoomLevel() return M.Zoom or 2 end
 function M.ZoomBy(factor) M.PendingZoom = (M.PendingZoom or 1) * factor end   -- key handlers: applied in Tick
 
-local function SaveZoom(z)
-    local f = io.open(ZOOM_FILE, "w")
-    if f then f:write(string.format("%.3f\n", z)) f:close() end
-end
+local function SaveZoom(z) M.Store.zoom = z M.Save() end
 local function ApplyZoom(ctx)
     local z = math.max(ZOOM_MIN, math.min(ZOOM_MAX, M.ZoomLevel() * M.PendingZoom))
     M.PendingZoom = false
@@ -72,31 +61,28 @@ local function ApplyZoom(ctx)
 end
 
 -- The F8 settings (1.1). Map: off means the mod does not build the map at all, which hiding it in F9 still does
--- (Ivan, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
+-- (playtest, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
 -- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
--- creatures (Ivan asked to hide them, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
--- Kept in a file like the zoom. The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them.
-local SETTINGS_FILE = "runeui_map.txt"
--- neutral creatures start hidden: they take room on the map (Ivan, 29-09-2026)
+-- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
+-- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
+-- in main.lua's settings file: Store is its [map] section, Save writes the file (Attach, called once at start).
+-- neutral creatures start hidden: they take room on the map (29-09-2026)
 local SETTING_START = { Map = true, North = false, Mark = true, Smooth = false, Neutral = false, Ore = true, Herbs = true,
     Essence = true, Trees = true }
 M.Set = {}
 for k, v in pairs(SETTING_START) do M.Set[k] = v end
-do
-    local f = io.open(SETTINGS_FILE, "r")
-    if f then
-        for line in f:lines() do
-            local k, v = string.match(line, "^(%a+)=(%d)")
-            if k and type(M.Set[k]) == "boolean" then M.Set[k] = (v == "1") end
-        end
-        f:close()
+M.Store, M.Save = {}, function() end
+function M.Attach(store, save)
+    M.Store, M.Save = store, save
+    for k in pairs(SETTING_START) do
+        if store[k] ~= nil then M.Set[k] = (tonumber(store[k]) == 1) end
     end
+    local z = tonumber(store.zoom)
+    M.Zoom = z and math.max(ZOOM_MIN, math.min(ZOOM_MAX, z)) or 2   -- a hand-edited file stays in range
 end
 local function SaveSettings()
-    local f = io.open(SETTINGS_FILE, "w")
-    if not f then return end
-    for k in pairs(SETTING_START) do f:write(k .. "=" .. (M.Set[k] and "1" or "0") .. "\n") end
-    f:close()
+    for k in pairs(SETTING_START) do M.Store[k] = M.Set[k] and 1 or 0 end
+    M.Save()
 end
 -- Backspace in F8, from a key handler: only a flag; Tick does the rest
 function M.Reset() M.ResetWanted = true end
@@ -147,7 +133,7 @@ local R_NEEDLE = D / 2 + 13   -- the tip just inside the inner gold ring, the ca
 local R_NORTH, NORTH_SIZE = D / 2 + 2, 17   -- the north mark: on the inner gold ring
 -- The camera's yaw at which north is at the top of the ring. The view needs InheritedYawOffset 90 to put the
 -- camera's forward at the top, so the map's own top (north on the big map) is yaw -90. Checked in game by
--- Ivan, 29-09-2026: the mark and "Faces north" agree with the big map (M).
+-- playtest, 29-09-2026: the mark and "Faces north" agree with the big map (M).
 local NORTH_YAW = -90
 
 local function LoadArt(ctx, name)
@@ -384,7 +370,7 @@ local function BuildRing(ctx, tree, map)
     mb:SetWidthOverride(D)
     mb:SetHeightOverride(D)
     -- The game's map widget cost about 20 FPS at any zoom (28-09-2026). A retainer box draws it into a picture
-    -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (chosen by Ivan).
+    -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (the chosen default).
     -- F8 "Smooth" turns the retainer off, so the map draws every frame again (see ApplySettings).
     local okRB, errRB = pcall(function()
         local rb = StaticConstructObject(Obj("/Script/UMG.RetainerBox"), tree, FName("RU_MapRetainer"))
@@ -450,7 +436,7 @@ end
 
 ---------------------------------------------------------------- the time of day, read from the game's own dial
 
-local function ReadClock(ctx)
+function M.ReadClock(ctx)
     local DN = ctx.ById("daynight").Instances[1]   -- main.lua finds it every 2 s; no scan of our own
     if not (DN and DN:IsValid()) then return nil end
     local root = DN.WidgetTree.RootWidget
@@ -637,11 +623,11 @@ local function Dead(A)
     return ok2 and v2 == true
 end
 
--- The creatures near the player (Ivan, 29-09-2026: look only around the player). The walk through every object
+-- The creatures near the player (playtest, 29-09-2026: look only around the player). The walk through every object
 -- the game holds (FindAllOf) took up to 30 ms (28-09-2026). The game's overlap query gives only the pawns within
 -- CREATURE_RADIUS of the player. If UE4SS cannot make that call, the game's own list of creatures, then the walk.
 -- The first way that works stays. Herbs and ore could be found the same way later.
-local CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map (Ivan, 29-09-2026)
+local CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map (playtest, 29-09-2026)
 -- An out parameter from UE4SS 3.0.1: it fills the table passed in with the actors, 1 to n (log of 29-09-2026).
 -- An element may come as the object or as a holder of it (e:get()).
 local function OutActors(out)
@@ -912,7 +898,7 @@ function M.Tick(ctx)
     if M.Visible then UpdateNorth() end   -- every step, not at the clock's 2 per second: it follows the camera
     if os.clock() < (M.NextClock or 0) then return end
     M.NextClock = os.clock() + 0.5
-    local okC, fill, ns = pcall(ReadClock, ctx)
+    local okC, fill, ns = pcall(M.ReadClock, ctx)
     if not okC then Once(ctx, "clock", "runemap: reading the clock failed: " .. tostring(fill)) return end
     if not fill then return end
     if ns ~= M.BandNS then

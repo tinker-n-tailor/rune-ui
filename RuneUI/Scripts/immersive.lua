@@ -1,8 +1,8 @@
--- Immersive mode (1.2, Ivan's idea of 29-09-2026): with nothing going on, the HUD fades away, and each part comes
+-- Immersive mode (1.2, the idea of 29-09-2026): with nothing going on, the HUD fades away, and each part comes
 -- back when it matters. The bars while health or stamina is not full, and a while after; the buffs with them,
 -- and when a new buff comes; a food, water or rest ring when it runs low or fills; the menu buttons when a chat
 -- message comes. The compass, the wheel and RuneMap stay away (M opens the big map). The tool bar never fades:
--- what matters can sit on it (Ivan, 29-09-2026); nor do prompts, notifications, the area effects and warnings.
+-- what matters can sit on it (playtest, 29-09-2026); nor do prompts, notifications, the area effects and warnings.
 -- Off at first; its line in F9 turns it on, and + / - there set how long a part stays (main.lua keeps the number).
 -- main.lua multiplies an element's opacity by Factor(E). The bars widget also holds the food rings and the area
 -- effects, so it is not faded whole: its three rows and the trim line under them are faded here, and each ring too.
@@ -10,7 +10,7 @@
 
 local M = {}
 
-local FADE_OUT, FADE_IN = 2.5, 0.2   -- seconds from full to gone, and back (out 1.0 was too quick: Ivan, 29-09-2026)
+local FADE_OUT, FADE_IN = 2.5, 0.2   -- seconds from full to gone, and back (out 1.0 was too quick: playtest, 29-09-2026)
 local LOW = 1 / 3                                            -- a ring shows while its share is under this
 local SHOW_AT_START = 8   -- a new world shows the whole HUD this long first (main.lua waits 3 s of it before the steps)
 -- seconds a part stays after the last reason to show it: the player's setting (F9, + / - on the immersive line)
@@ -29,6 +29,9 @@ local RingLevel, RingUntil, RingLast = {}, {}, {}
 local Applied = {}   -- the last opacity written to the rows and the rings, so a full HUD costs no calls
 local Texts = {}     -- by bar: { W = bar widget, List = its text widgets }
 local NextRead, LastTime, LastBuffs, LastChat = 0, nil, nil, nil
+-- the drink rings, by entry name: the game keeps spare drink entries and reuses them, so each one fades on its own
+-- (one watched entry left the shown one unseen, in game 01-10-2026)
+local DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
 
@@ -40,6 +43,7 @@ end
 -- Leaving the world: drop the handles into it, and show everything for a moment in the new one
 function M.Forget()
     Texts, Applied, RingLevel, RingUntil, RingLast, LastBuffs, LastChat = {}, {}, {}, {}, {}, nil, nil
+    DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
     for g in pairs(Level) do Level[g] = 1 end
     local t = os.clock() + SHOW_AT_START
     Until = { bars = t, buffs = t, menu = t }
@@ -97,6 +101,13 @@ local function Read(ctx, now)
         if v and (v < LOW or (RingLast[i] and v > RingLast[i] + 0.001)) then RingUntil[i] = now + Hold(ctx) end
         RingLast[i] = v
     end
+    -- a drink ring: a new entry or a new drink in it (the share jumps up) brings it, and it comes back when it runs
+    -- low, like a food ring
+    for k, d in pairs(ctx.Drinks()) do
+        local v = d.Value
+        if d.Root and v and (DrinkLast[k] == nil or v < LOW or v > DrinkLast[k] + 0.001) then DrinkUntil[k] = now + Hold(ctx) end
+        DrinkLast[k] = v
+    end
 end
 
 -- one step from level toward target, at the fade speed for dt seconds; lands on exactly 0 or 1
@@ -109,6 +120,8 @@ local function Put(key, W, o)
     if W and W:IsValid() then W:SetRenderOpacity(o) end
     Applied[key] = o
 end
+
+local function Fade(W, o) if W:IsValid() then W:SetRenderOpacity(o) end end   -- no closure per step
 
 -- 1 while the group g has a reason to show (or the mode is off), else 0
 local function Target(g, on, now) return (not on or (g ~= "none" and now < (Until[g] or 0))) and 1 or 0 end
@@ -145,6 +158,18 @@ function M.Tick(ctx)
         if o < 1 or Applied[i] ~= 1 then
             pcall(Put, i, b.Box, o)
             pcall(Put, i, b.Dia, o)
+        end
+    end
+    -- the drink ring sits beside them in the same widget, so it fades on its own (playtest, 01-10-2026: it stayed alone).
+    -- Its root, not the entry: the entry is an F9 element, and hiding it there sets the entry's opacity.
+    for k, d in pairs(ctx.Drinks()) do
+        if d.Root then
+            DrinkLevel[k] = Ease(DrinkLevel[k] or 1, (not on or now < (DrinkUntil[k] or 0)) and 1 or 0, dt)
+            local o = DrinkLevel[k]
+            if o < 1 or DrinkApplied[k] ~= 1 then
+                pcall(Fade, d.Root, o)
+                DrinkApplied[k] = o
+            end
         end
     end
 end

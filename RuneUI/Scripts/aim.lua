@@ -1,16 +1,15 @@
 -- The aim marks in the middle of the screen in our gold, and our gold diamond in place of the white lock-on orb
--- (design sketch B, Ivan 29-09-2026). The marks: the dot of every weapon, the staff's ring, the bow's aim ring and
+-- (design sketch B, playtest 29-09-2026). The marks: the dot of every weapon, the staff's ring, the bow's aim ring and
 -- the bow's stamina arc. They live in WBP_HUD_ReticleWidget_C: one reticle per weapon kind in a switcher (probe of
 -- 29-09-2026). The orb is WBP_LockOnTargetOrb_C, one Image named Orb (T_Reticule_Asset, 64 in a 32 box).
--- The staff's ring round a target is WBP_TargetIcon_C, on screen only while the ring shows (F6 probe of 30-09-2026;
--- MagicIcon and the staff's charge bar were tried first and were not it). It is tinted as a whole.
+-- The staff's ring round a target (WBP_TargetIcon_C) becomes our gold diamond, set once in the ring's template.
 -- Every colour and picture changed here is remembered, so the F9 line off puts the game's look back.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
 local M = {}
 
 local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
--- the orb's box is 32 units; the sketch's diamond is about 14 (Ivan, 29-09-2026: the orb's own size is "way too big")
+-- the orb's box is 32 units; the sketch's diamond is about 14 (playtest, 29-09-2026: the orb's own size is "way too big")
 local DIAMOND_SCALE = 0.45
 -- the marks by name; images are tinted, bars get a fill colour, the bow's ring has its colour in its material
 -- The staff's ring (MagicIcon) stayed white with the image tint (in game 30-09-2026): its brush's own tint as well.
@@ -35,38 +34,7 @@ local Saved = {}
 
 M.Marks, M.Host = {}, nil   -- { W, Key (full name), Name, Kind, Mid (the ring's own material) }
 M.Orb = nil                 -- { W (the Orb image), Host, Tex (ours) }
-M.Icons = {}                -- the target rings by full name, marks of their own (kind "image": the widget's tint)
-
--- what a target ring holds, for the log once: its images and their pictures
-local function Describe(W, out, depth)
-    if not (W and W:IsValid()) or depth > 10 or #out > 20 then return end
-    local s = Name(W)
-    pcall(function() s = s .. " " .. W.Brush.ResourceObject:GetFName():ToString() end)
-    out[#out + 1] = s
-    local okT, root = pcall(function() return W.WidgetTree.RootWidget end)
-    if okT and root and root:IsValid() then Describe(root, out, depth + 1) return end
-    local okN, n = pcall(function() return W:GetChildrenCount() end)
-    if okN and n then for i = 0, n - 1 do Describe(W:GetChildAt(i), out, depth + 1) end end
-    pcall(function() Describe(W:GetContent(), out, depth + 1) end)
-end
-
--- the target rings on screen now, new ones added to M.Icons
-local function Icons(ctx)
-    for _, W in ipairs(ctx.TargetIcons()) do
-        local key = W:GetFullName()
-        if not M.Icons[key] then
-            M.Icons[key] = { W = W, Key = key, Name = "TargetIcon", Kind = "image" }
-            -- the first few: one ring for every target, or a new one each time (then it shows white until the
-            -- next widget search, up to 10 s)
-            M.IconsSeen = (M.IconsSeen or 0) + 1
-            if M.IconsSeen <= 5 then
-                local parts = {}
-                Describe(W, parts, 0)
-                ctx.Log("aim: target ring " .. M.IconsSeen .. " holds " .. table.concat(parts, "; "))
-            end
-        end
-    end
-end
+M.Ring = nil                -- the target ring template's Image, once the diamond is in it
 
 -- every widget under W with a name in MARKS, through the reticles' own trees
 local function Collect(W, out, depth)
@@ -174,16 +142,51 @@ local function Marks(ctx)
     end
 end
 
-local function Rings(ctx)
-    Icons(ctx)
-    for key, m in pairs(M.Icons) do
-        if m.W:IsValid() then
-            local ok, err = pcall(Paint, m)
-            if not ok then Once(ctx, "painticon", "aim: target ring not gold: " .. tostring(err)) end
-        else
-            M.Icons[key] = nil
-        end
+-- The staff's ring round a target is our gold diamond (picked in game, 01-10-2026: "Diamond"). The game
+-- builds a new WBP_TargetIcon_C for every target from its class template, so a ring tinted after the widget search
+-- showed white half the time. The diamond goes into the template's one Image instead, once: every ring built after
+-- has it. The template's full name holds "WBP_TargetIcon_C:WidgetTree." under /Game, never /Engine/Transient.
+local function Template()
+    for _, I in pairs(FindAllOf("Image") or {}) do
+        local ok, full = pcall(function() return I:GetFullName() end)
+        if ok and string.find(full, "WBP_TargetIcon_C:WidgetTree.", 1, true) and not string.find(full, "/Engine/Transient", 1, true) then return I end
     end
+end
+
+local function Ring(ctx)
+    if M.Ring and M.Ring:IsValid() then return end
+    -- a search of every image: 3 tries a world, 30 s apart, so a player without a staff does not pay for it all session
+    if os.clock() < (M.NextRing or 0) or (M.RingTries or 0) >= 3 then return end
+    M.NextRing, M.RingTries = os.clock() + 30, (M.RingTries or 0) + 1
+    local t0 = os.clock()
+    local I = Template()
+    if not I then Once(ctx, "noring", "aim: no target ring template yet") return end
+    local tex = Obj("/Script/Engine.Default__KismetRenderingLibrary"):ImportFileAsTexture2D(I, ART_DIR .. "mark_diamond.png")
+    if not (tex and tex:IsValid()) then Once(ctx, "ringtex", "aim: mark picture not loaded") return end
+    local b = I.Brush
+    if not Saved.Ring then   -- the game's picture by its path, and its colours; the template outlives a world
+        local full = b.ResourceObject:GetFullName()
+        Saved.Ring = { Tex = string.match(full, "^%S+%s+(.*)$") or full, Tint = Copy(b.TintColor.SpecifiedColor), Color = Copy(I.ColorAndOpacity) }
+    end
+    b.ResourceObject = tex
+    b.TintColor = { SpecifiedColor = { R = 1, G = 1, B = 1, A = 1 }, ColorUseRule = 0 }
+    I.ColorAndOpacity = Gold(1)
+    M.Ring = I
+    ctx.Log(string.format("aim: gold diamond in the target ring template (search %.0f ms)", (os.clock() - t0) * 1000))
+end
+
+-- the game's ring back in the template; rings on screen now keep the diamond until their target changes
+local function Unring()
+    local s, I = Saved.Ring, M.Ring
+    M.Ring, M.NextRing, M.RingTries = nil, 0, 0
+    local tex = s and Obj(s.Tex)
+    -- the game's picture not found: Saved.Ring stays, so the next "on" never saves our diamond as the game's
+    if not (I and I:IsValid() and tex and tex:IsValid()) then return end
+    Saved.Ring = nil
+    local b = I.Brush
+    b.ResourceObject = tex
+    b.TintColor = { SpecifiedColor = s.Tint, ColorUseRule = 0 }
+    I.ColorAndOpacity = s.Color
 end
 
 local function Diamond(ctx)
@@ -241,14 +244,12 @@ end
 -- the F9 line off: the game's colours and orb back. The widgets are looked up again, as after a player restart the
 -- handles are gone but the widgets are still gold. False while the aim widget is not found yet: tried again.
 local function Restore(ctx)
+    pcall(Unring)
     local R = ctx.Reticle()
     if not (R and R:IsValid()) then return false end
     local host = R:GetFullName()
     if host ~= M.Host then M.Host, M.Marks = host, {} Collect(R, M.Marks, 0) end
     for _, m in ipairs(M.Marks) do pcall(Unpaint, m) end
-    pcall(Icons, ctx)
-    for _, m in pairs(M.Icons) do pcall(Unpaint, m) end
-    M.Icons = {}
     local O = ctx.Orb()
     if O and O:IsValid() then
         if not (M.Orb and M.Orb.W:IsValid()) then
@@ -264,9 +265,9 @@ local function Restore(ctx)
     return true
 end
 
--- a new world: the handles go; Saved stays (see there)
+-- a new world: the handles go; Saved stays (see there). The ring template is not the world's: it stays too.
 function M.Forget()
-    M.Marks, M.Host, M.Orb, M.NoPicture, M.Icons = {}, nil, nil, nil, {}
+    M.Marks, M.Host, M.Orb, M.NoPicture, M.RingTries = {}, nil, nil, nil, 0
     Logged = {}
 end
 
@@ -284,8 +285,8 @@ function M.Tick(ctx)
     M.Applied = true
     local okM, errM = pcall(Marks, ctx)
     if not okM then Once(ctx, "marks", "aim: marks failed: " .. tostring(errM)) end
-    local okI, errI = pcall(Rings, ctx)
-    if not okI then Once(ctx, "rings", "aim: target rings failed: " .. tostring(errI)) end
+    local okI, errI = pcall(Ring, ctx)
+    if not okI then Once(ctx, "ring", "aim: target ring failed: " .. tostring(errI)) end
     local okD, errD = pcall(Diamond, ctx)
     if not okD then Once(ctx, "orbfail", "aim: diamond failed: " .. tostring(errD)) end
 end

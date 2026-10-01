@@ -7,7 +7,7 @@ INSTALL
 Rune UI needs the experimental build of UE4SS. The CurseForge app installs UE4SS 3.0.1 for Dragonwilds. At the moment, that version does not start with the game, so no mod runs.
 
 1. Download the zip whose name starts with "UE4SS_v3.0.1-" from the UE4SS experimental release: https://github.com/UE4SS-RE/RE-UE4SS/releases/tag/experimental-latest
-   Do not use the "zDEV" zip.
+   Do not use the zDEV zip.
 2. Copy dwmapi.dll and the ue4ss folder from the zip into RSDragonwilds\Binaries\Win64. Replace the old files.
 3. Copy the RuneUI folder to Win64\ue4ss\Mods\. Keep the folder name RuneUI: the mod finds its pictures by that name.
 4. Start the game. The enabled.txt file in the folder turns the mod on.
@@ -24,15 +24,16 @@ If you used this mod before version 0.60, when its name was HudEditor: remove th
 
 KEYS
 
-Press F9 in the game. A panel on the left shows the keys and every element. The selected element blinks and gets a gold frame with its name.
+Press F9 in the game. A panel shows a small map of the screen, the selected element, the list of elements by area of the screen, and the keys. The panel stays on one side of the screen. It moves to the other side only when it would cover the selected element. Gold corners and a tag with the name, X and Y mark the selected element on the screen.
 
 PgUp / PgDn       select an element
-Arrows            move the element
+Arrows            move the element; hold an arrow to keep moving
 Home / End        change the move step (1 to 100)
 + / -             change the size, 5% per press
 , / .             make the element more or less see-through, 10% per press (100% to 20%)
 Delete / Insert   hide / show the element
 Backspace         reset the element to the starting layout
+F7                save this layout profile and go to the next one (1, 2, 3)
 F8                go to the map settings
 F9                save and close the editor
 ] / [             zoom RuneMap in / out (this works outside the editor too)
@@ -53,20 +54,28 @@ Drawing           Faster: the map draws every second frame. Smooth: every frame.
 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an avatar.png in the RuneUI folder.
 
+"Creatures on RuneMap" and "Icons beside the bars" only switch a thing on or off. "Creatures on RuneMap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+
+When you hide RuneMap, the mod takes the map off the screen. The game then does not draw the map, and you get back the frames that it costs.
+
+"Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
+
 FILES THAT THE MOD WRITES (IN WIN64)
 
-runeui_layout.txt    the saved layout
-runeui_menuart.txt   the pictures and the font of the main menu, for the editor panel
-runeui_mapzoom.txt   the zoom of RuneMap
-runeui_map.txt       the other map settings of F8
+runeui.txt      every setting of the mod, in plain text with named values
+runeui.txt.tmp  the file while the mod writes it
 
-When the game starts, the mod also writes its pictures into its own Art folder. It writes a picture only when it is missing or different.
+A mod older than 1.4 wrote six files instead: runeui_layout.txt, runeui_layout_2.txt, runeui_layout_3.txt, runeui_profile.txt, runeui_mapzoom.txt, runeui_map.txt and runeui_menuart.txt. When runeui.txt is missing, the mod reads them once and writes runeui.txt from them. It does not delete them.
+
+In the [keys] part of runeui.txt you can change five keys: editor (F9), map (F8), profile (F7), zoomin (]) and zoomout ([). A key is a name: F1 to F12, a letter, a digit, Insert, Delete, Home, End, PgUp, PgDn, [ or ]. The mod reads the keys when the game starts.
+
+When the game starts, the mod also writes its pictures into ue4ss/Mods/RuneUI/Art. It writes a picture only when it is missing or different.
 
 The mod does not use the network and does not start other programs.
 
 MORE
 
-Pictures, details and the source code: https://github.com/jevticivan/rune-ui
+Pictures, details and the source code: https://github.com/Filch-Dev/rune-ui
 The code of Rune UI is under the MIT licence. See LICENSE.txt.
 
 Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.

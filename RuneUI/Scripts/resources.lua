@@ -1,4 +1,4 @@
--- Ore, herbs, rune essence and rare trees on RuneMap (Ivan, 29-09-2026). A shape for each group, since the
+-- Ore, herbs, rune essence and rare trees on RuneMap (playtest, 29-09-2026). A shape for each group, since the
 -- creatures are the diamonds: ore a brown square, herbs a green triangle, essence a blue circle, rare trees a gold
 -- triangle pointing down (tools/make-runemap-art.js). Common things stay off the map: stone, berries, flax, oak, ash.
 -- An ore rock with no chunks left ("depleted" in the game) and a picked plant hide until they grow back. F8
@@ -10,7 +10,7 @@ local Icons = {}   -- full name -> { Icon, Shown, Group }
 local Kinds = {}   -- class name -> the group, or false: decided once per class
 local Scans, Warned = 0, false   -- the first scans of each world are logged, with their cost
 
-local RADIUS = 6000   -- 60 m: 100 m showed 41 things at once and crowded the map (Ivan, 29-09-2026)
+local RADIUS = 6000   -- 60 m: 100 m showed 41 things at once and crowded the map (playtest, 29-09-2026)
 local ADD_PER_SCAN = 12   -- a few new icons per scan, so a full valley does not stall one frame
 
 -- the six wild herbs (wiki, 29-09-2026); the game also spells Kwuarm "Kuarm"
@@ -20,7 +20,7 @@ local HERBS = { "Marrentil", "Harralander", "Kwuarm", "Kuarm", "Snapdragon", "To
 -- and magic trees are not seen yet, so theirs are a guess
 local function Decide(cls)
     local ore = string.match(cls, "^BP_OreNode_(%a+)")
-    if ore then return ore ~= "Stone" and "Ore" end   -- stone is everywhere (Ivan)
+    if ore then return ore ~= "Stone" and "Ore" end   -- stone is everywhere (playtest)
     if string.find(cls, "RuneEssence", 1, true) then return "Essence" end
     for _, h in ipairs(HERBS) do if string.find(cls, h, 1, true) then return "Herbs" end end
     if string.find(cls, "AnimaInfusedBark", 1, true) then return "Trees" end

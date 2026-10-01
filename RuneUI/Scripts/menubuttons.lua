@@ -1,5 +1,5 @@
 -- The menu buttons (chat, map, spell book, building, bag) in the ring style of food, water and rest (design sketch
--- A, Ivan 29-09-2026): the gold rim and dark centre of survival.lua's ring, the game's own icon in cream on top, and
+-- A, playtest 29-09-2026): the gold rim and dark centre of survival.lua's ring, the game's own icon in cream on top, and
 -- the key in a small dark box under it. The bag's ring fills with the bag's weight, gold, red past 90%.
 -- The row is the game's (HorizontalBox_436 in the input legend's world page); main.lua moves it as "menubtn".
 -- What each button holds (widget dump, 29-09-2026): Overlay_371 with the grey circle (BackgroundImage) and the
@@ -23,6 +23,7 @@ local function Lin(r, g, b) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = 
 local CREAM = Lin(0.945, 0.902, 0.784)                 -- #f1e6c8, the survival icons' tint
 local GOLD = { R = 0.95, G = 0.77, B = 0.38, A = 1.0 } -- the game's own weight ring colour (dump)
 local RED = Lin(0.85, 0.22, 0.16)
+local WHITE = { R = 1, G = 1, B = 1, A = 1 }             -- the key letters (playtest, 01-10-2026: white with a shadow)
 
 local function Obj(path) return StaticFindObject(path) end
 local function New(cls, outer, name) return StaticConstructObject(Obj("/Script/UMG." .. cls), outer, FName(name)) end
@@ -116,8 +117,8 @@ local function Decorate(ctx, row)
             b.Margin = { Left = 0.5, Top = 0.5, Right = 0.5, Bottom = 0.5 }
             b.ImageSize = { X = 8, Y = 8 }
             border:SetBrush(b)
-            border:SetPadding({ Left = 8, Top = 3, Right = 8, Bottom = 3 })   -- roomier, smaller text (Ivan, 29-09-2026)
-            border:SetContent(ctx.Text(tree, n .. "KeyText", 9, CREAM, KeyName(ctx, entry)))
+            border:SetPadding({ Left = 8, Top = 3, Right = 8, Bottom = 3 })   -- roomier, smaller text (playtest, 29-09-2026)
+            border:SetContent(ctx.Text(tree, n .. "KeyText", 9, WHITE, KeyName(ctx, entry)))
             local ks = outer:AddChildToOverlay(border)
             ks:SetHorizontalAlignment(2)
             ks:SetVerticalAlignment(3)   -- bottom

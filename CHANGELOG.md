@@ -2,6 +2,45 @@
 
 All changes to Rune UI, newest first.
 
+## 1.4 (01-10-2026)
+
+1.4 is the first release since 1.2. It also holds everything in 1.3, which was not released on its own. The changes of 1.4 itself are in how the mod is built, and in one settings file.
+
+### New
+
+- One settings file, `runeui.txt`, next to the game, with named values you can read and edit. It holds the three layout profiles, the profile in use, the map settings and the zoom, and the keys. The six files of older versions are read once when `runeui.txt` is missing, so no layout is lost. They are not deleted.
+- Five keys can be changed in the `[keys]` part of `runeui.txt`: F9, F8, F7, ] and [.
+- When a part of the mod fails, the F9 and F8 panel shows a line with its name and points at `UE4SS.log`.
+
+### Changed
+
+- The code is split into more files. `main.lua` had 2240 lines and was ten names short of a limit of Lua at which the mod would not load; it has about 1500 now. The bars, the level badge and the buff rings have their own files, like the other parts. The position math is in `layout.lua`, the settings file in `settings.lua`, and both have tests that run without the game.
+- Every part is one line in a list. The step, the widget scan and the world reset go down that list.
+- `npm test` runs every check: the Lua check, the picture check, the player README check, and the tests without the game. GitHub runs it on every push.
+- The player README inside the zip is made from this repository's README, so the two cannot drift apart.
+
+## 1.3 (released as part of 1.4)
+
+### New
+
+- A new F9 editor in the look of the game's bag panel. A small map of the screen shows where each part is, and the selected part is gold. The list groups the parts by the area of the screen. A gold diamond marks a part that you moved, resized or faded. X and Y show next to the size and the opacity.
+- On the screen, gold corners and a dark tag with the name, X and Y mark the selected part. They replace the pale gold box and the blink.
+- The panel stays on one side of the screen. It moves to the other side only when it would cover the selected part.
+- Hold an arrow key to keep moving a part.
+- Three layout profiles. While F9 is open, F7 saves the profile and goes to the next one. Profile 1 is your current layout. A profile that you open for the first time starts as a copy of the profile before it.
+- A time of day icon right of the tool bar, while the immersive mode is on: half a sun that rises at dawn, the sun by day, half a sun that sets at dusk, and the moon at night. Move or hide it with "Time of day icon (immersive)" in F9.
+- The staff's ring around a target is a gold diamond, every time.
+- The rune and arrow count is a small dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the count is right of it in white. The counter is one line as tall as the disk, so it can sit level with the tool bar. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth.
+- The name of the ammo is left of the count. For runes, it shows for 4 seconds after you change the ammo. For arrows, it stays, because all arrows have the same icon.
+- The drink buff is a blue ring, the same size as the other buff rings and level with the food, water and rest rings. The ring shows the time that is left, without the number. Move, resize or hide it with "Drink buff" in F9. In the immersive mode, it shows when you drink, fades, and comes back when the drink runs low.
+
+### Changed
+
+- The pick-up prompt, the build panel and the repair mode have white words with a shadow on the letters. The gold words of 1.2 are gone, because gold was hard to read over grass and sky. The faint dark shape behind the title of the build panel is gone too.
+- The keys under the menu buttons are white.
+- F8, the map settings, uses the new panel.
+- The overeating icon is in the middle of its ring.
+
 ## 1.2 (30-09-2026)
 
 1.2 is the first release since 1.0.1. It also holds everything in 1.1, which was not released on its own.

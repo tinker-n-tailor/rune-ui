@@ -145,6 +145,9 @@ local function Decorate(ctx, U)
     Built = {}
     -- the game's dark strip under the numbers: the sketch has none
     pcall(function() Find(U.WidgetTree.RootWidget, "TextBackground"):SetRenderOpacity(0.0) end)
+    -- the game's line between the rings and the drink buff: the rings have room between them, and in immersive
+    -- mode the line stayed alone (playtest, 01-10-2026: "hide it completely")
+    pcall(function() Find(U.WidgetTree.RootWidget, "UpkeepBuffDivider"):SetRenderOpacity(0.0) end)
     for i, K in ipairs(KINDS) do
         local ok, err = pcall(function()
             local base = U[K.Prop]

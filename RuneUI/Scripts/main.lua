@@ -1,12 +1,29 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
--- F9 opens the editor, F8 the map settings. A timer applies the layout; the selected element blinks and a panel lists the keys.
+-- F9 opens the editor, F8 the map settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.2"
-local LayoutFile = "runeui_layout.txt"   -- X,Y of inside elements mean a move on screen
-local OldLayoutFile = "hudeditor_layout_v2.txt"   -- the mod's file before 0.60 (named HudEditor); read if no new one
+local VERSION = "1.4"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
+
+-- Every part lives in its own file: an error in one is logged and the rest of the mod still runs. UE4SS finds
+-- them by module name; the path is the fallback.
+-- Parts: each has Tick(ctx) and Forget(sameWorld). The step calls them in this order (AddPart), the world watch
+-- their Forget. Early: its step runs before the 20 s start wait too.
+local Parts = {}
+local function AddPart(name, M, ctx, early)
+    if M then Parts[#Parts + 1] = { Name = name, M = M, Ctx = ctx, Early = early } end
+end
+local function LoadPart(name)
+    local ok, m = pcall(require, name)
+    if not ok then
+        local ok2, m2 = pcall(dofile, "ue4ss/Mods/RuneUI/Scripts/" .. name .. ".lua")
+        if ok2 then ok, m = true, m2 else m = tostring(m) .. " | " .. tostring(m2) end
+    end
+    if ok and type(m) == "table" then Log(name .. " file loaded") return m end
+    Log(name .. " file not loaded: " .. tostring(m))
+end
+
 
 -- The widgets the mod adds into the game's own widgets get a new name each round (a round ends when the
 -- player restarts or the world changes): making an object with the name of a live one makes the engine
@@ -37,21 +54,17 @@ local function ClearOurs(panel, prefix)
     end)
 end
 
--- One entry per movable thing. A widget belongs to one entry only, so nothing moves twice.
--- All positions are in HUD units, as on a 16:9 screen: 1920x1080 units at any resolution (2560x1440 = 1.333 px per
--- unit). A wider or narrower screen, or the game's HUD scale, gives the HUD another size (see Hud below).
--- Center, Size: where the visible part sits in the game's default layout (measured 27-09-2026 from screenshots and slots).
---   The editor draws its placeholder there, and Full elements scale around it.
--- A: the edge the game ties that spot to, from the slots (0 left or top, 0.5 middle, 1 right or bottom; the HUD log
---   of 29-09-2026). On a screen of another shape the spot moves with that edge.
--- Full: the widget covers the whole screen, so its scale pivot must be moved onto its visible part.
--- Inside: the widget lives inside another element; its X,Y still mean "moved from its own default spot on screen".
+-- One entry per movable thing. A widget belongs to one entry only, so nothing moves twice. The position math and
+-- the meaning of Center, Size, A, Full, Inside and Follows are in layout.lua. Positions are in HUD units, as on a
+-- 16:9 screen (1920x1080 units at any resolution).
+-- Center, Size: measured 27-09-2026 from screenshots and slots. A: from the slots (the HUD log of 29-09-2026).
+-- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "clock") or a plain switch (IsSwitch).
 -- PathEnds/UseParent: for shared classes, keep only widgets whose path matches, then climb N parents.
 -- Child: move only this named child of the widget's root, not the whole widget.
 local Elements = {
     { Id="vitals",   Name="Health, stamina and shield bars", Classes={"WBP_HUD_PlayerVitalsBars_C"},
       Full=true, A={0.5,1}, Center={X=952, Y=967}, Size={X=330, Y=75} },
-    { Id="avatar",   Name="Level badge / avatar",                         Custom=true,
+    { Id="avatar",   Name="Level badge / avatar",            Custom="avatar",
       Inside="vitals", A={0.5,1}, Center={X=744.5, Y=967}, Size={X=69, Y=69} },
     { Id="weapon",   Name="Weapon buff",                    Classes={"WBP_HUD_WeaponEnhancements_C"},
       Inside="vitals", A={0.5,1}, Center={X=1316, Y=911}, Size={X=44, Y=44} },
@@ -61,6 +74,12 @@ local Elements = {
       Inside="vitals", A={0.5,1}, Center={X=952, Y=911}, Size={X=44, Y=44} },
     { Id="survival", Name="Food, water and rest",           Classes={"WBP_SurvivalCore_Upkeep_C"},
       Inside="vitals", A={0,1}, Center={X=158, Y=968}, Size={X=215, Y=95} },
+    -- the drink ring, inside the food rings' widget (1.3, playtest: "make it movable and scalable"). Follows: it stays
+    -- beside the rings wherever they go (as Inside it stayed at its own default spot, far from rings he had moved:
+    -- in game 01-10-2026). Centre: right of the rest ring, level with the rings (measured in game: 243 units right
+    -- of the water ring).
+    { Id="drink",    Name="Drink buff",                     Classes={"WBP_HUD_DrinkBuffListEntry_C"},
+      Follows="survival", A={0,1}, Center={X=328, Y=958}, Size={X=50, Y=50} },
     { Id="toolbar",  Name="Tool bar",                       Classes={"WBP_Inventory_QuickAccesBar_C"},
       A={0,0}, Center={X=330, Y=110}, Size={X=545, Y=62} },
     { Id="compass",  Name="Compass",                        Classes={"WBP_HUD_Compass_C"},
@@ -81,6 +100,9 @@ local Elements = {
     -- no widget of its own either: shown, the aim marks are gold and the lock-on orb is our diamond (aim.lua)
     { Id="aim",      Name="Gold aim and lock-on",           Custom="aim",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
+    -- our own icon, right of the tool bar: the time of day while immersive mode is on (clock.lua; sketch of 01-10-2026)
+    { Id="clock",    Name="Time of day icon (immersive)",   Custom="clock",
+      A={0.5,1}, Center={X=1286, Y=1035}, Size={X=40, Y=40} },
     { Id="daynight", Name="Time of day (game dial)",       Classes={"WBP_HUD_DayAndNight_C"},
       NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
     { Id="buffs",    Name="Buffs",                          Classes={"WBP_HUD_EffectsDisplayLists_C"},
@@ -126,7 +148,7 @@ local Elements = {
     -- the rune and arrow count of the staff and the bow: only its box moves, the crosshair stays in the middle
     -- (the reticles' trees, read in game 27-09-2026: VerticalBox_0 holds the ammo name and the count)
     { Id="ammo",     Name="Ammo counter",                   Classes={"WBP_ReticleMagic_C", "WBP_ReticleRangedADS_C"},
-      Child="VerticalBox_0", NoClip=true, A={0.5,0.5}, Center={X=840, Y=551}, Size={X=80, Y=60} },
+      Child="VerticalBox_0", NoClip=true, A={0.5,0.5}, Center={X=840, Y=551}, Size={X=262, Y=34} },   -- name, disk, count
 }
 
 -- Starting layout: the design sketch of 27-09-2026.
@@ -151,12 +173,14 @@ local Defaults = {
     legend={Visible=false}, wheel={Visible=false}, baricons={Visible=false}, immersive={Visible=false, Wait=8},
 }
 
--- The edge an element follows on a screen of another shape (1.2, wide screens): the third of the screen it sits in,
--- left, middle or right (and top, middle or bottom). v is where it ends up, size the screen's.
-local function Third(v, size) return v < size / 3 and 0 or v > size * 2 / 3 and 1 or 0.5 end
-local function TargetFromSpot(E)   -- from where it sits on a 16:9 screen: for the defaults and older layout files
-    E.TX, E.TY = Third(E.Center.X + E.X, 1920), Third(E.Center.Y + E.Y, 1080)
-end
+-- The position math lives in layout.lua (tested without the game); these are its names, used all over this file.
+local Layout = LoadPart("layout")
+if not Layout then error("layout.lua is missing or broken, see the log") end
+Layout.Init(Elements)
+local Hud, ById, Third, IsSwitch, OnViewport = Layout.Hud, Layout.ById, Layout.Third, Layout.IsSwitch, Layout.OnViewport
+local Home, Offset, FinalCenter, LocalTransform = Layout.Home, Layout.Offset, Layout.FinalCenter, Layout.LocalTransform
+local Retarget, TargetFromSpot, ScreenBox, Spot, Area = Layout.Retarget, Layout.TargetFromSpot, Layout.ScreenBox, Layout.Spot, Layout.Area
+local AREAS = Layout.AREAS
 
 for _, E in ipairs(Elements) do
     local d = Defaults[E.Id] or {}
@@ -175,32 +199,6 @@ for _, E in ipairs(Elements) do
     TargetFromSpot(E)
 end
 
--- The screen in units (1.2, wide screens; Nexus reports of 29-09-2026). The viewport is its pixels over the DPI scale,
--- which follows the short side: 2560x1440 and 2560x1080 are both 1080 units high, 1920 and 2560 wide. The HUD sits in
--- a scale box set by the game's HUD scale, so the HUD is the viewport over that scale. RuneMap is on the viewport.
--- Read on every scan (ReadHud); 1920x1080 until then.
-local Hud = { W = 1920, H = 1080, S = 1, VW = 1920, VH = 1080 }
-local function OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" end
--- how much wider and taller than 16:9 the space of E is
-local function Grow(E)
-    if OnViewport(E) then return Hud.VW - 1920, Hud.VH - 1080 end
-    return Hud.W - 1920, Hud.H - 1080
-end
--- An element the player moved follows the edge of the third it now sits in. Its spot on this screen stays put.
-local function Retarget(E)
-    local dW, dH = Grow(E)
-    local fx, fy = E.Center.X + E.X + E.TX * dW, E.Center.Y + E.Y + E.TY * dH
-    local tx, ty = Third(fx, 1920 + dW), Third(fy, 1080 + dH)
-    E.X, E.Y = E.X + (E.TX - tx) * dW, E.Y + (E.TY - ty) * dH
-    E.TX, E.TY = tx, ty
-end
-
--- Elements with no widget of their own: they only switch something on or off
-local function IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" end
-
-local function ById(id)
-    for _, E in ipairs(Elements) do if E.Id == id then return E end end
-end
 ---------------------------------------------------------------- layout file
 
 -- When UE4SS reloads this mod while the game runs, the widgets of the previous run are still on screen.
@@ -223,60 +221,94 @@ pcall(function()
     if removed > 0 then Log("reload: removed " .. removed .. " widgets of the previous run") end
 end)
 
+-- One file, runeui.txt, next to the game (1.4): the three layout profiles, the profile in use, the map settings and
+-- the zoom, the trim line of the main menu, and the keys. Named values, so a player can read and edit it, and a new
+-- version never breaks an old file. The files of 1.3 and before are read once, when runeui.txt is missing, and are
+-- left in place. settings.lua reads and writes the file (tested without the game).
+local Settings = LoadPart("settings")
+if not Settings then error("settings.lua is missing or broken, see the log") end
+local function ReadText(name)
+    local f = io.open(name, "r")
+    if not f then return nil end
+    local t = f:read("a")
+    f:close()
+    return t
+end
+local Cfg = Settings.Load()
+if not Cfg then
+    Cfg = Settings.Legacy(ReadText)
+    if Cfg then Log("settings: read from the files of an older version") else Cfg = {} Log("no settings file yet, using defaults") end
+end
+local ElementIds = {}   -- the order of the rows in the file: the element list
+for _, E in ipairs(Elements) do ElementIds[#ElementIds + 1] = E.Id end
+local function SaveCfg()
+    Settings.Section(Cfg, "general").version = VERSION
+    if not Settings.Save(Cfg, nil, ElementIds) then Log("could not write " .. Settings.FILE) end
+end
+
+-- The profiles (1.3): three layouts, F7 goes to the next while the editor is open. Profile 1 is the layout every
+-- earlier version wrote, so no player loses a layout. N: the profile in use. Wanted: F7 sets it on UE4SS's thread,
+-- and the step switches.
+local Prof = { N = 1, Wanted = false }
+Prof.N = math.floor(Settings.Num(Settings.Section(Cfg, "general").profile, 1, 3, 1))
+
+-- the layout of the profile in use, from the file; an element without a row keeps what it has
 local function LoadLayout()
-    local f = io.open(LayoutFile, "r") or io.open(OldLayoutFile, "r")
-    if not f then Log("no layout file yet, using defaults") return end
-    for line in f:lines() do
-        local id, x, y, s, v = string.match(line, "^(%w+):(%-?[%d%.]+),(%-?[%d%.]+),([%d%.]+),([01])")
-        x, y, s = tonumber(x), tonumber(y), tonumber(s)
-        -- a hand-edited line with a bad number is skipped: one nil here stopped the whole layout
-        for _, E in ipairs(Elements) do
-            if E.Id == id and x and y and s then
-                E.X, E.Y = math.max(-4000, math.min(4000, x)), math.max(-4000, math.min(4000, y))
-                E.Scale, E.Visible = math.max(0.3, math.min(4.0, s)), (v == "1")
-                -- the opacity came in 1.1 as a fifth value: a line without it (an older file) stays solid
-                local o = tonumber(string.match(line, "^%w+:[^,]+,[^,]+,[^,]+,[01],([%d%.]+)"))
-                E.Opacity = o and math.max(0.2, math.min(1.0, math.floor(o * 10 + 0.5) / 10)) or 1.0
-                -- the edge it follows came in 1.2 as the sixth and seventh; without them, from where it sits
-                local tx, ty = string.match(line, "^%w+:[^,]+,[^,]+,[^,]+,[01],[^,]+,([%d%.]+),([%d%.]+)")
-                tx, ty = tonumber(tx), tonumber(ty)
-                if tx and ty then E.TX, E.TY = Third(tx, 1), Third(ty, 1) else TargetFromSpot(E) end
-                -- the immersive wait came in 1.2 as the eighth value (its line only); without it, the default
-                local w = tonumber(string.match(line, "^%w+:[^,]+,[^,]+,[^,]+,[01],[^,]+,[^,]+,[^,]+,([%d%.]+)"))
-                if E.Wait and w then E.Wait = math.max(3, math.min(30, math.floor(w + 0.5))) end
-            end
+    local rows = Cfg["layout " .. Prof.N]
+    if not rows then Log("profile " .. Prof.N .. ": no saved layout, using defaults") return end
+    local N = Settings.Num
+    for _, E in ipairs(Elements) do
+        local r = rows[E.Id]
+        if type(r) == "table" then
+            E.X, E.Y = N(r.x, -4000, 4000, 0), N(r.y, -4000, 4000, 0)
+            E.Scale = N(r.scale, 0.3, 4.0, 1.0)
+            E.Visible = N(r.visible, 0, 1, 1) == 1
+            E.Opacity = math.floor(N(r.opacity, 0.2, 1.0, 1.0) * 10 + 0.5) / 10
+            -- the edge it follows; a row without it (a file of 1.1 or older): from where it sits
+            if r.edgex ~= nil and r.edgey ~= nil then E.TX, E.TY = Third(N(r.edgex, 0, 1, 0.5), 1), Third(N(r.edgey, 0, 1, 0.5), 1)
+            else TargetFromSpot(E) end
+            if E.Wait and r.wait ~= nil then E.Wait = math.floor(N(r.wait, 3, 30, E.Wait) + 0.5) end
         end
     end
-    f:close()
-    Log("layout loaded")
+    Log("layout loaded, profile " .. Prof.N)
 end
 
 local function SaveLayout()
-    local f = io.open(LayoutFile, "w")
-    if not f then Log("could not write layout") return end
+    local rows = Settings.Section(Cfg, "layout " .. Prof.N)
     for _, E in ipairs(Elements) do
-        if E.Moved then E.Moved = false Retarget(E) end
-        f:write(string.format("%s:%.1f,%.1f,%.2f,%d,%.1f,%.1f,%.1f%s\n", E.Id, E.X, E.Y, E.Scale, E.Visible and 1 or 0,
-            E.Opacity, E.TX, E.TY, E.Wait and string.format(",%d", E.Wait) or ""))
+        if E.Moved then E.Moved = false if not E.Follows then Retarget(E) end end   -- a Follows element keeps its parent's edge
+        rows[E.Id] = { x = E.X, y = E.Y, scale = E.Scale, visible = E.Visible and 1 or 0, opacity = E.Opacity,
+            edgex = E.TX, edgey = E.TY, wait = E.Wait }
     end
-    f:close()
-    Log("layout saved")
+    SaveCfg()
+    Log("layout saved, profile " .. Prof.N)
+end
+
+-- the layout saved into the profile it came from, the next one loaded; a profile never used starts as a copy
+function Prof.Next()
+    SaveLayout()
+    Prof.N = Prof.N % 3 + 1
+    Settings.Section(Cfg, "general").profile = Prof.N
+    if Cfg["layout " .. Prof.N] then LoadLayout() else SaveLayout() end
+    Log("profile " .. Prof.N)
 end
 
 LoadLayout()
 
 ---------------------------------------------------------------- finding widgets
 
--- The avatar: character picture, placed inside the game's bars widget (so it hides with the HUD
--- and moves with the bars). avatar.png sits next to the Scripts folder.
-local Avatar = { W = nil, HostName = nil, Tex = nil }
+local Avatar = nil    -- the level badge or character picture beside the bars, from avatar.lua; loaded near the main loop
+local Bars = nil      -- the bars' look and the line under them, from bars.lua; loaded there too
+local Buffs = nil     -- the buff rings, the buff row and the drink ring, from buffs.lua; loaded there too
 local RuneMap = nil   -- the minimap, from runemap.lua; loaded near the main loop
 local Survival = nil  -- food, water and rest, from survival.lua; the buffs borrow its ring. Loaded there too.
 local Immersive = nil -- the HUD fading when idle, from immersive.lua; loaded there too
 local MenuButtons = nil -- the menu buttons in rings, from menubuttons.lua; loaded there too
 local Aim = nil       -- the gold aim marks and lock-on diamond, from aim.lua; loaded there too
 local Cooldowns = nil -- the spell cooldown tiles, from cooldowns.lua; loaded there too (its ctx is Cooldowns.Ctx)
-local Prompt = nil    -- the pick-up prompt's gold letters, from prompt.lua; loaded there too (ctx Prompt.Ctx)
+local Letters = nil   -- white letters with a shadow, from letters.lua; loaded there too (ctx Letters.Ctx)
+local Clock = nil     -- the time of day icon, from clock.lua; loaded there too
+local Ammo = nil      -- the ammo counter in a ring, from ammo.lua; loaded there too (ctx Ammo.Ctx)
 
 local function ClassName(obj)
     local ok, n = pcall(function() return obj:GetClass():GetFName():ToString() end)
@@ -392,35 +424,14 @@ local function AnyGone()
     end
     return false
 end
--- The buff lists' item count. Reading their entries straight from the lists gave nothing (in-game test,
--- 29-09-2026), but the count is a plain number.
-local BuffItems, BuffsLogged = nil, false
-local function BuffsChanged()
-    local n = 0
-    for _, W in ipairs(ById("buffs").Instances) do
-        pcall(function()
-            local root = W.WidgetTree.RootWidget
-            for i = 0, root:GetChildrenCount() - 1 do
-                local c = root:GetChildAt(i)
-                local ok, k = pcall(function() return c:GetNumItems() end)
-                if ok and type(k) == "number" then n = n + k end
-            end
-        end)
-    end
-    local changed = BuffItems ~= nil and n ~= BuffItems
-    if changed and not BuffsLogged then BuffsLogged = true Log("buffs: " .. BuffItems .. " to " .. n .. ", searching at once") end
-    BuffItems = n
-    return changed
-end
-
--- editing: F9 or F8 is open. Returns true when a search ran.
+-- editing: F9 or F8 is open. buffsNew: the step saw the buff count change. Returns true when a search ran.
 -- Without one, the game's widgets of the last pass are kept: AnyGone has just seen every one alive under its own
 -- name, and the same answer cost a name read and a path check per widget, and a walk into the legend, every pass
 -- (30-09-2026). Ours (the avatar, RuneMap, the cooldown tiles) are built after this in the same step, so they are
 -- taken again on every pass.
-local function FindAll(editing)
+local function FindAll(editing, buffsNew)
     local now = os.clock()
-    local buffs = BuffsChanged()   -- read on every pass, so the count stays current
+    local buffs = (Buffs and Buffs.Changed()) or buffsNew   -- read on every pass, so the count stays current
     local searched = false
     if now > NextSearch or now < SettleUntil + 30 or editing or buffs or AnyGone() then
         SearchWidgets()
@@ -430,9 +441,10 @@ local function FindAll(editing)
     for _, E in ipairs(Elements) do
         if E.Custom then
             E.Instances, E.Keys = {}, {}
-            if E.Custom == true and Avatar.W and Avatar.W:IsValid() then AddInstance(E, Avatar.W) end
+            if E.Custom == "avatar" and Avatar and Avatar.W and Avatar.W:IsValid() then AddInstance(E, Avatar.W) end
             if E.Custom == "map" and RuneMap and RuneMap.W and RuneMap.W:IsValid() then AddInstance(E, RuneMap.W) end
             if E.Custom == "cooldowns" and Cooldowns and Cooldowns.W and Cooldowns.W:IsValid() then AddInstance(E, Cooldowns.W) end
+            if E.Custom == "clock" and Clock and Clock.W and Clock.W:IsValid() then AddInstance(E, Clock.W) end
         elseif searched then
             E.Instances, E.Keys = {}, {}
             for _, c in ipairs(E.Classes or {}) do
@@ -466,7 +478,6 @@ end
 local EditMode = false
 local MapMode = false    -- F8: RuneMap's own settings, in the same panel as the editor (1.1)
 local MapSel = 1         -- the selected line of the map settings
-local Flash = true       -- the selected element blinks, so it is always clear what moves
 local Selected = 1
 local Step = 10
 -- Keyed by the widget's full name: every rescan gives new Lua handles for the same widgets
@@ -489,39 +500,6 @@ local function RestoreOpacity(W, k, force)
         W:SetRenderOpacity(OrigOpacity[k] or 1.0)
         Touched[k] = nil
     end
-end
-
--- Where E's default spot is on this screen, in its own space: it moves with the edge the game ties it to (E.A)
-local function Home(E)
-    local dW, dH = Grow(E)
-    return E.Center.X + E.A[1] * dW, E.Center.Y + E.A[2] * dH
-end
--- E's move from there. X,Y are its move on a 16:9 screen; on another screen it follows its own edge (E.TX,TY)
-local function Offset(E)
-    local dW, dH = Grow(E)
-    return E.X + (E.TX - E.A[1]) * dW, E.Y + (E.TY - E.A[2]) * dH
-end
--- where E ends up, in viewport units: the editor's panel is on the viewport, a HUD unit is Hud.S of them
-local function FinalCenter(E)
-    local hx, hy = Home(E)
-    local ox, oy = Offset(E)
-    local u = OnViewport(E) and 1 or Hud.S
-    return (hx + ox) * u, (hy + oy) * u
-end
-
--- Move and size in the element's own space. For an element inside another one, undo the parent's move and
--- size, so X,Y and Scale still mean "where it ends up on screen": parent maps p to pivot + sP*(p - pivot) + tP.
-local function LocalTransform(E)
-    local ox, oy = Offset(E)
-    if not E.Inside then return ox, oy, E.Scale end
-    local P = ById(E.Inside)
-    local sP = P.Scale
-    local px, py = Offset(P)
-    local vx, vy = Home(P)   -- the parent's scale pivot (every parent is Full)
-    local cx, cy = Home(E)
-    local tx = (cx + ox - px - vx) / sP + vx - cx
-    local ty = (cy + oy - py - vy) / sP + vy - cy
-    return tx, ty, E.Scale / sP
 end
 
 -- The F9 opacity (1.1). A user widget gets it as its colour, which multiplies with the render opacity: the
@@ -590,8 +568,7 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
     local L = E.Last[k]
     if not L then L = {} E.Last[k] = L end
     if E.Full and E.Center then
-        local hx, hy = Home(E)
-        local px, py = hx / Hud.W, hy / Hud.H
+        local px, py = Layout.Pivot(E)
         if force or L.PX ~= px or L.PY ~= py then
             W:SetRenderTransformPivot({ X = px, Y = py })
             L.PX, L.PY = px, py
@@ -621,7 +598,7 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
     if shown and parts and #parts > 0 then
         local o = E.Visible and 1.0 or 0.0
         if EditMode then   -- the editor's dimming goes on the parts; the widget stays whole for what lives inside it
-            if isSelected then o = E.Visible and (Flash and 1.0 or 0.35) or (Flash and 0.6 or 0.15) else o = E.Visible and 0.3 or 0.1 end
+            if isSelected then o = E.Visible and 1.0 or 0.6 else o = E.Visible and 0.3 or 0.1 end
         end
         -- every step while hidden, as immersive.lua does with the bars: the game may fade a prompt back in
         if o < 1 or E.PartsOp[k] ~= o then
@@ -633,7 +610,8 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
         SetOpacity(W, k, 1.0)
     elseif EditMode then
         if isSelected then
-            if shown then SetOpacity(W, k, (Flash and 1.0 or 0.35) * fade) else SetOpacity(W, k, Flash and 0.6 or 0.15) end
+            -- solid, the gold corners round it pulse instead (the design sketch); dim when hidden
+            if shown then SetOpacity(W, k, fade) else SetOpacity(W, k, 0.6) end
         else
             SetOpacity(W, k, shown and 0.3 * fade or 0.1)
         end
@@ -657,77 +635,17 @@ local function ApplyAll(force)
     RestoreAllRequested = false
 end
 
----------------------------------------------------------------- command panel, built from the game's own UI pieces
+---------------------------------------------------------------- the editor panel (editor.lua draws it)
 
--- A dark panel with a thin gold frame, like the game's own panels. Built on the first F9, so a world exists.
-local Overlay = { W = nil, Texts = {}, LastState = "", Open = false }
-local LIST_ROWS = 10   -- also the F8 lines, 10 since the resource switches (29-09-2026)
-local PANEL_AT = { X = 30, Y = 270 }   -- the editor: left side, under the avatar, bars and buffs
-
-local C_GOLD  = { R = 0.89, G = 0.72, B = 0.38, A = 1.0 }
-local C_CREAM = { R = 0.96, G = 0.92, B = 0.82, A = 1.0 }
-local C_GREY  = { R = 0.66, G = 0.62, B = 0.55, A = 1.0 }
-local C_DIM   = { R = 0.45, G = 0.42, B = 0.38, A = 1.0 }
-
-local KEY_ROWS = {
-    { "PgUp / PgDn",     "Select element" },
-    { "Arrow keys",      "Move" },
-    { "Home / End",      "Move step" },
-    { "+ / -",           "Size" },
-    { ", / .",           "Opacity" },
-    { "Delete / Insert", "Hide / show" },
-    { "Backspace",       "Reset element" },
-    { "F8",              "Map settings" },
-    { "F9",              "Save and close" },
-}
--- F8 uses the same panel under the map (design sketch, 28-09-2026): its own title, keys and list
-local MAP_KEY_ROWS = {
-    { "Up / Down",    "Select setting" },
-    { "Left / Right", "Change" },
-    { "[ / ]",        "Zoom" },
-    { "Backspace",    "Reset map settings" },
-    { "F8",           "Save and close" },
-}
-local function KeyColumns(rows)
-    local keys, acts = {}, {}
-    for _, k in ipairs(rows) do table.insert(keys, k[1]) table.insert(acts, k[2]) end
-    return table.concat(keys, "\n"), table.concat(acts, "\n")
-end
-local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
--- the lines that are a plain On / Off, and the setting in runemap.lua each one flips
-local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
-    Essence = "Essence", ["Rare trees"] = "Trees" }
+local Editor = nil   -- the F9 and F8 panel, from editor.lua; loaded near the main loop
 
 local function Cls(path) return StaticFindObject(path) end
-
--- A font from the game itself. Poppins (the game's body font) is skipped on purpose, so the first other game
--- font wins; Poppins is only the fallback.
-local GameFont = nil
-local TitleFont = nil   -- Jancient, the game's fantasy display font, for the panel title
-local function FindGameFont()
-    pcall(function()
-        local poppins = nil
-        for _, F in pairs(FindAllOf("Font") or {}) do
-            local n = F:GetFullName()
-            if string.find(n, "/Game/") and not string.find(n, "Default__") then
-                if string.find(n, "Jancient") then TitleFont = F end
-                if string.find(n, "Poppins") then
-                    poppins = poppins or F
-                elseif not GameFont then
-                    GameFont = { Object = F }
-                end
-            end
-        end
-        if not GameFont and poppins then GameFont = { Object = poppins } end
-        if GameFont then Log("panel font: " .. GameFont.Object:GetFullName()) end
-    end)
-end
 
 local function SetColor(T, c)
     T:SetColorAndOpacity({ SpecifiedColor = c, ColorUseRule = 0 })
 end
 
-local FontErrorLogged = false
+-- a text of ours with a soft shadow, in the font given (the game's default font without one)
 local function MakeText(tree, name, size, color, s, font)
     local T = StaticConstructObject(Cls("/Script/UMG.TextBlock"), tree, FName(name))
     T:SetText(FText(s or ""))
@@ -736,122 +654,75 @@ local function MakeText(tree, name, size, color, s, font)
         T:SetShadowOffset({ X = 1, Y = 1 })
         T:SetShadowColorAndOpacity({ R = 0, G = 0, B = 0, A = 0.8 })
     end)
-    local ok, err = pcall(function()
+    pcall(function()
         local fi = T.Font   -- our own text, so changing it touches nothing of the game
-        if font then fi.FontObject = font
-        elseif GameFont then fi.FontObject = GameFont.Object end
+        if font then fi.FontObject = font end
         fi.Size = size
         T:SetFont(fi)
     end)
-    if not ok and not FontErrorLogged then FontErrorLogged = true Log("panel font not set: " .. tostring(err)) end
     return T
 end
 
-local function AddTo(box, child, padBottom)
-    local slot = box:AddChildToVerticalBox(child)
-    pcall(function() slot:SetPadding({ Left = 0, Top = 0, Right = 0, Bottom = padBottom or 0 }) end)
+-- Poppins, the game's body font: the editor, the menu keys and the cooldowns write in it. Found once.
+local Poppins = nil
+local function FindPoppins()
+    if Poppins and Poppins:IsValid() then return Poppins end
+    for _, F in pairs(FindAllOf("Font") or {}) do
+        local ok, n = pcall(function() return F:GetFullName() end)
+        if ok and string.find(n, "/Game/") and string.find(n, "Poppins") and not string.find(n, "Default__") then Poppins = F break end
+    end
+    return Poppins
 end
 
--- Decorations from the main menu, taken from the blueprint templates (read only, copied into our widgets):
--- the gold frame of the worlds list, the trim line with diamonds under the PLAY menu, the gold sparkles
--- around the worlds frame, and the font of the main menu buttons.
+-- The trim line with diamonds under the main menu's PLAY menu frames the bars (EnsureBarTrim). The menu's template
+-- exists only while the main menu is loaded, so its picture's path and brush are written down then (plain values),
+-- also into runeui_menuart.txt for a reload of the mod in the middle of the game.
 local function FindTemplate(cls, pattern)
     for _, W in pairs(FindAllOf(cls) or {}) do
         local ok, n = pcall(function() return W:GetFullName() end)
         if ok and string.find(n, pattern, 1, true) then return W end
     end
 end
-
--- The menu templates exist only while the main menu is loaded; in the world the game has already unloaded
--- them. So the mod writes down what it needs (asset paths and brush settings, plain values) while the menu
--- is up, and loads the assets again by path when it builds the panel.
 local MenuArt = nil
-local SaveMenuArt   -- defined further down; declared here so CaptureMenuArt can call it
-
-local function BrushInfo(B)
-    local r = { Res = B.ResourceObject:GetFullName():match("^%S+%s+(.+)$"), DrawAs = B.DrawAs,
-        Margin = { Left = B.Margin.Left, Top = B.Margin.Top, Right = B.Margin.Right, Bottom = B.Margin.Bottom },
-        Size = { X = B.ImageSize.X, Y = B.ImageSize.Y }, Tiling = B.Tiling }
-    pcall(function()
-        local c = B.TintColor.SpecifiedColor
-        r.Tint = { R = c.R, G = c.G, B = c.B, A = c.A }
-    end)
-    return r
-end
-
 local function CaptureMenuArt()
     if MenuArt then return true end
-    -- the worlds list's frame is there only while the main menu is up. Its picture is no longer drawn (the
-    -- panels have the inventory look since 1.1), so it only says the menu is loaded.
-    if not FindTemplate("Image", "WBP_MainMenu_Worlds_C:WidgetTree.ListImage") then return false end
-    local art = {}
-    pcall(function() art.Trim = BrushInfo(FindTemplate("Image", "WBP_MainMenu_LandingMenu_C:WidgetTree.Trim01").Brush) end)
-    pcall(function()
-        local sp = FindTemplate("NiagaraSystemWidget", "WBP_MainMenu_Worlds_Recent_C:WidgetTree.NS_UI_FrameParticles")
-        art.Sparkle = sp.NiagaraSystemReference:GetFullName():match("^%S+%s+(.+)$")
-    end)
-    pcall(function()
-        local T = FindTemplate("TextBlock", "WBP_DomMainMenuButtonLandingMenu_C:WidgetTree.")
-        art.Font = { Res = T.Font.FontObject:GetFullName():match("^%S+%s+(.+)$"), Spacing = T.Font.LetterSpacing }
-        pcall(function() art.Font.Typeface = T.Font.TypefaceFontName:ToString() end)
-    end)
-    MenuArt = art
-    pcall(SaveMenuArt, art)
-    Log("menu art saved: trim=" .. tostring(art.Trim and art.Trim.Res)
-        .. " sparkle=" .. tostring(art.Sparkle) .. " font=" .. tostring(art.Font and art.Font.Res))
+    local T = FindTemplate("Image", "WBP_MainMenu_LandingMenu_C:WidgetTree.Trim01")
+    if not T then return false end
+    local B = T.Brush
+    local b = { Res = B.ResourceObject:GetFullName():match("^%S+%s+(.+)$"), DrawAs = B.DrawAs,
+        Margin = { Left = B.Margin.Left, Top = B.Margin.Top, Right = B.Margin.Right, Bottom = B.Margin.Bottom },
+        Size = { X = B.ImageSize.X, Y = B.ImageSize.Y }, Tiling = B.Tiling, Tint = { R = 1, G = 1, B = 1, A = 1 } }
+    pcall(function() local c = B.TintColor.SpecifiedColor b.Tint = { R = c.R, G = c.G, B = c.B, A = c.A } end)
+    MenuArt = { Trim = b }
+    local t = b.Tint
+    Settings.Section(Cfg, "menuart").trim = string.format("%s|%s|%s,%s,%s,%s|%s,%s|%s|%s,%s,%s,%s", b.Res, tostring(b.DrawAs),
+        b.Margin.Left, b.Margin.Top, b.Margin.Right, b.Margin.Bottom, b.Size.X, b.Size.Y, tostring(b.Tiling), t.R, t.G, t.B, t.A)
+    SaveCfg()
+    Log("menu art saved: trim=" .. tostring(b.Res))
     return true
 end
-
--- The saved menu art also goes to runeui_menuart.txt, so a reload of the mod in the middle of the game
--- (when the main menu is long gone) still has it. Brushes are written as plain numbers.
-local ART_FILE = "runeui_menuart.txt"
-
-function SaveMenuArt(art)
-    local f = io.open(ART_FILE, "w")
-    if not f then return end
-    local function brush(key, b)
-        if not b then return end
-        local t = b.Tint or { R = 1, G = 1, B = 1, A = 1 }
-        f:write(string.format("%s=%s|%s|%s,%s,%s,%s|%s,%s|%s|%s,%s,%s,%s\n", key, b.Res, tostring(b.DrawAs),
-            b.Margin.Left, b.Margin.Top, b.Margin.Right, b.Margin.Bottom, b.Size.X, b.Size.Y, tostring(b.Tiling),
-            t.R, t.G, t.B, t.A))
-    end
-    brush("trim", art.Trim)
-    if art.Sparkle then f:write("sparkle=" .. art.Sparkle .. "\n") end
-    if art.Font then f:write("font=" .. art.Font.Res .. "|" .. tostring(art.Font.Spacing) .. "|" .. tostring(art.Font.Typeface) .. "\n") end
-    f:close()
-end
-
+-- the saved trim line, from the settings file (the [menuart] section; the raw text of the line)
 local function LoadMenuArtFile()
-    local f = io.open(ART_FILE, "r") or io.open("hudeditor_menuart.txt", "r")   -- the file before 0.60
-    if not f then return nil end
+    local raw = Settings.Section(Cfg, "menuart").trim
+    if type(raw) ~= "string" or raw == "" then return nil end
     local art = {}
     local function split(s) local out = {} for p in string.gmatch(s, "([^|]+)") do table.insert(out, p) end return out end
     local function nums(s) local out = {} for n in string.gmatch(s, "[^,]+") do table.insert(out, tonumber(n)) end return out end
     -- a number in a range, or the default: the brush settings come from a file
     local function num(v, lo, hi, d) v = tonumber(v) if not v or v ~= v then return d end return math.max(lo, math.min(hi, v)) end
-    for line in f:lines() do
-        pcall(function()   -- a malformed line is skipped
-            local key, rest = string.match(line, "^(%w+)=(.*)$")
-            if key == "trim" then   -- a "frame" line from before 1.1 is skipped
-                local p = split(rest)
-                local m, s, c = nums(p[3]), nums(p[4]), nums(p[6])
-                local b = { Res = p[1], DrawAs = math.floor(num(p[2], 0, 4, 3)), Tiling = math.floor(num(p[5], 0, 3, 0)),
-                    Margin = { Left = num(m[1], 0, 1, 0), Top = num(m[2], 0, 1, 0), Right = num(m[3], 0, 1, 0), Bottom = num(m[4], 0, 1, 0) },
-                    Size = { X = num(s[1], 1, 2048, 64), Y = num(s[2], 1, 2048, 64) },
-                    Tint = { R = num(c[1], 0, 1, 1), G = num(c[2], 0, 1, 1), B = num(c[3], 0, 1, 1), A = num(c[4], 0, 1, 1) } }
-                art.Trim = b
-            elseif key == "sparkle" then
-                local p = split(rest)
-                art.Sparkle = p[1]
-            elseif key == "font" then
-                local p = split(rest)
-                art.Font = { Res = p[1], Spacing = tonumber(p[2]), Typeface = (p[3] ~= "nil") and p[3] or nil }
-            end
-        end)
-    end
-    f:close()
-    if next(art) then Log("menu art read from " .. ART_FILE) return art end
+    pcall(function()   -- a malformed value is skipped, and the trim is read again from the main menu
+        local p = split(raw)
+        local m, s, c = nums(p[3]), nums(p[4]), nums(p[6])
+        art.Trim = { Res = p[1], DrawAs = math.floor(num(p[2], 0, 4, 3)), Tiling = math.floor(num(p[5], 0, 3, 0)),
+            Margin = { Left = num(m[1], 0, 1, 0), Top = num(m[2], 0, 1, 0), Right = num(m[3], 0, 1, 0), Bottom = num(m[4], 0, 1, 0) },
+            Size = { X = num(s[1], 1, 2048, 64), Y = num(s[2], 1, 2048, 64) },
+            Tint = { R = num(c[1], 0, 1, 1), G = num(c[2], 0, 1, 1), B = num(c[3], 0, 1, 1), A = num(c[4], 0, 1, 1) } }
+    end)
+    if next(art) then Log("menu art read from the settings file") return art end
+end
+local function FindMenuArt()
+    if not MenuArt then MenuArt = LoadMenuArtFile() end
+    return MenuArt or {}
 end
 
 -- kind: the class the object must be, for the typed calls it goes into. The menu art paths are read back from
@@ -871,8 +742,19 @@ local function Asset(path, kind)
     return obj
 end
 
+-- A picture from a file, kept in cache[key] and reused while it is valid. Widgets must hold it: a texture that
+-- only Lua holds is thrown away by the engine. The buffs and the bars use it.
+local function CachedTex(cache, key, outer, file)
+    local tex = cache[key]
+    if tex and tex:IsValid() then return tex end
+    tex = StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary"):ImportFileAsTexture2D(outer, file)
+    if not (tex and tex:IsValid()) then error("picture not loaded: " .. file) end
+    cache[key] = tex
+    return tex
+end
+
 -- An Image widget showing a saved brush, or nil
-local function ImageFromArt(tree, name, info, sizeFactor)
+local function ImageFromArt(tree, name, info)
     if not info then return nil end
     local tex = Asset(info.Res, "/Script/Engine.Texture2D")
     if not tex then return nil end
@@ -881,170 +763,46 @@ local function ImageFromArt(tree, name, info, sizeFactor)
     local b = img.Brush
     pcall(function() b.DrawAs = info.DrawAs end)
     pcall(function() b.Margin = info.Margin end)
-    pcall(function() local k = sizeFactor or 1 b.ImageSize = { X = info.Size.X * k, Y = info.Size.Y * k } end)
+    pcall(function() b.ImageSize = { X = info.Size.X, Y = info.Size.Y } end)
     pcall(function() b.Tiling = info.Tiling end)
     pcall(function() if info.Tint then b.TintColor = { SpecifiedColor = info.Tint, ColorUseRule = 0 } end end)
     img:SetBrush(b)
     return img
 end
 
-local function FindMenuArt()
-    if not MenuArt then MenuArt = LoadMenuArtFile() end
-    return MenuArt or {}
-end
-local function BuildOverlay()
-    local step = "user widget"
-    local ok, err = pcall(function()
-        FindGameFont()
-        local outer = FindFirstOf("GameInstance")
-        local uw = StaticConstructObject(Cls("/Script/UMG.UserWidget"), outer, G("RuneUIOverlay"))
-        step = "widget tree"
-        local tree = StaticConstructObject(Cls("/Script/UMG.WidgetTree"), uw, FName("RuneUITree"))
-        uw.WidgetTree = tree
-        step = "canvas"
-        local canvas = StaticConstructObject(Cls("/Script/UMG.CanvasPanel"), tree, FName("RuneUICanvas"))
-        tree.RootWidget = canvas
-        step = "frame"
-        -- The look of the game's inventory (Ivan, 29-09-2026): a dark, nearly solid panel inside a thin double
-        -- gold line. Plain boxes, one inside the other: gold line, dark gap, gold line, dark panel. They fit any
-        -- height, where the main menu's frame picture stretched with the panel (its title strip moved in F8) and
-        -- let the world show through the text. Colours are linear light.
-        local function Box(name, color, pad)
-            local b = StaticConstructObject(Cls("/Script/UMG.Border"), tree, FName(name))
-            b:SetBrushColor(color)
-            b:SetPadding({ Left = pad, Top = pad, Right = pad, Bottom = pad })
-            return b
-        end
-        local LINE, DARK = { R = 0.40, G = 0.26, B = 0.10, A = 0.9 }, { R = 0.011, G = 0.010, B = 0.009, A = 0.94 }
-        local frame = Box("RuneUIFrame", LINE, 1)
-        local gap = Box("RU_FrameGap", DARK, 3)
-        local inner = Box("RU_FrameInner", LINE, 1)
-        local panel = Box("RuneUIPanel", DARK, 0)
-        panel:SetPadding({ Left = 22, Top = 18, Right = 22, Bottom = 20 })
-        frame:SetContent(gap)
-        gap:SetContent(inner)
-        inner:SetContent(panel)
-        step = "menu art"
-        local art = FindMenuArt()   -- the trim lines, the sparkles and the title font
-        local box = StaticConstructObject(Cls("/Script/UMG.VerticalBox"), tree, FName("RuneUIBox"))
-        panel:SetContent(box)
-
-        step = "texts"
-        local title = MakeText(tree, "RU_Title", 17, C_GOLD, "RUNE UI", TitleFont)
-        if art.Font then
-            local okT, errT = pcall(function()
-                local fi = title.Font
-                local fo = Asset(art.Font.Res, "/Script/Engine.Font")
-                if not fo then error("menu font not loaded") end
-                fi.FontObject = fo
-                pcall(function() if art.Font.Typeface then fi.TypefaceFontName = FName(art.Font.Typeface) end end)
-                pcall(function() fi.LetterSpacing = art.Font.Spacing end)
-                fi.Size = 17
-                title:SetFont(fi)
-            end)
-            if not okT then Log("menu font not used: " .. tostring(errT)) end
-        end
-        AddTo(box, title, 4)
-        -- the menu's trim line: under the title, and between the sections (chosen 27-09-2026)
-        local function Divider(name, padTop, padBottom)
-            if not art.Trim then return end
-            local okL, errL = pcall(function()
-                local line = ImageFromArt(tree, name, art.Trim)
-                if not line then error("trim picture not loaded") end
-                local lb = StaticConstructObject(Cls("/Script/UMG.SizeBox"), tree, FName(name .. "Box"))
-                lb:SetHeightOverride(12)
-                lb:SetContent(line)
-                local slot = box:AddChildToVerticalBox(lb)
-                pcall(function() slot:SetPadding({ Left = 0, Top = padTop, Right = 0, Bottom = padBottom }) end)
-            end)
-            if not okL then Log("menu trim not used: " .. tostring(errL)) end
-        end
-        Divider("RU_TitleTrim", 0, 10)
-        Overlay.Texts.Selected = MakeText(tree, "RU_Selected", 13, C_CREAM, "")
-        AddTo(box, Overlay.Texts.Selected, 2)
-        Overlay.Texts.Info = MakeText(tree, "RU_Info", 11, C_GREY, "")
-        AddTo(box, Overlay.Texts.Info, 0)
-        Divider("RU_InfoTrim", 6, 8)
-
-        pcall(function() Overlay.Texts.Info:SetAutoWrapText(true) end)   -- the F8 hints run to two lines
-        Overlay.Texts.Title = title
-
-        step = "keys"
-        local row = StaticConstructObject(Cls("/Script/UMG.HorizontalBox"), tree, FName("RU_KeyRow"))
-        local keys, acts = KeyColumns(KEY_ROWS)
-        local keyText = MakeText(tree, "RU_Keys", 11, C_GOLD, keys)
-        local actText = MakeText(tree, "RU_Actions", 11, C_CREAM, acts)
-        Overlay.Texts.Keys, Overlay.Texts.Acts = keyText, actText
-        local ks = row:AddChildToHorizontalBox(keyText)
-        pcall(function() ks:SetPadding({ Left = 0, Top = 0, Right = 18, Bottom = 0 }) end)
-        row:AddChildToHorizontalBox(actText)
-        AddTo(box, row, 0)
-        Divider("RU_KeysTrim", 6, 8)
-
-        step = "element list"
-        Overlay.Texts.ListTitle = MakeText(tree, "RU_ListTitle", 11, C_GOLD, "ELEMENTS")
-        AddTo(box, Overlay.Texts.ListTitle, 4)
-        Overlay.Texts.List = {}
-        for r = 1, LIST_ROWS do
-            local T = MakeText(tree, "RU_Row" .. r, 11, C_GREY, "")
-            AddTo(box, T, 1)
-            Overlay.Texts.List[r] = T
-        end
-
-        step = "placeholder"
-        -- a see-through gold box with the name, on the selected element: shows where it is even when the
-        -- element itself is not on screen (XP popup, level up, saving animation)
-        local ph = StaticConstructObject(Cls("/Script/UMG.Border"), tree, FName("RU_Placeholder"))
-        ph:SetBrushColor({ R = 0.95, G = 0.75, B = 0.35, A = 0.28 })
-        ph:SetPadding({ Left = 4, Top = 2, Right = 4, Bottom = 2 })
-        Overlay.PhText = MakeText(tree, "RU_PlaceholderText", 12, C_CREAM, "")
-        ph:SetContent(Overlay.PhText)
-        Overlay.PhSlot = canvas:AddChildToCanvas(ph)   -- added first, so the panel stays on top
-        Overlay.PhSlot:SetAutoSize(false)
-        Overlay.Ph = ph
-
-        step = "position"
-        -- fixed width, so the panel does not jump when a longer name is selected
-        local sizer = StaticConstructObject(Cls("/Script/UMG.SizeBox"), tree, FName("RU_PanelWidth"))
-        sizer:SetWidthOverride(400)
-        local stack = StaticConstructObject(Cls("/Script/UMG.Overlay"), tree, FName("RU_PanelStack"))
-        stack:AddChildToOverlay(frame)
-        if art.Sparkle then
-            local okS, errS = pcall(function()
-                local sys = Asset(art.Sparkle, "/Script/Niagara.NiagaraSystem")
-                local cls = Asset("/Script/NiagaraUIRenderer.NiagaraSystemWidget")
-                if not (sys and cls) then error("sparkle effect not loaded") end
-                local sp = StaticConstructObject(cls, tree, FName("RU_Sparkle"))
-                sp.NiagaraSystemReference = sys
-                pcall(function() sp.AutoActivate = true end)
-                local s = stack:AddChildToOverlay(sp)
-                s:SetHorizontalAlignment(0)   -- fill the whole panel
-                s:SetVerticalAlignment(0)
-                sp:SetVisibility(3)
-                pcall(function() sp:UpdateNiagaraSystemReference(sys) end)
-                pcall(function() sp:ActivateSystem(true) end)
-            end)
-            if okS then Log("menu sparkles on") else Log("menu sparkles not used: " .. tostring(errS)) end
-        end
-        sizer:SetContent(stack)
-        local slot = canvas:AddChildToCanvas(sizer)
-        slot:SetAutoSize(true)
-        slot:SetPosition(PANEL_AT)
-        step = "add to screen"
-        uw:AddToViewport(1000)
-        uw:SetVisibility(1)   -- collapsed until the editor opens
-        Overlay.W, Overlay.Sizer, Overlay.Slot, Overlay.Mode = uw, sizer, slot, nil
-    end)
-    if ok then
-        Log("panel ready")
-        Overlay.Fails = 0
-    else
-        Failed(Overlay)
-        Log("panel failed at step '" .. step .. "': " .. tostring(err))
+-- The F9 list by screen area (design sketch): the ninth of the screen an element sits in (Layout.Area). Read when
+-- the editor opens, so a row does not jump to another group while it moves; PgUp and PgDn go down this list.
+local Order = {}   -- element indexes in list order
+local AreaOf = {}   -- element index -> its area, from the last SortOrder
+local function SortOrder()
+    local byArea = {}
+    for i, E in ipairs(Elements) do
+        local a = Area(E)
+        AreaOf[i] = a
+        byArea[a] = byArea[a] or {}
+        table.insert(byArea[a], i)
     end
+    Order = {}
+    for _, a in ipairs(AREAS) do for _, i in ipairs(byArea[a] or {}) do Order[#Order + 1] = i end end
 end
 
-local PanelErrorLogged = false
+-- moved, resized or faded from its default: a gold diamond on its row
+local function Changed(E)
+    local d = Defaults[E.Id] or {}
+    return math.abs(E.X - (d.X or 0)) > 0.5 or math.abs(E.Y - (d.Y or 0)) > 0.5 or math.abs(E.Scale - (d.Scale or 1)) > 0.001
+        or E.Opacity < 1
+end
+
+-- the keys each panel lists (the design sketch)
+local EDIT_KEYS = { { { "PgUp", "PgDn" }, "Select" }, { { "←", "→", "↑", "↓" }, "Move" }, { { "+", "-" }, "Size" },
+    { { ",", "." }, "Opacity" }, { { "Home", "End" }, "Step" }, { { "Del", "Ins" }, "Hide, show" },
+    { { "Backspace" }, "Reset" }, { { "F9" }, "Save, close" } }
+local MAP_KEYS = { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { "[", "]" }, "Zoom" },
+    { { "Backspace" }, "Reset" }, { { "F9" }, "Layout" }, { { "F8" }, "Save, close" } }
+local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
+-- the lines that are a plain On / Off, and the setting in runemap.lua each one flips
+local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
+    Essence = "Essence", ["Rare trees"] = "Trees" }
 
 -- The F8 lines: the value of each, and a hint for the selected one
 local function MapValue(i)
@@ -1077,684 +835,159 @@ local function MapHint(i, v)
     return MAP_HINTS[row] and MAP_HINTS[row][v] or ""
 end
 
--- The panel's title, keys and list when it switches between F9 and F8
-local function SetPanelMode(mode)
-    Overlay.Mode, Overlay.LastState, Overlay.PX, Overlay.PY = mode, "", nil, nil
-    local keys, acts = KeyColumns(mode == "map" and MAP_KEY_ROWS or KEY_ROWS)
-    Overlay.Texts.Title:SetText(FText(mode == "map" and "RUNE MAP" or "RUNE UI"))
-    Overlay.Texts.Keys:SetText(FText(keys))
-    Overlay.Texts.Acts:SetText(FText(acts))
-    Overlay.Texts.ListTitle:SetText(FText(mode == "map" and "SETTINGS" or "ELEMENTS"))
-    for r = 1, LIST_ROWS do
-        Overlay.Texts.List[r]:SetVisibility((mode == "map" and r > #MAP_ROWS) and 1 or 4)
+-- The parts that failed, for a line on the F9 and F8 panel: a part whose step or scan threw (Parts), or that gave
+-- up building (Fails, see MayTry; a part with several builds says so itself with Problem).
+local function Problems()
+    local out = {}
+    for _, P in ipairs(Parts) do
+        if P.Error or (P.M.Fails or 0) >= 3 or (P.M.Problem and P.M.Problem()) then out[#out + 1] = P.Name end
     end
-    pcall(function() Overlay.Ph:SetVisibility(mode == "map" and 1 or 3) end)   -- the gold box is the editor's
-    if mode ~= "map" then Overlay.Slot:SetPosition(PANEL_AT) end
+    if #out == 0 then return nil end
+    return "Failed: " .. table.concat(out, ", ") .. ". See UE4SS.log in Win64."
 end
 
--- F8: under the map, its right edge on the map's right edge; above the map when there is no room below
-local function PlaceMapPanel()
-    local E = ById("runemap")
-    local cx, cy = FinalCenter(E)
-    local half = E.Size.X / 2 * E.Scale
-    local w, h = 400, 420
-    pcall(function() local s = Overlay.Sizer:GetDesiredSize() if s.X > 1 and s.Y > 1 then w, h = s.X, s.Y end end)
-    local x = math.max(10, math.min(Hud.VW - 10 - w, cx + half - w))
-    local y = cy + half + 12
-    if y + h > Hud.VH - 10 then y = math.max(10, cy - half - 12 - h) end
-    x, y = math.floor(x + 0.5), math.floor(y + 0.5)
-    if x ~= Overlay.PX or y ~= Overlay.PY then
-        Overlay.PX, Overlay.PY = x, y
-        Overlay.Slot:SetPosition({ X = x, Y = y })
+local function EditView()
+    local E = Elements[Selected]
+    local v = { Mode = "edit", Title = "RUNE UI", SubA = "Map settings on", SubB = "F8", Profile = Prof.N,
+        Keys = EDIT_KEYS, Name = E.Name, Map = {}, Warn = Problems() }
+    local cx, cy = Spot(E)
+    local sx, sy = math.floor(cx + 0.5), math.floor(cy + 0.5)   -- on a 1920 x 1080 screen
+    if E.Wait then   -- the immersive line: + and - set the wait
+        v.Facts = { { "State", E.Visible and "On" or "Off" }, { "Waits", E.Wait .. " s" } }
+        v.Hint = "+ and - change how long the HUD waits before it fades. Ins and Del turn it on and off."
+    elseif IsSwitch(E) then
+        v.Facts = { { "State", E.Visible and "On" or "Off" } }
+        v.Hint = "Ins and Del turn it on and off."
+    else
+        v.Facts = { { "X", tostring(sx) }, { "Y", tostring(sy) }, { "Size", math.floor(E.Scale * 100 + 0.5) .. "%" },
+            { "Opacity", math.floor(E.Opacity * 100 + 0.5) .. "%" }, { "Step", tostring(Step) } }
+        if not E.Visible then v.Hint = "Hidden. Ins shows it again."
+        elseif #E.Instances == 0 then v.Hint = "Not on the screen right now. It still moves." end
+        local x, y, w, h = ScreenBox(E)
+        v.Mark = { X = x, Y = y, W = w, H = h, Name = E.Name, XY = "X " .. sx .. "   Y " .. sy }
     end
+    -- the screen map: every element with a place, in 1920 x 1080 units
+    for i, El in ipairs(Elements) do
+        if not IsSwitch(El) and #v.Map < Editor.BOXES then
+            local x, y, s = Spot(El)
+            local w, h = El.Size.X * s, El.Size.Y * s
+            v.Map[#v.Map + 1] = { X = x - w / 2, Y = y - h / 2, W = w, H = h,
+                Sel = i == Selected, Hidden = not El.Visible, Name = El.Name }
+        end
+    end
+    -- the list: Editor.ROWS lines of group titles and rows, the selected row in the middle when it can be
+    local lines, at = {}, 1
+    local last
+    for _, i in ipairs(Order) do
+        local El = Elements[i]
+        local a = AreaOf[i]
+        if a ~= last then lines[#lines + 1] = { Head = true, Text = a } last = a end
+        local gone = #El.Instances == 0 and not IsSwitch(El)
+        lines[#lines + 1] = { Text = El.Name, Sel = i == Selected, Moved = Changed(El), Dim = gone or not El.Visible,
+            Note = not El.Visible and "hidden" or gone and "not on screen" or nil }
+        if i == Selected then at = #lines end
+    end
+    local first = math.max(1, math.min(at - math.floor(Editor.ROWS / 2), #lines - Editor.ROWS + 1))
+    v.Rows = {}
+    for n = first, math.min(#lines, first + Editor.ROWS - 1) do v.Rows[#v.Rows + 1] = lines[n] end
+    -- a group title on the last line has its rows cut off below: "CENTER" with nothing under it (01-10-2026)
+    if v.Rows[#v.Rows].Head then v.Rows[#v.Rows] = nil end
+    return v
 end
 
-local function UpdateMapPanel()
+local function MapView()
     local vals = {}
     for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
-    local state = MapSel .. "|" .. table.concat(vals, "|")
-    if state ~= Overlay.LastState then
-        Overlay.LastState = state
-        Overlay.Texts.Selected:SetText(FText("Selected:  " .. MAP_ROWS[MapSel]))
-        Overlay.Texts.Info:SetText(FText(MapHint(MapSel, vals[MapSel])))
-        for r = 1, #MAP_ROWS do
-            local T = Overlay.Texts.List[r]
-            T:SetText(FText(((r == MapSel) and ">  " or "    ") .. MAP_ROWS[r] .. ":  " .. vals[r]))
-            SetColor(T, r == MapSel and C_GOLD or C_GREY)
-        end
-    end
-    PlaceMapPanel()   -- every step: the panel's height changes with the hint, and the map can move
+    local v = { Mode = "map", Title = "RUNE MAP", SubA = "Layout on", SubB = "F9", Keys = MAP_KEYS, Warn = Problems(),
+        Name = MAP_ROWS[MapSel] .. ":  " .. vals[MapSel], Hint = MapHint(MapSel, vals[MapSel]), Rows = {} }
+    for r = 1, #MAP_ROWS do v.Rows[r] = { Text = MAP_ROWS[r], Note = vals[r], Sel = r == MapSel } end
+    return v
 end
 
-local function UpdateEditPanel()
-    local E = Elements[Selected]
-    local state = table.concat({ Selected, E.X, E.Y, E.Scale, E.Opacity, Step, tostring(E.Visible), Hud.VW, Hud.VH, Hud.S,
-        E.Wait or 0 }, "|")
-    for i, El in ipairs(Elements) do state = state .. (El.Visible and "1" or "0") .. (#El.Instances > 0 and "f" or "n") end
-    if state == Overlay.LastState then return end
-    Overlay.LastState = state
-    Overlay.Texts.Selected:SetText(FText("Selected:  " .. E.Name))
-    Overlay.Texts.ListTitle:SetText(FText(string.format("ELEMENTS   %d / %d", Selected, #Elements)))
-    if Overlay.PhSlot and E.Center then
-        local sz = E.Scale * (OnViewport(E) and 1 or Hud.S)
-        local w, h = E.Size.X * sz, E.Size.Y * sz
+-- F9: the panel stays on its side of the screen and moves to the other only when it would cover the selected
+-- element. Going away from every selected element made it jump from side to side while going down the list
+-- ("it really bothers me", 01-10-2026). Its side is kept in Editor.Left.
+-- F8: under the map, its right edge on the map's right edge; above the map when there is no room below.
+local function PanelAt(v)
+    local w, h = Editor.Size()
+    if v.Mode == "map" then
+        local E = ById("runemap")
         local cx, cy = FinalCenter(E)
-        Overlay.PhSlot:SetPosition({ X = cx - w / 2, Y = cy - h / 2 })
-        Overlay.PhSlot:SetSize({ X = w, Y = h })
-        Overlay.PhText:SetText(FText(E.Name))
+        local half = E.Size.X / 2 * E.Scale
+        local x = math.max(10, math.min(Hud.VW - 10 - w, cx + half - w))
+        local y = cy + half + 12
+        if y + h > Hud.VH - 10 then y = math.max(10, cy - half - 12 - h) end
+        return { X = math.floor(x + 0.5), Y = math.floor(y + 0.5) }
     end
-    if E.Wait then   -- the immersive line: + / - set the wait, not a size
-        Overlay.Texts.Info:SetText(FText(string.format("Waits %d s before fading   (+ / - to change)%s", E.Wait,
-            E.Visible and "" or "     OFF")))
-    else
-        Overlay.Texts.Info:SetText(FText(string.format("Size %d%%     Opacity %d%%     Move step %d%s",
-            math.floor(E.Scale * 100 + 0.5), math.floor(E.Opacity * 100 + 0.5), Step, E.Visible and "" or "     HIDDEN")))
+    local y = math.floor(math.max(10, (Hud.VH - h) / 2))
+    local function X(left) return left and 30 or math.floor(Hud.VW - 30 - w) end
+    local function Covers(left)
+        local m, x = v.Mark, X(left)
+        return m.X < x + w and m.X + m.W > x and m.Y < y + h and m.Y + m.H > y
     end
-    -- LIST_ROWS rows with the selected element near the middle; the list wraps around at both ends
-    for r = 1, LIST_ROWS do
-        local i = ((Selected - 1 + r - math.ceil(LIST_ROWS / 2)) % #Elements) + 1
-        local El = Elements[i]
-        local T = Overlay.Texts.List[r]
-        local extra = ""
-        if #El.Instances == 0 and not IsSwitch(El) then extra = "   (not on screen)" end
-        if not El.Visible then extra = extra .. "   (hidden)" end
-        T:SetText(FText(((i == Selected) and ">  " or "    ") .. El.Name .. extra))
-        if i == Selected then SetColor(T, C_GOLD)
-        elseif not El.Visible or (#El.Instances == 0 and not IsSwitch(El)) then SetColor(T, C_DIM)
-        else SetColor(T, C_GREY) end
-    end
+    if Editor.Left == nil then Editor.Left = true end
+    if v.Mark and Covers(Editor.Left) and not Covers(not Editor.Left) then Editor.Left = not Editor.Left end
+    return { X = X(Editor.Left), Y = y }
 end
 
-local function UpdateOverlay()
-    if Overlay.W and not Overlay.W:IsValid() then Overlay.W, Overlay.LastState, Overlay.Open = nil, "", false end
+-- State: what the panel shows now, as one string. View: the last view, placed again on every step, as the panel
+-- knows its new size one frame after its content changed.
+local Panel = { State = "", View = nil, ErrorLogged = false }
+local function UpdateOverlay(now)
     local open = EditMode or MapMode
-    -- like every other build: never into a world that is loading or not settled yet
-    if open and not Overlay.W and MayTry(Overlay) and os.clock() > SettleUntil and LastController ~= "" then BuildOverlay() end
-    if not Overlay.W then return end
+    if not Editor then return end
+    if open and not Editor.Ready() and MayTry(Editor) and os.clock() > SettleUntil and LastController ~= "" then
+        local ok, err = Editor.Build({ Log = Log, Gen = function() return Gen end, Font = FindPoppins(), Asset = Asset })
+        if ok then Log("panel ready") Editor.Fails, Panel.State = 0, "" else Failed(Editor) Log("panel failed: " .. tostring(err)) end
+    end
+    if not Editor.Ready() then return end
     local ok, err = pcall(function()
         if not open then
-            if Overlay.Open then Overlay.W:SetVisibility(1) Overlay.Open = false end   -- collapsed
+            if Editor.Shown then Editor.Open(false) Editor.Shown = false end
             return
         end
-        local mode = MapMode and "map" or "edit"
-        if mode ~= Overlay.Mode then SetPanelMode(mode) end
-        if MapMode then UpdateMapPanel() else UpdateEditPanel() end
-        if not Overlay.Open then Overlay.W:SetVisibility(3) Overlay.Open = true end   -- shown, but clicks go through it
-    end)
-    if not ok and not PanelErrorLogged then PanelErrorLogged = true Log("panel update failed: " .. tostring(err)) end
-end
----------------------------------------------------------------- buffs in a row
-
--- The buff list is a ListView. Its direction is fixed when the list is built, so the mod sets it to
--- horizontal and puts the list back into its box, which makes the game build it again sideways.
-local BuffRowDone = {}
-local function EnsureBuffRow()
-    local B = ById("buffs")
-    for n, W in ipairs(B.Instances) do
-        local k = B.Keys[n]
-        if not BuffRowDone[k] then
-            BuffRowDone[k] = true
-            local ok, err = pcall(function()
-                local ov = W.WidgetTree.RootWidget
-                local LV = ov:GetChildAt(0)
-                local oldSlot = LV.Slot
-                local p0 = oldSlot.Padding   -- copied to plain numbers: the old slot goes away with RemoveFromParent
-                local h, v = oldSlot.HorizontalAlignment, oldSlot.VerticalAlignment
-                local pad = { Left = p0.Left, Top = p0.Top, Right = p0.Right, Bottom = p0.Bottom }
-                LV.Orientation = 0   -- horizontal
-                pcall(function() LV:SetClipping(0) ov:SetClipping(0) end)
-                LV:RemoveFromParent()
-                local s = ov:AddChildToOverlay(LV)
-                pcall(function() s:SetHorizontalAlignment(h) s:SetVerticalAlignment(v) s:SetPadding(pad) end)
-                pcall(function() LV:RegenerateAllEntries() end)
-            end)
-            if ok then Log("buffs turned into a row") else Log("buff row failed: " .. tostring(err)) end
-        end
-    end
-end
-
----------------------------------------------------------------- round buffs
-
--- Each buff entry is: SizeBox > Overlay > [icon, Overlay > [straight bar, title]]. The mod hides the bar
--- and the title, makes the entry square, and puts the ring of food, water and rest under the icon (Ivan's pick,
--- 29-09-2026, in place of the ring of dashes): dark back, coloured ring, dark centre. The bar's material holds
--- the time left; the ring shows that share. A buff without a timer (its bar is hidden by the game) gets a full ring.
--- The game's XP ring was tried first (27-09-2026): the row squashed it into an oval and the game drew it white.
-local RING_BOX = 50    -- the ring; the row keeps the size of the dashes' box
-local BUFF_GAP = 10    -- room between two rings (Ivan, 29-09-2026: they nearly touched)
-local BUFF_ICON = 28   -- the game's icon in the ring's centre; its picture has an empty edge
--- Centred by the numbers, some of the game's pictures look high: their art sits high in its square (in-game test,
--- 27-09-2026: 3.5 at 32). Others are centred and sat 1.5 units low at 3.5 (the overeating face and the house,
--- Ivan's screenshot of 29-09-2026): 2 favours the centred ones. Optical, by picture; units at an icon of 32.
--- The new character's half sun (Fresh Start) is heavy at the bottom and looked low at 2 (Ivan, 29-09-2026).
-local BUFF_NUDGE = { Default = 2, T_Icon_Sml_FreshStart = 0.5 }
-local BuffPics = {}   -- the icon pictures already named in the log, once each
-local BUFF_ART = { Back = "upkeep_back.png", Half = "upkeep_half.png", Centre = "upkeep_centre.png" }
--- the three pictures: the rings hold them; these handles are only reused while valid, and dropped with the world
-local BuffArt = {}
-local BuffDeco = {}          -- entry full name -> { W, Right, Left (the ring's halves), Bar, Lit }
-local BuffParamLogged = false
--- a buff with no colour of its own: the sketch's #ffd173, as linear light
-local C_RING_GOLD = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 }
-
--- A picture from a file, kept in cache[key] and reused while it is valid. Widgets must hold it: a texture that
--- only Lua holds is thrown away by the engine. The buffs and the bars use it.
-local function CachedTex(cache, key, outer, file)
-    local tex = cache[key]
-    if tex and tex:IsValid() then return tex end
-    tex = StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary"):ImportFileAsTexture2D(outer, file)
-    if not (tex and tex:IsValid()) then error("picture not loaded: " .. file) end
-    cache[key] = tex
-    return tex
-end
-
-local function BuffTextures(outer)
-    for k, file in pairs(BUFF_ART) do CachedTex(BuffArt, k, outer, "ue4ss/Mods/RuneUI/Art/" .. file) end
-    return BuffArt
-end
-
-local function DecorateBuff(E)
-    local k = E:GetFullName()
-    if BuffDeco[k] then return end
-    BuffDeco[k] = { W = E }
-    if not Survival then return end   -- no ring to borrow: the buff keeps the game's look
-    local ok, err = pcall(function()
-        local tree = E.WidgetTree
-        local box = tree.RootWidget
-        local ov = box:GetContent()
-        ClearOurs(ov, "RU_RingBox")   -- a ring of ours from an earlier round
-        -- the game's two: the bar's Overlay and the icon. Found by class, not place: a decorated entry has
-        -- the icon moved to the end.
-        local icon, barBox
-        for i = 0, ov:GetChildrenCount() - 1 do
-            local c = ov:GetChildAt(i)
-            if ClassName(c) == "Overlay" then barBox = c else icon = c end
-        end
-        if not (icon and barBox) then error("icon or bar not found") end
-        local bar = barBox:GetChildAt(0)
-        local art = BuffTextures(E)
-        box:SetWidthOverride(RING_BOX + BUFF_GAP)   -- the ring stays in the middle: half the gap on each side
-        box:SetHeightOverride(RING_BOX)
-        barBox:SetRenderOpacity(0.0)   -- the straight bar and the title stay alive for the game, just unseen
-        pcall(function() E:SetClipping(0) box:SetClipping(0) ov:SetClipping(0) end)   -- the list must not cut the ring
-        local ring, right, left = Survival.Ring(tree, Uniq("RU_Ring"), RING_BOX, art, C_RING_GOLD)
-        -- the list can give the entry less height than the ring: after leaving a house (in-game test,
-        -- 29-09-2026) the dark pictures were squashed and the coloured ring cut. On a canvas the ring keeps its
-        -- own size, centred on the entry like the icon.
-        local canvas = StaticConstructObject(StaticFindObject("/Script/UMG.CanvasPanel"), tree, G("RU_RingCanvas"))
-        local rs = canvas:AddChildToCanvas(ring)
-        rs:SetAutoSize(false)
-        rs:SetAnchors({ Minimum = { X = 0.5, Y = 0.5 }, Maximum = { X = 0.5, Y = 0.5 } })
-        rs:SetAlignment({ X = 0.5, Y = 0.5 })
-        rs:SetPosition({ X = 0, Y = 0 })
-        rs:SetSize({ X = RING_BOX, Y = RING_BOX })
-        local ringBox = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), tree, G("RU_RingBox"))
-        ringBox:SetWidthOverride(RING_BOX)
-        ringBox:SetHeightOverride(RING_BOX)
-        ringBox:SetContent(canvas)
-        local cs = ov:AddChildToOverlay(ringBox)
-        cs:SetHorizontalAlignment(2) cs:SetVerticalAlignment(2)
-        -- the icon goes on top of the ring: an Overlay draws its last child last. Icon and ring both sit on the
-        -- entry's centre; top-left with padding put the icon ~4 units high (test of 27-09-2026).
-        icon:RemoveFromParent()
-        local is = ov:AddChildToOverlay(icon)
-        is:SetHorizontalAlignment(2) is:SetVerticalAlignment(2)
-        pcall(function() icon:SetDesiredSizeOverride({ X = BUFF_ICON, Y = BUFF_ICON }) end)
-        pcall(function() icon:SetRenderTranslation({ X = 0, Y = BUFF_NUDGE.Default * BUFF_ICON / 32 }) end)   -- by picture: UpdateBuffRings
-        BuffDeco[k].Right, BuffDeco[k].Left, BuffDeco[k].Bar, BuffDeco[k].Lit = right, left, bar, ""
-        BuffDeco[k].Icon = icon
-    end)
-    if not ok then Log("round buff failed: " .. tostring(err)) end
-end
-
--- Share of time left, 0..1, from the straight bar's material; nil when the buff has no timer
-local BuffParam = nil
-local function BuffShare(bar)
-    local v = bar:GetVisibility()
-    if v == 1 or v == 2 then return nil end
-    local mid = bar.Brush.ResourceObject
-    local vals = {}
-    mid.ScalarParameterValues:ForEach(function(_, e)
-        local p = e:get()
-        vals[p.ParameterInfo.Name:ToString()] = p.ParameterValue
-    end)
-    if not BuffParamLogged then
-        BuffParamLogged = true
-        local names = {}
-        for n, v in pairs(vals) do table.insert(names, n .. "=" .. string.format("%.2f", v)) end
-        Log("buff bar material values: " .. table.concat(names, ", "))
-        for n in pairs(vals) do
-            local l = string.lower(n)
-            if string.find(l, "progress") or string.find(l, "percent") or string.find(l, "fill") then BuffParam = n end
-        end
-        if not BuffParam then for n in pairs(vals) do BuffParam = BuffParam or n end end
-        Log("buff ring reads " .. tostring(BuffParam))
-    end
-    local v = BuffParam and vals[BuffParam]
-    if v == nil then return nil end
-    return math.max(0, math.min(1, v))
-end
-
--- from the last widget search, which runs at once when the number of buffs changes (FindAll)
-local function FindBuffEntries()
-    for _, E in ipairs(FindClass("WBP_HUD_StatusEffectListEntry_C")) do DecorateBuff(E) end
-end
-
-local function UpdateBuffRings()
-    for k, d in pairs(BuffDeco) do
-        if not (d.W and d.W:IsValid()) then
-            BuffDeco[k] = nil
-        elseif d.Right and not (d.Bar and d.Bar:IsValid() and d.Right:IsValid() and d.Left:IsValid()) then
-            BuffDeco[k] = nil   -- the game rebuilt this entry; it is decorated again on the next scan
-        elseif d.Right then
-            local okS, share = pcall(BuffShare, d.Bar)
-            if not okS or not share then share = 1 end   -- no timer: a full ring
-            -- the buff's own colour from its bar ("Bar Color 1": poison green, slow yellow, 27-09-2026), already
-            -- linear light; a list entry is reused for another buff, so it is read every time. Gold when there is none.
-            local on = C_RING_GOLD
-            pcall(function()
-                d.Bar.Brush.ResourceObject.VectorParameterValues:ForEach(function(_, e)
-                    local p = e:get()
-                    if p.ParameterInfo.Name:ToString() == "Bar Color 1" then
-                        local c = p.ParameterValue
-                        on = { R = c.R, G = c.G, B = c.B, A = 1.0 }
-                    end
-                end)
-            end)
-            -- the icon's nudge by its picture (BUFF_NUDGE); an entry is reused for another buff, so it is read every time
-            pcall(function()
-                local pic = d.Icon.Brush.ResourceObject:GetFName():ToString()
-                if pic == d.Pic then return end
-                d.Pic = pic
-                d.Icon:SetRenderTranslation({ X = 0, Y = (BUFF_NUDGE[pic] or BUFF_NUDGE.Default) * BUFF_ICON / 32 })
-                if not BuffPics[pic] then BuffPics[pic] = true Log("buff icon: " .. pic) end
-            end)
-            local key = string.format("%.3f %.2f %.2f %.2f", share, on.R, on.G, on.B)
-            if key ~= d.Lit then
-                d.Lit = key
-                d.Right:SetColorAndOpacity(on)
-                d.Left:SetColorAndOpacity(on)
-                Survival.Turn(d, share)
-            end
-        end
-    end
-end
-
----------------------------------------------------------------- avatar
-
-local AVATAR_FILES = { "ue4ss/Mods/RuneUI/avatar.png" }
-
--- The player's power level, read from the level display of the inventory (it exists while the inventory is
--- closed too): SizeBox > Border > Overlay > [icon, text].
-local function ReadPowerLevel()
-    local D = FindClass("WBP_InventoryPowerLevelDisplay_C")[1]
-    if not D then return nil end
-    local ov = D.WidgetTree.RootWidget:GetContent():GetContent()
-    local T = ov:GetChildAt(1)
-    local icon = nil
-    pcall(function() icon = ov:GetChildAt(0).Brush.ResourceObject end)
-    return T:GetText():ToString(), T, icon
-end
-
--- Level badge: the green diamond from the inventory with the level number, the default avatar.
-local function BuildLevelBadge(tree)
-    local ov = StaticConstructObject(StaticFindObject("/Script/UMG.Overlay"), tree, G("RU_LevelBadge"))
-    local tex = Asset("/Game/Art/UI/PowerLevel/T_PowerLevel_AboveZone.T_PowerLevel_AboveZone", "/Script/Engine.Texture2D")
-    if tex then
-        local img = StaticConstructObject(StaticFindObject("/Script/UMG.Image"), tree, G("RU_LevelIcon"))
-        img:SetBrushFromTexture(tex, false)
-        Avatar.LevelIcon = img
-        local s = ov:AddChildToOverlay(img)
-        s:SetHorizontalAlignment(0) s:SetVerticalAlignment(0)
-    end
-    local txt = StaticConstructObject(StaticFindObject("/Script/UMG.TextBlock"), tree, G("RU_LevelText"))
-    txt:SetText(FText("?"))
-    SetColor(txt, { R = 1, G = 1, B = 1, A = 1 })
-    pcall(function()
-        txt:SetShadowOffset({ X = 1.5, Y = 1.5 })
-        txt:SetShadowColorAndOpacity({ R = 0, G = 0, B = 0, A = 0.85 })
-    end)
-    pcall(function()
-        local _, gameText = ReadPowerLevel()
-        local fi = txt.Font
-        if gameText then fi.FontObject = gameText.Font.FontObject end
-        -- the editor title's font, from the main menu buttons (chosen 27-09-2026); the inventory font is the fallback
-        pcall(function()
-            local mf = FindMenuArt().Font
-            local fo = mf and Asset(mf.Res, "/Script/Engine.Font")
-            if not fo then return end
-            fi.FontObject = fo
-            if mf.Typeface then fi.TypefaceFontName = FName(mf.Typeface) end
-        end)
-        fi.Size = 26
-        pcall(function() fi.OutlineSettings.OutlineSize = 2 fi.OutlineSettings.OutlineColor = { R = 0, G = 0, B = 0, A = 0.9 } end)
-        txt:SetFont(fi)
-    end)
-    local ts = ov:AddChildToOverlay(txt)
-    ts:SetHorizontalAlignment(2) ts:SetVerticalAlignment(2)   -- centre
-    -- the menu font's line carries a deep descender, so its digits sit high. Only down, not sideways: at
-    -- +2 a digit with a heavy right stroke (the 4) looked shifted right (in-game test, 27-09-2026)
-    pcall(function() txt:SetRenderTranslation({ X = 0, Y = 2 }) end)
-    Avatar.LevelText = txt
-    return ov
-end
-
-local function EnsureAvatar()
-    if not MayTry(Avatar) then return end
-    local VE = ById("vitals")
-    local V = VE.Instances[1]
-    if not (V and V:IsValid()) then return end
-    local hostName = VE.Keys[1]   -- its full name, read by the search
-    if Avatar.W and Avatar.W:IsValid() and Avatar.HostName == hostName then
-        -- keep the level number fresh
-        if Avatar.LevelText then
-            pcall(function()
-                local lv, _, icon = ReadPowerLevel()
-                if lv and lv ~= Avatar.LastLevel then Avatar.LastLevel = lv Avatar.LevelText:SetText(FText(lv)) end
-                -- the game swaps the diamond's picture (colour) by your level against the area; follow it
-                local iconName = icon and icon:GetFullName()
-                if iconName and Avatar.LevelIcon and iconName ~= Avatar.LastIcon then
-                    Avatar.LastIcon = iconName
-                    Avatar.LevelIcon:SetBrushFromTexture(icon, false)
-                end
-            end)
-        end
-        return
-    end
-    local step = "texture"
-    local ok, err = pcall(function()
-        -- a picture only when the player put avatar.png in the mod folder; otherwise the level badge
-        if not (Avatar.Tex and Avatar.Tex:IsValid()) and not Avatar.NoPicture then
-            local KRL = StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary")
-            for _, file in ipairs(AVATAR_FILES) do
-                local fh = io.open(file, "rb")
-                if fh then
-                    fh:close()
-                    local okT, tex = pcall(function() return KRL:ImportFileAsTexture2D(V, file) end)
-                    if okT and tex and tex:IsValid() then Avatar.Tex = tex Log("avatar picture loaded from " .. file) break end
-                end
-            end
-            if not Avatar.Tex then Avatar.NoPicture = true Log("no avatar.png, showing the level badge") end
-        end
-        step = "image"
-        local root = V.WidgetTree.RootWidget
-        local img
-        if Avatar.Tex then
-            img = StaticConstructObject(StaticFindObject("/Script/UMG.Image"), V.WidgetTree, G("RU_Avatar"))
-            img:SetBrushFromTexture(Avatar.Tex, false)
+        -- a new view only when something it shows changed: the numbers of every element, the step, the screen
+        local state
+        if MapMode then
+            local vals = {}
+            for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
+            state = "map|" .. MapSel .. "|" .. table.concat(vals, "|") .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
         else
-            img = BuildLevelBadge(V.WidgetTree)
-            Avatar.LastLevel = nil
+            local parts = { "edit", Selected, Step, Prof.N, Hud.VW, Hud.VH, Hud.S, Problems() or "" }
+            for _, El in ipairs(Elements) do
+                parts[#parts + 1] = string.format("%.1f,%.1f,%.2f,%.1f,%s,%d,%s", El.X, El.Y, El.Scale, El.Opacity,
+                    El.Visible and "1" or "0", #El.Instances, tostring(El.Wait))
+            end
+            state = table.concat(parts, "|")
         end
-        step = "place"
-        -- The bars widget's root is a full-screen Overlay. The bars sit in it centred and at the bottom, so the
-        -- badge does too, next to the bars' left end: its box at 710,932 on a 16:9 screen. Pinned to the top left, it
-        -- slid off the bars on a wide screen (Nexus, 29-09-2026). A centred child's middle is at half the width
-        -- plus Left minus Right (not the middle of the room between the paddings: in-game test, 29-09-2026), and a
-        -- bottom one's bottom edge is Bottom above the bottom. So Right = 960 - 744.5 and Bottom = 1080 - 1001.
-        local box = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), V.WidgetTree, G("RU_AvatarBox"))
-        box:SetWidthOverride(69)
-        box:SetHeightOverride(69)
-        box:SetContent(img)
-        ClearOurs(root, "RU_AvatarBox")
-        local slot = root:AddChildToOverlay(box)
-        slot:SetHorizontalAlignment(2)   -- centre
-        slot:SetVerticalAlignment(3)     -- bottom
-        slot:SetPadding({ Left = 0, Top = 0, Right = 215.5, Bottom = 79 })
-        Avatar.W, Avatar.HostName = box, hostName
+        if state ~= Panel.State then
+            Panel.State = state
+            Panel.View = MapMode and MapView() or EditView()
+            Editor.Update(Panel.View)
+        end
+        -- placed every step: the panel knows its new size one frame after its content changed
+        if Panel.View then Editor.Place(PanelAt(Panel.View)) end
+        Editor.Pulse(now)
+        if not Editor.Shown then Editor.Open(true) Editor.Shown = true end
     end)
-    if ok then Log("avatar ready") Avatar.Fails = 0 else Failed(Avatar) Log("avatar failed at step '" .. step .. "': " .. tostring(err)) end
+    if not ok and not Panel.ErrorLogged then Panel.ErrorLogged = true Log("panel update failed: " .. tostring(err)) end
 end
 
--- The trim line with the diamond from under the main menu's PLAY list, under the bars (design sketch,
--- 27-09-2026). It lives in the bars widget like the badge, so it moves and sizes with the bars.
-local BarTrim = { HostName = nil }
-local function EnsureBarTrim()
-    if not MayTry(BarTrim) then return end
-    local VE = ById("vitals")
-    local V = VE.Instances[1]
-    if not (V and V:IsValid()) or BarTrim.HostName == VE.Keys[1] then return end
-    if not FindMenuArt().Trim then return end   -- not saved from the main menu yet; try again later
-    local ok, err = pcall(function()
-        local line = ImageFromArt(V.WidgetTree, Uniq("RU_BarTrim"), FindMenuArt().Trim)
-        if not line then error("trim picture not loaded") end
-        local box = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), V.WidgetTree, G("RU_BarTrimBox"))
-        box:SetWidthOverride(330)   -- the bars' width; the picture is 335x17
-        box:SetHeightOverride(17)
-        box:SetContent(line)
-        ClearOurs(V.WidgetTree.RootWidget, "RU_BarTrimBox")
-        local slot = V.WidgetTree.RootWidget:AddChildToOverlay(box)
-        -- just under the bars' bottom edge: its box at 787,1006 on a 16:9 screen. Centred and at the bottom like
-        -- the bars and the badge (see EnsureAvatar), so it stays under the bars on a wide screen too:
-        -- Right = 960 - 952 and Bottom = 1080 - 1023.
-        slot:SetHorizontalAlignment(2)
-        slot:SetVerticalAlignment(3)
-        slot:SetPadding({ Left = 0, Top = 0, Right = 8, Bottom = 57 })
-        BarTrim.HostName, BarTrim.W = VE.Keys[1], box   -- the immersive mode fades it with the bars
-    end)
-    if ok then Log("bar trim ready") BarTrim.Fails = 0 else Failed(BarTrim) Log("bar trim failed: " .. tostring(err)) end
+-- the arrows move the selected element by the step; a held arrow keeps moving it (see HoldMove)
+local function Move(dx, dy)
+    local E = Elements[Selected]
+    if not EditMode or IsSwitch(E) then return end
+    E.X, E.Y = E.X + dx * Step, E.Y + dy * Step
+    E.Moved = true   -- on saving, it follows the edge nearest to where it now sits (Retarget)
 end
-
--- The bars (design sketch without its diamonds, in-game review 27-09-2026): plain boxes: a dark track
--- behind each bar's fill and nothing else, stamina in green, health on top, and the icons beside
--- the bars hidden unless the editor shows them. The fill is the game's, in one colour (see OneColorFill).
--- The track is a picture drawn in nine pieces, one pixel to one unit, in place of the game's gold frame: its
--- outer pieces fit the frame's padding and stay empty, so the track sits right behind the fill. There is one picture for each
--- padding from 8 to 12. Widgets hold every picture, so the engine keeps them (a texture only Lua holds is
--- thrown away).
-local BLADE_FILE = "ue4ss/Mods/RuneUI/Art/bar_blade_%d.png"
-local BLADE_W, BLADE_CORE = 80, 16   -- keep as in tools/make-runemap-art.js
--- The game's gold stamina fill times this shows green: red down to 0.35 and blue to 0.6 on screen, in the
--- linear values the engine takes.
-local STAMINA_GREEN = { R = 0.10, G = 1.0, B = 0.32, A = 1.0 }
-local BARS = {
-    { Class = "WBP_HUD_Vitals_StaminaBar_C", Icon = "StaminaIcon" },
-    { Class = "WBP_HUD_Vitals_HealthBar_C", Icon = "HealthImage" },
-    { Class = "WBP_HUD_Vitals_SpecialChargeBar_C", Icon = "SpecialAttackImage" },
-}
-local Blades = { HostName = nil, Tex = {}, Bars = {}, Missed = {}, Count = 0, Swapped = nil }
-
-local function DressBar(B, W)
-    local frame = W.ProgressBarImage:GetParent():GetParent()
-    if ClassName(frame) ~= "Border" then error(B.Class .. ": the fill's frame is a " .. ClassName(frame)) end
-    -- read before anything changes: the picture is chosen by the padding under the fill
-    local p = frame.Padding
-    Log(string.format("bar %s: frame padding %.1f %.1f %.1f %.1f", B.Class, p.Left, p.Top, p.Right, p.Bottom))
-    local pad = math.floor(p.Bottom + 0.5)
-    if pad < 8 or pad > 12 then error(B.Class .. ": no picture for a padding of " .. pad) end
-    local h = pad * 2 + BLADE_CORE
-    local file = string.format(BLADE_FILE, pad)
-    frame:SetBrushFromTexture(CachedTex(Blades.Tex, file, W, file))
-    local b = frame.Background
-    b.DrawAs = 1   -- box: nine pieces
-    b.Tiling = 0
-    b.Margin = { Left = p.Left / BLADE_W, Top = pad / h, Right = p.Right / BLADE_W, Bottom = pad / h }
-    b.ImageSize = { X = BLADE_W, Y = h }
-    b.TintColor = { SpecifiedColor = { R = 1, G = 1, B = 1, A = 1 }, ColorUseRule = 0 }
-    frame:SetBrush(b)
-    frame:SetBrushColor({ R = 1, G = 1, B = 1, A = 1 })
-end
-
--- Health on top: the stamina row and the health row swap places on screen. Only their drawn place moves
--- (render translation); the game's layout stays as it is. Checked on every scan: a row grows when the game
--- shows its regen number, and a size read before the first layout is 0.
-local function SwapRows()
-    local rs, rh = Blades.Bars[1]:GetParent(), Blades.Bars[2]:GetParent()
-    local gap = 0
-    pcall(function() gap = rs.Slot.Padding.Bottom + rh.Slot.Padding.Top end)
-    local hs, hh = rs:GetDesiredSize().Y, rh:GetDesiredSize().Y
-    if hs < 1 or hh < 1 then return end
-    local key = string.format("%.1f %.1f %.1f", hs, hh, gap)
-    if key == Blades.Swapped then return end
-    rs:SetRenderTranslation({ X = 0, Y = hh + gap })
-    rh:SetRenderTranslation({ X = 0, Y = -(hs + gap) })
-    if not Blades.Swapped then Log(string.format("bars: health on top (rows %.0f and %.0f high, gap %.0f)", hs, hh, gap)) end
-    Blades.Swapped = key
-end
-
--- One color bars (1.2, Ivan's pick from the F7 tests of 29-09-2026, for everyone and with no switch): each bar's
--- shadow colour takes its main colour, so the fill shows one colour, and the texture is stronger. The texture's
--- setting is a power: the game's is 5, a lower one shows more, and 1.5 was his pick. The bubbles stay the game's.
--- The colours live on the fill's parent material, so the main colour is read there.
-local ONE_COLOR_NOISE = 1.5
-local OneColor = {}   -- by bar: the full name of the fill last given the look; the game may give a bar a new fill
-local function OneColorFill(mat)
-    local main
-    mat.Parent.VectorParameterValues:ForEach(function(_, e)
-        local p = e:get()
-        if p.ParameterInfo.Name:ToString() == "Health Bar Main Color" then
-            local c = p.ParameterValue
-            main = { R = c.R, G = c.G, B = c.B, A = c.A }
-        end
-    end)
-    if not main then error("no main colour on " .. mat:GetFullName()) end
-    mat:SetVectorParameterValue(FName("Health Bar Shadows Color"), main)
-    mat:SetScalarParameterValue(FName("Bar Noise Power"), ONE_COLOR_NOISE)
-    return main
-end
-
-local function EnsureBlades()
-    if not MayTry(Blades) then return end
-    local VE = ById("vitals")
-    local V = VE.Instances[1]
-    if not (V and V:IsValid()) then return end
-    local host = VE.Keys[1]   -- its full name, read by the search
-    if Blades.HostName ~= host then
-        Blades.HostName, Blades.Bars, Blades.Missed, Blades.Count, Blades.Swapped, Blades.NoNumbers = host, {}, {}, 0, nil, nil
-        OneColor = {}   -- new bars: a fill of theirs may reuse an old name
-    end
-    local ok, err = pcall(function()
-        -- a bar the game made again: forget the dead handle, find the new widget and swap the rows again
-        for i = 1, #BARS do
-            if Blades.Bars[i] and not Blades.Bars[i]:IsValid() then
-                Blades.Bars[i], Blades.Count, Blades.Swapped, Blades.NoNumbers = nil, Blades.Count - 1, nil, nil
-            end
-        end
-        if Blades.Count < #BARS then
-            -- a full name is "Class /Path": a bar's path starts with the path of the bars widget
-            local hostPath = (string.match(host, "^%S+%s+(.*)$") or host) .. "."
-            for i, B in ipairs(BARS) do
-                if not Blades.Bars[i] then
-                    for _, W in ipairs(FindClass(B.Class)) do
-                        if string.find(W:GetFullName(), hostPath, 1, true) then
-                            local okD, errD = pcall(DressBar, B, W)
-                            if not okD then Log("bars: " .. B.Class .. " keeps the game's frame: " .. tostring(errD)) end
-                            Blades.Bars[i] = W
-                            Blades.Count = Blades.Count + 1
-                            break
-                        end
-                    end
-                    if not Blades.Bars[i] and not Blades.Missed[i] then Blades.Missed[i] = true Log("bars: no " .. B.Class .. " yet") end
-                end
-            end
-        end
-        -- each part as soon as its bars are there: a missing special bar must not stop the others
-        if Blades.Bars[1] and Blades.Bars[2] then SwapRows() end
-        -- no numbers on the health bar (Ivan, 30-09-2026): unseen, not collapsed, so the immersive mode still reads them
-        if Blades.Bars[2] and Survival and not Blades.NoNumbers then
-            local texts = Survival.TextsUnder(Blades.Bars[2])
-            for _, T in ipairs(texts) do pcall(function() T:SetRenderOpacity(0.0) end) end
-            if #texts > 0 then   -- none yet: the bar is still being built, try on the next scan
-                Blades.NoNumbers = true
-                Log("bars: health numbers hidden (" .. #texts .. " texts)")
-            end
-        end
-        if Blades.Bars[1] then
-            -- stamina green, set again whenever the game resets it (taking a tool did, 27-09-2026)
-            local fill = Blades.Bars[1].ProgressBarImage
-            local c = fill.ColorAndOpacity
-            if math.abs(c.R - STAMINA_GREEN.R) > 0.01 or math.abs(c.B - STAMINA_GREEN.B) > 0.01 then fill:SetColorAndOpacity(STAMINA_GREEN) end
-        end
-        -- one color: for each fill, again when the game gives a bar a new fill, and again when the game sets the
-        -- fill's own look back (a new character, 29-09-2026: the bars went two-tone), read on every scan
-        for i = 1, #BARS do
-            local W = Blades.Bars[i]
-            if W then
-                local okC, errC = pcall(function()
-                    local mat = W.ProgressBarImage.Brush.ResourceObject
-                    local name = mat:GetFullName()
-                    if OneColor["x" .. i] == name then return end   -- this fill failed once: not tried on every scan
-                    if OneColor[i] == name then
-                        local noise, shade
-                        mat.ScalarParameterValues:ForEach(function(_, e)
-                            local p = e:get()
-                            if p.ParameterInfo.Name:ToString() == "Bar Noise Power" then noise = p.ParameterValue end
-                        end)
-                        mat.VectorParameterValues:ForEach(function(_, e)
-                            local p = e:get()
-                            if p.ParameterInfo.Name:ToString() == "Health Bar Shadows Color" then shade = p.ParameterValue end
-                        end)
-                        local was = OneColor["c" .. i]
-                        if noise and math.abs(noise - ONE_COLOR_NOISE) < 0.01 and shade and was and math.abs(shade.R - was.R) < 0.01
-                            and math.abs(shade.G - was.G) < 0.01 and math.abs(shade.B - was.B) < 0.01 then return end
-                        if not OneColor.Reset then OneColor.Reset = true Log("bars: the game set the fill's look back; one color again") end
-                    end
-                    OneColor[i], OneColor["x" .. i] = name, name
-                    OneColor["c" .. i] = OneColorFill(mat)
-                    OneColor["x" .. i] = nil
-                end)
-                if not okC and not OneColor.Logged then OneColor.Logged = true Log("bars: one color failed: " .. tostring(errC)) end
-            end
-        end
-        -- the icons: hidden, not collapsed, so the bars keep their place; checked on every scan in case the
-        -- game sets them again
-        local want = ById("baricons").Visible ~= false and 4 or 2
-        for i, B in ipairs(BARS) do
-            local W = Blades.Bars[i]
-            if W then
-                local icon = W[B.Icon]
-                if icon:GetVisibility() ~= want then icon:SetVisibility(want) end
-            end
-        end
-        -- the dark gradient behind the bars (T_Bars_Shadow; Ivan, 29-09-2026: it looks ugly): unseen, alive for the
-        -- game. Hidden, not collapsed, so nothing moves. On a new character the game showed it again (29-09-2026),
-        -- so both the visibility and the opacity are checked on every scan. Found by its name in the bars' widget
-        -- tree, once per bars widget: GetWidgetFromName is not open to Lua in UE4SS 3.0.1 (log of 29-09-2026).
-        local okS, errS = pcall(function()   -- on its own: a failure here must not count against the bars
-            local shadow = Blades.ShadowW
-            if Blades.ShadowHost ~= host or (shadow and not shadow:IsValid()) then
-                shadow = Survival and Survival.Find(V, "ShadowBackgroundImage")
-                -- none found while the bars are still coming: searched again on the next scan
-                Blades.ShadowW = shadow
-                if shadow or Blades.Count == #BARS then Blades.ShadowHost = host end
-            end
-            if not (shadow and shadow:IsValid()) then
-                if Blades.ShadowHost == host then error("ShadowBackgroundImage not found") end
-                return
-            end
-            if shadow:GetVisibility() ~= 2 or shadow:GetRenderOpacity() > 0 then
-                if Blades.Shadow == host and not Blades.ShadowBack then Blades.ShadowBack = true Log("bars: the game showed the shadow again; hidden again") end
-                shadow:SetVisibility(2)
-                shadow:SetRenderOpacity(0.0)
-                Blades.Shadow = host
-            end
-        end)
-        if not okS and not Blades.ShadowLogged then Blades.ShadowLogged = true Log("bars: shadow not hidden: " .. tostring(errS)) end
-    end)
-    if ok then Blades.Fails = 0 else Failed(Blades) Log("bars failed: " .. tostring(err)) end
-end
-
 ---------------------------------------------------------------- main loop, on a timer (the game has no per-frame hook we can use)
 
 local LastScan = -100
-local NextRings = 0
+local NextBuffCount = 0
 local NextArtTry = 0
 local ApplyErrorLogged = false
 local TickAlive = false
 local SaveRequested = false
-
--- RuneMap and the survival rings live in their own files: an error in one is logged and the rest of the mod
--- still runs. UE4SS finds them by module name; the path is the
--- fallback.
-local function LoadPart(name)
-    local ok, m = pcall(require, name)
-    if not ok then
-        local ok2, m2 = pcall(dofile, "ue4ss/Mods/RuneUI/Scripts/" .. name .. ".lua")
-        if ok2 then ok, m = true, m2 else m = tostring(m) .. " | " .. tostring(m2) end
-    end
-    if ok and type(m) == "table" then Log(name .. " file loaded") return m end
-    Log(name .. " file not loaded: " .. tostring(m))
-end
 
 -- CurseForge takes no .png files in a Dragonwilds mod zip, so the pictures also travel inside Scripts/art.lua as
 -- base64 text (tools/make-runemap-art.js writes it). At start, each picture that is missing or different is
@@ -1794,20 +1027,39 @@ do
     local ok, err = pcall(WriteArt)
     if not ok then Log("pictures not written: " .. tostring(err)) end
 end
-RuneMap = LoadPart("runemap")
-if RuneMap then RuneMap.Res = LoadPart("resources") end   -- ore, herbs, essence and rare trees on the map
 Survival = LoadPart("survival")
+-- The parts that build on the game's widgets: the avatar, the bars and the buff rings. They share main.lua's
+-- helpers through one table, and survival.lua's ring and Find. Listed first: their Scan runs in this order, and
+-- the buff rings' step runs before the map's, as it always did.
+local Util = { Log = Log, ById = ById, Uniq = Uniq, G = G, ClearOurs = ClearOurs, ClassName = ClassName,
+    FindClass = FindClass, Asset = Asset, SetColor = SetColor, ImageFromArt = ImageFromArt, FindMenuArt = FindMenuArt,
+    MayTry = MayTry, Failed = Failed, CachedTex = CachedTex, Survival = Survival }
+Avatar = LoadPart("avatar")
+if Avatar then Avatar.Init(Util) AddPart("avatar", Avatar, Util) end
+Bars = LoadPart("bars")
+if Bars then Bars.Init(Util) AddPart("bars", Bars, Util) end
+Buffs = LoadPart("buffs")
+if Buffs then Buffs.Init(Util) AddPart("buffs", Buffs, Util) end
+RuneMap = LoadPart("runemap")
+if RuneMap then
+    RuneMap.Attach(Settings.Section(Cfg, "map"), SaveCfg)   -- the F8 settings and the zoom live in the settings file
+    RuneMap.Res = LoadPart("resources")   -- ore, herbs, essence and rare trees on the map
+end
 -- Editing: the map shows while F9 or F8 is open, even when it is hidden
 local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end,
     -- the immersive mode's share: the map fades itself, its gold rings too (runemap.lua ApplyOpacity)
     Fade = function() return Immersive and Immersive.Factor(ById("runemap")) or 1 end }
+AddPart("runemap", RuneMap, MapCtx)
 local SurvivalCtx = { Log = Log, ById = ById }
+AddPart("survival", Survival, SurvivalCtx)
 Immersive = LoadPart("immersive")
 -- read fresh on every step: these handles change with the world
 local ImmersiveCtx = { Log = Log, On = function() return ById("immersive").Visible end,
-    Editing = MapCtx.Editing, Bars = function() return Blades.Bars end, Trim = function() return BarTrim.W end,
-    BuffCount = function() return BuffItems end,
+    Editing = MapCtx.Editing, Bars = function() return Bars and Bars.Blades.Bars or {} end,
+    Trim = function() return Bars and Bars.Trim.W end,
+    BuffCount = function() return Buffs and Buffs.Items end,
     Rings = function() return Survival and Survival.Rings and Survival.Rings() or {} end,
+    Drinks = function() return Buffs and Buffs.Drinks.Deco or {} end,
     Wait = function() return ById("immersive").Wait or 8 end,
     TextsUnder = function(W) return Survival and Survival.TextsUnder(W) or {} end,
     ChatCount = function() return MenuButtons and MenuButtons.Chat end }
@@ -1817,20 +1069,15 @@ local MenuCtx = { Log = Log, ById = ById, Find = Survival and Survival.Find, Rin
     Turn = Survival and Survival.Turn,
     -- the keys in Poppins, the game's own key font (sketch A); found once and kept on the menu buttons table
     Text = function(tree, name, size, color, s)
-        if not MenuButtons.Poppins then   -- not found yet: looked for again on the next build
-            for _, F in pairs(FindAllOf("Font") or {}) do
-                local ok, n = pcall(function() return F:GetFullName() end)
-                if ok and string.find(n, "/Game/") and string.find(n, "Poppins") and not string.find(n, "Default__") then MenuButtons.Poppins = F break end
-            end
-        end
-        return MakeText(tree, name, size, color, s, MenuButtons.Poppins)
+        return MakeText(tree, name, size, color, s, FindPoppins())
     end,
     Chat = function() return FindClass("WBP_ClosedChat_C")[1] end }
+AddPart("menu buttons", MenuButtons, MenuCtx)
 Aim = LoadPart("aim")
 local AimCtx = { Log = Log, On = function() return ById("aim").Visible end,
     Reticle = function() return FindClass("WBP_HUD_ReticleWidget_C")[1] end,
-    Orb = function() return FindClass("WBP_LockOnTargetOrb_C")[1] end,
-    TargetIcons = function() return FindClass("WBP_TargetIcon_C") end }
+    Orb = function() return FindClass("WBP_LockOnTargetOrb_C")[1] end }
+AddPart("aim", Aim, AimCtx)
 Cooldowns = LoadPart("cooldowns")
 if Cooldowns then
     Cooldowns.Ctx = { Log = Log, ById = ById, Find = Survival and Survival.Find,
@@ -1840,12 +1087,23 @@ if Cooldowns then
         Slices = function() return FindClass("WBP_SurvivalSorcery_RadialSlice_C", Cooldowns.Ctx.SlicePath) end,
         SlicePath = { "WBP_Spellcasting_MainPanel_C_%d+%.WidgetTree_%d+%.SpellRadialWidget%.WidgetTree_%d+%.RadialSlice_%d+$" },
         Text = function(...) if MenuButtons then return MenuCtx.Text(...) end return MakeText(...) end }
+    if Survival then AddPart("cooldowns", Cooldowns, Cooldowns.Ctx) end   -- without survival.lua it has no Find
 end
-Prompt = LoadPart("prompt")
-if Prompt then
-    Prompt.Ctx = { Log = Log, Find = Survival and Survival.Find,
-        Prompts = function() return FindClass("WBP_HUD_InteractionPrompt_C") end }
+if Survival then Ammo = LoadPart("ammo") end   -- it finds its parts with survival.lua's Find
+if Ammo then
+    Ammo.Ctx = { Log = Log, ById = ById, Find = Survival.Find, TextsUnder = Survival.TextsUnder,
+        Text = MenuCtx.Text }
+    AddPart("ammo", Ammo, Ammo.Ctx)
 end
+Clock = LoadPart("clock")
+local ClockCtx = { Log = Log, ById = ById, On = function() return ById("immersive").Visible end,
+    Editing = function() return EditMode end, ReadClock = function() return RuneMap.ReadClock(MapCtx) end }
+AddPart("clock", Clock, ClockCtx)
+Letters = LoadPart("letters")
+if Letters then Letters.Ctx = { Log = Log, Find = FindClass } AddPart("letters", Letters, Letters.Ctx) end
+-- last: the parts above may change what it fades, and ApplyAll reads its opacity after it
+AddPart("immersive", Immersive, ImmersiveCtx, true)
+Editor = LoadPart("editor")
 
 -- A new world (quit to the main menu, entering a game): drop every handle the mod holds into the old one
 -- before anything reads it. The engine frees the old world's objects while it loads the new one, and a
@@ -1854,27 +1112,19 @@ end
 -- sameWorld: a player restart inside a world that still stands, so our own map may be taken off the screen
 local function ForgetWorld(sameWorld)
     for _, E in ipairs(Elements) do E.Instances, E.Keys, E.PartsOp, E.PartsW, E.Last = {}, {}, {}, {}, {} end
-    Found, FindCache, NextSearch, BuffItems = {}, {}, 0, nil   -- the last widget search's handles; search again at once
-    BuffDeco, BuffArt = {}, {}
-    Avatar.W, Avatar.HostName, Avatar.Tex, Avatar.LevelText, Avatar.LevelIcon = nil, nil, nil, nil, nil
-    Avatar.LastLevel, Avatar.LastIcon = nil, nil
-    BarTrim.HostName, BarTrim.W = nil, nil
-    Blades.HostName, Blades.Tex, Blades.Bars, Blades.ShadowW, Blades.ShadowHost = nil, {}, {}, nil, nil
-    for _, P in ipairs({ Avatar, BarTrim, Blades, Overlay }) do P.Fails, P.RetryAt = 0, 0 end   -- new tries (see MayTry)
+    Found, FindCache, NextSearch = {}, {}, 0   -- the last widget search's handles; search again at once
+    if Editor then Editor.Fails, Editor.RetryAt = 0, 0 end   -- new tries (see MayTry); the parts reset their own in Forget
     Tint = {}   -- a HUD made again may reuse a name: set the opacity colour again, it costs one call per widget
     if not sameWorld then
         -- the editor panel of the old world is off the screen: build a new one on the next F9
-        Overlay.W, Overlay.LastState, Overlay.Open, Overlay.Mode = nil, "", false, nil
+        if Editor then Editor.Forget() Editor.Shown, Panel.State = false, "" end
         -- these remember widgets by full name; the old world's widgets are gone
-        OrigOpacity, Touched, Unclipped, BuffRowDone, ClassNames, IsUW = {}, {}, {}, {}, {}, {}
+        OrigOpacity, Touched, Unclipped, ClassNames, IsUW = {}, {}, {}, {}, {}
     end
-    if RuneMap then pcall(RuneMap.Forget, sameWorld) end
-    if Survival then pcall(Survival.Forget) end
-    if Immersive then pcall(Immersive.Forget) end
-    if MenuButtons then pcall(MenuButtons.Forget) end
-    if Aim then pcall(Aim.Forget) end
-    if Cooldowns then pcall(Cooldowns.Forget, sameWorld) end
-    if Prompt then pcall(Prompt.Forget) end
+    for _, P in ipairs(Parts) do
+        pcall(P.M.Forget, sameWorld)
+        if not sameWorld then P.Error, P.M.ErrorLogged = nil, false end   -- a new world: say it again if it fails again
+    end
     Gen = Gen + 1
     SettleUntil = os.clock() + 3
     Log(sameWorld and "player restart: old handles dropped" or "new world: old handles dropped")
@@ -1977,6 +1227,26 @@ local function PerfLog(now)
     Fps.By = {}
 end
 
+-- The key bind moves once on the press. The engine says which keys are down (a test in game, 01-10-2026): an arrow
+-- held past Hold.After moves again on every step (50 ms), so a step of 10 goes 200 units a second.
+local Hold = { After = 0.35, Keys = nil, Since = nil }   -- Keys: { key, dx, dy }, made on first use
+local function HoldMove(now)
+    if not EditMode or MapMode then Hold.Since = nil return end
+    local pc = LocalPlayer and LocalPlayer:IsValid() and LocalPlayer.PlayerController
+    if not (pc and pc:IsValid()) then return end
+    if not Hold.Keys then
+        Hold.Keys = { { { KeyName = FName("Left") }, -1, 0 }, { { KeyName = FName("Right") }, 1, 0 },
+            { { KeyName = FName("Up") }, 0, -1 }, { { KeyName = FName("Down") }, 0, 1 } }
+    end
+    local dx, dy = 0, 0
+    for _, k in ipairs(Hold.Keys) do
+        if pc:IsInputKeyDown(k[1]) then dx, dy = dx + k[2], dy + k[3] end
+    end
+    if dx == 0 and dy == 0 then Hold.Since = nil return end
+    if not Hold.Since then Hold.Since = now return end
+    if now - Hold.Since >= Hold.After then Move(dx, dy) end
+end
+
 local LoggedEditMode = false
 local function TickBody()
     local now = os.clock()
@@ -1984,25 +1254,40 @@ local function TickBody()
         TickAlive = true
         Log("timer running" .. (IsInGameThread and (IsInGameThread() and " on the game thread" or " off the game thread") or ""))
     end
-    if EditMode ~= LoggedEditMode then LoggedEditMode = EditMode Log(EditMode and "edit mode on" or "edit mode off") end
+    if EditMode ~= LoggedEditMode then
+        LoggedEditMode = EditMode
+        Log(EditMode and "edit mode on" or "edit mode off")
+        if EditMode then pcall(SortOrder) end   -- the list by screen area, as the elements sit now
+    end
     WatchWorld()   -- first: nothing below may read a handle into a world that is gone
     Perf.Watch = Perf.Watch + (os.clock() - now)
     CountFrames(now)
 
     -- the widgets every 2 s, in the editor too: faster scans stuttered (27-09 and 28-09-2026). The full search
     -- inside runs less often (FindAll).
-    local scanned = now - LastScan > 2.0
+    -- Sooner when the buff count changes: a new drink took up to 2 s to become its ring (playtest, 01-10-2026). The
+    -- count is a few plain numbers; the search it brings runs once per new buff.
+    local buffsNew = false
+    if now > NextBuffCount then   -- 4 times a second; its own clock, so not every step between scans
+        NextBuffCount = now + 0.25
+        local okB, b = Buffs and pcall(Buffs.Changed)
+        buffsNew = okB and b or false
+    end
+    local scanned = now - LastScan > 2.0 or buffsNew
     if scanned then
         LastScan = now
         local scanFrom = os.clock()
-        local okFind, errFind = pcall(FindAll, EditMode or MapMode)
+        local okFind, errFind = pcall(FindAll, EditMode or MapMode, buffsNew)
         if not okFind and not ApplyErrorLogged then ApplyErrorLogged = true Log("finding widgets failed: " .. tostring(errFind)) end
         if now > SettleUntil then
-            pcall(EnsureAvatar)
-            pcall(EnsureBarTrim)
-            pcall(EnsureBlades)
-            pcall(EnsureBuffRow)
-            pcall(FindBuffEntries)
+            -- the parts that build on the game's widgets (the avatar, the bars, the buff rings), once per scan
+            for _, P in ipairs(Parts) do
+                if P.M.Scan then
+                    local okS, errS = pcall(P.M.Scan, P.Ctx)
+                    if not okS and not P.M.ErrorLogged then P.M.ErrorLogged = true P.Error = tostring(errS) Log(P.Name .. " scan failed: " .. P.Error) end
+                end
+            end
+            if buffsNew and Buffs then Buffs.NextRings = 0 end   -- a new ring shows its time in this step too
         end
         local scan = os.clock() - scanFrom
         Perf.Scans, Perf.ScanSum, Perf.ScanMax = Perf.Scans + 1, Perf.ScanSum + scan, math.max(Perf.ScanMax, scan)
@@ -2010,42 +1295,21 @@ local function TickBody()
     -- try every 3 s for the first 3 minutes (the main menu); a full scan of images is too heavy to repeat forever
     if not MenuArt and now < 180 and now > (NextArtTry or 0) then NextArtTry = now + 3 pcall(CaptureMenuArt) end
 
-    if now > NextRings then NextRings = now + 0.5 pcall(UpdateBuffRings) end
-    if RuneMap and now > 20 and now > SettleUntil then
-        local okM, errM = pcall(RuneMap.Tick, MapCtx)
-        if not okM and not RuneMap.ErrorLogged then RuneMap.ErrorLogged = true Log("runemap step failed: " .. tostring(errM)) end
+    -- every part's step, in the order of the list; the immersive mode is last, before ApplyAll reads its opacity
+    for _, P in ipairs(Parts) do
+        if now > SettleUntil and (P.Early or now > 20) then
+            local okP, errP = P.M.Tick and pcall(P.M.Tick, P.Ctx)
+            if P.M.Tick and not okP and not P.M.ErrorLogged then P.M.ErrorLogged = true P.Error = tostring(errP) Log(P.Name .. " step failed: " .. P.Error) end
+        end
     end
-    if Survival and now > 20 and now > SettleUntil then
-        local okS, errS = pcall(Survival.Tick, SurvivalCtx)
-        if not okS and not Survival.ErrorLogged then Survival.ErrorLogged = true Log("survival step failed: " .. tostring(errS)) end
-    end
-    if MenuButtons and now > 20 and now > SettleUntil then
-        local okB, errB = pcall(MenuButtons.Tick, MenuCtx)
-        if not okB and not MenuButtons.ErrorLogged then MenuButtons.ErrorLogged = true Log("menu buttons step failed: " .. tostring(errB)) end
-    end
-    if Aim and now > 20 and now > SettleUntil then
-        local okA, errA = pcall(Aim.Tick, AimCtx)
-        if not okA and not Aim.ErrorLogged then Aim.ErrorLogged = true Log("aim step failed: " .. tostring(errA)) end
-    end
-    if Cooldowns and Cooldowns.Ctx.Find and now > 20 and now > SettleUntil then
-        local okC, errC = pcall(Cooldowns.Tick, Cooldowns.Ctx)
-        if not okC and not Cooldowns.ErrorLogged then Cooldowns.ErrorLogged = true Log("cooldowns step failed: " .. tostring(errC)) end
-    end
-    if Prompt and Prompt.Ctx.Find and now > 20 and now > SettleUntil then
-        local okP, errP = pcall(Prompt.Tick, Prompt.Ctx)
-        if not okP and not Prompt.ErrorLogged then Prompt.ErrorLogged = true Log("prompt step failed: " .. tostring(errP)) end
-    end
-    if Immersive and now > SettleUntil then   -- before ApplyAll, which reads its opacity
-        local okI, errI = pcall(Immersive.Tick, ImmersiveCtx)
-        if not okI and not Immersive.ErrorLogged then Immersive.ErrorLogged = true Log("immersive step failed: " .. tostring(errI)) end
-    end
-    Flash = (math.floor(now * 2.5) % 2 == 0)
+    pcall(HoldMove, now)
     local okApply, errApply = pcall(ApplyAll, scanned)   -- a scan step writes every move and size again (ApplyOne)
     if not okApply and not ApplyErrorLogged then ApplyErrorLogged = true Log("apply failed: " .. tostring(errApply)) end
 
     if SaveRequested then SaveRequested = false SaveLayout() end
+    if Prof.Wanted then Prof.Wanted = false pcall(Prof.Next) end
 
-    UpdateOverlay()
+    UpdateOverlay(now)
 
     local took = os.clock() - now
     Perf.Ticks, Perf.Sum, Perf.Max = Perf.Ticks + 1, Perf.Sum + took, math.max(Perf.Max, took)
@@ -2094,7 +1358,28 @@ end)
 -- Key binds run on UE4SS's own thread, beside the game thread's step: they only change numbers and flags, and
 -- make nothing new (no text, no tables), so they cannot start Lua's memory cleanup under the step (28-09-2026).
 -- The step logs the editor opening and closing.
-RegisterKeyBind(120, function()
+-- Windows key codes by name. The five keys in KEY_DEFAULT can be changed in the [keys] section of runeui.txt (1.4);
+-- the others are fixed, as the F9 panel lists them.
+local VK = { Backspace = 8, PgUp = 33, PgDn = 34, End = 35, Home = 36, Left = 37, Up = 38, Right = 39, Down = 40,
+    Insert = 45, Delete = 46, Plus = 107, Minus = 109, Equals = 187, Dash = 189, Comma = 188, Period = 190,
+    ["["] = 219, ["]"] = 221 }
+for i = 1, 12 do VK["F" .. i] = 111 + i end
+for i = 0, 9 do VK[tostring(i)] = 48 + i end
+for i = 0, 25 do VK[string.char(65 + i)] = 65 + i end
+local KEY_DEFAULT = { editor = "F9", map = "F8", profile = "F7", zoomin = "]", zoomout = "[" }
+local function KeyCode(what)
+    local keys = Settings.Section(Cfg, "keys")
+    if keys[what] == nil then keys[what] = KEY_DEFAULT[what] end   -- written on the next save, so the player sees the line
+    local name = tostring(keys[what])
+    local code = VK[name] or VK[string.upper(name)]
+    if not code then
+        Log("keys: " .. what .. "=" .. name .. " is not a key the mod knows, using " .. KEY_DEFAULT[what])
+        code = VK[KEY_DEFAULT[what]]
+    end
+    return code
+end
+
+RegisterKeyBind(KeyCode("editor"), function()
     MapMode = false   -- F9 inside F8: from the map settings into the editor
     EditMode = not EditMode
     if not EditMode then
@@ -2105,7 +1390,7 @@ end)
 
 -- F8: RuneMap's own settings (1.1). F8 inside F9 goes from the editor to the map settings. Closing saves the
 -- layout, which holds the creatures switch; runemap.lua saves the other settings as they change.
-RegisterKeyBind(119, function()
+RegisterKeyBind(KeyCode("map"), function()
     if EditMode then EditMode = false RestoreAllRequested = true end
     MapMode = not MapMode
     SaveRequested = true
@@ -2132,28 +1417,23 @@ local function MapChange(d)
 end
 
 -- RuneMap zoom, any time: ] closer, [ farther (Windows codes 221 and 219). The game has no buttons to click.
-RegisterKeyBind(221, function() if RuneMap then RuneMap.ZoomBy(1 / 1.25) end end)
-RegisterKeyBind(219, function() if RuneMap then RuneMap.ZoomBy(1.25) end end)
+RegisterKeyBind(KeyCode("zoomin"), function() if RuneMap then RuneMap.ZoomBy(1 / 1.25) end end)
+RegisterKeyBind(KeyCode("zoomout"), function() if RuneMap then RuneMap.ZoomBy(1.25) end end)
 
+-- PgUp and PgDn go up and down the list as the panel shows it, by screen area (Order)
 local function Sel(d)
-    if not EditMode then return end
-    Selected = Selected + d
-    if Selected < 1 then Selected = #Elements end
-    if Selected > #Elements then Selected = 1 end
+    if not EditMode or #Order == 0 then return end
+    local at = 1
+    for n, i in ipairs(Order) do if i == Selected then at = n end end
+    Selected = Order[(at - 1 + d) % #Order + 1]
 end
-RegisterKeyBind(33, function() Sel(-1) end)
-RegisterKeyBind(34, function() Sel(1) end)
+RegisterKeyBind(VK.PgUp, function() Sel(-1) end)
+RegisterKeyBind(VK.PgDn, function() Sel(1) end)
 
-local function Move(dx, dy)
-    local E = Elements[Selected]
-    if not EditMode or IsSwitch(E) then return end
-    E.X, E.Y = E.X + dx * Step, E.Y + dy * Step
-    E.Moved = true   -- on saving, it follows the edge nearest to where it now sits (Retarget)
-end
-RegisterKeyBind(38, function() if MapMode then MapPick(-1) else Move(0, -1) end end)
-RegisterKeyBind(40, function() if MapMode then MapPick(1) else Move(0, 1) end end)
-RegisterKeyBind(37, function() if MapMode then MapChange(-1) else Move(-1, 0) end end)
-RegisterKeyBind(39, function() if MapMode then MapChange(1) else Move(1, 0) end end)
+RegisterKeyBind(VK.Up, function() if MapMode then MapPick(-1) else Move(0, -1) end end)
+RegisterKeyBind(VK.Down, function() if MapMode then MapPick(1) else Move(0, 1) end end)
+RegisterKeyBind(VK.Left, function() if MapMode then MapChange(-1) else Move(-1, 0) end end)
+RegisterKeyBind(VK.Right, function() if MapMode then MapChange(1) else Move(1, 0) end end)
 
 local Steps = { 1, 5, 10, 25, 50, 100 }
 local function ChangeStep(d)
@@ -2163,21 +1443,21 @@ local function ChangeStep(d)
     idx = math.max(1, math.min(#Steps, idx + d))
     Step = Steps[idx]
 end
-RegisterKeyBind(36, function() ChangeStep(1) end)
-RegisterKeyBind(35, function() ChangeStep(-1) end)
+RegisterKeyBind(VK.Home, function() ChangeStep(1) end)
+RegisterKeyBind(VK.End, function() ChangeStep(-1) end)
 
 local function Resize(d)
     local E = Elements[Selected]
     if not EditMode then return end
-    -- on the immersive line + / - set the wait before fading, 3 to 30 s (Ivan, 29-09-2026); numbers only here
+    -- on the immersive line + / - set the wait before fading, 3 to 30 s (playtest, 29-09-2026); numbers only here
     if E.Wait then E.Wait = math.max(3, math.min(30, E.Wait + (d > 0 and 1 or -1))) return end
     if IsSwitch(E) then return end
     E.Scale = math.max(0.3, math.min(4.0, math.floor((E.Scale + d) * 100 + 0.5) / 100))   -- up to 400%
 end
-RegisterKeyBind(107, function() Resize(0.05) end)
-RegisterKeyBind(109, function() Resize(-0.05) end)
-RegisterKeyBind(187, function() Resize(0.05) end)
-RegisterKeyBind(189, function() Resize(-0.05) end)
+RegisterKeyBind(VK.Plus, function() Resize(0.05) end)     -- the number pad
+RegisterKeyBind(VK.Minus, function() Resize(-0.05) end)
+RegisterKeyBind(VK.Equals, function() Resize(0.05) end)   -- the main keys: = is + without Shift
+RegisterKeyBind(VK.Dash, function() Resize(-0.05) end)
 
 -- comma and period: less or more solid, in steps of 10%, down to 20% (1.1); hiding is Delete
 local function Fade(d)
@@ -2185,13 +1465,16 @@ local function Fade(d)
     if not EditMode or IsSwitch(E) then return end
     E.Opacity = math.max(0.2, math.min(1.0, math.floor((E.Opacity + d) * 10 + 0.5) / 10))
 end
-RegisterKeyBind(188, function() Fade(-0.1) end)
-RegisterKeyBind(190, function() Fade(0.1) end)
+RegisterKeyBind(VK.Comma, function() Fade(-0.1) end)
+RegisterKeyBind(VK.Period, function() Fade(0.1) end)
 
-RegisterKeyBind(46, function() if EditMode then Elements[Selected].Visible = false end end)
-RegisterKeyBind(45, function() if EditMode then Elements[Selected].Visible = true end end)
+-- F7: the next layout profile, only while the editor is open (the step saves this one and loads the next)
+RegisterKeyBind(KeyCode("profile"), function() if EditMode then Prof.Wanted = true end end)
+
+RegisterKeyBind(VK.Delete, function() if EditMode then Elements[Selected].Visible = false end end)
+RegisterKeyBind(VK.Insert, function() if EditMode then Elements[Selected].Visible = true end end)
 local NoDefaults = {}
-RegisterKeyBind(8, function()
+RegisterKeyBind(VK.Backspace, function()
     if MapMode and RuneMap then RuneMap.Reset() ById("creatures").Visible = true return end
     if not EditMode then return end
     local E = Elements[Selected]

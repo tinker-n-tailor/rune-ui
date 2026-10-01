@@ -1,6 +1,6 @@
--- Spell cooldowns (design sketch C, Ivan 29-09-2026): while a spell recovers, a see-through square tile on the left
+-- Spell cooldowns (design sketch C, playtest 29-09-2026): while a spell recovers, a see-through square tile on the left
 -- of the screen with the spell's icon, a gold fill rising from the bottom and the seconds in the corner. It goes
--- when the spell is ready. The newest tile is at the bottom; when one finishes, the ones below move up (Ivan,
+-- when the spell is ready. The newest tile is at the bottom; when one finishes, the ones below move up (playtest,
 -- 30-09-2026). Never faded by the immersive mode. main.lua moves and sizes it as the F9 element "cooldowns".
 -- The data is the game's spell wheel, which counts on while it is closed (probe of 29-09-2026): 12 slices
 -- (WBP_SurvivalSorcery_RadialSlice_C), each with SliceIcon (the spell's texture), CooldownWidget (visibility 3 while
