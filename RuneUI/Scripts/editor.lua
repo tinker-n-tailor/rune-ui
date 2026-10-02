@@ -185,7 +185,7 @@ local function Build(ctx)
         U.Slots[i] = { B = B, T = T, F = frame }
     end
     AddH(prof, W("Spacer"), 0, true)
-    if keyTex then AddH(prof, (Cap(keyTex, "F7")), 8) end
+    if keyTex then AddH(prof, (Cap(keyTex, ctx.ProfileKey)), 8) end   -- F7, or the key from runeui.txt
     -- F7 saves before it switches; "Next profile" alone left the player unsure how a profile is saved (01-10-2026)
     AddH(prof, Text(12, MUTED, "Save, next profile"))
     U.Profile = prof

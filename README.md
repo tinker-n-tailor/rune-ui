@@ -1,7 +1,5 @@
 <p align="center"><img src="docs/banner.png" alt="Rune UI"></p>
 
-<p align="center"><a href="https://ko-fi.com/filchie"><img src="https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?logo=ko-fi&logoColor=white" alt="Support me on Ko-fi"></a></p>
-
 Move, resize and hide every part of the HUD, right in the game. With a new map, new rings and new bars in the game's own style.
 
 Rune UI is a UE4SS Lua mod for RuneScape: Dragonwilds.
@@ -92,6 +90,8 @@ When you hide RuneMap, the mod takes the map off the screen. The game then does 
 
 "Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
 
+Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedragonwilds/mods/548). To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
+
 ## Gallery
 
 <table>
@@ -111,7 +111,7 @@ When you hide RuneMap, the mod takes the map off the screen. The game then does 
 
 ### RuneMap
 
-`Scripts/runemap.lua` builds a round minimap in the top right corner. It uses the game's own minimap widget, with its own map view on the player. The map turns with the camera. When "Faces north" is on, the map does not turn. A gold ring around the map is also a clock: the middle of the night is at the top, and noon is at the bottom. The ring keeps the game's own share of night, about a fifth of the day. A gold needle on the ring shows the time of day. A round mark with an N on the inner gold ring shows where north is. It moves along the ring when the camera turns.
+`Scripts/runemap.lua` builds a round minimap in the top right corner. It uses the game's own minimap widget, with its own map view on the player. The map turns with the camera. When "Faces north" is on, the map does not turn. A gold ring around the map is also a clock: the middle of the night is at the top, and noon is at the bottom. The ring keeps the game's own share of night, about a fifth of the day. A gold arrow between the two gold rings shows the time of day. A bigger gold arrow with an N shows where north is. It moves along the ring when the camera turns.
 
 The map shows no fog, because it has no record of the places that you visited. It shows the terrain around you as it is.
 
@@ -133,9 +133,11 @@ Each bar is a plain box: a dark track behind the fill. The health bar is on top 
 
 ### Buffs
 
-Each buff is a ring, like the food, water and rest rings. The ring shows the time that is left, in the buff's colour from the game, for example green for poison.
+Each buff is its icon with a thin bar under it, so it looks like a small copy of the bars above it. The bar shows the time that is left, in the buff's colour from the game, for example green for poison. A buff without a timer has no bar. The icon has a dark shadow, so you can read it over bright grass.
 
-The drink buff sits right of the food, water and rest rings. The game's line between them is hidden. It is a blue ring of the same size as the other buff rings, level with the food rings. The ring shows the time that is left; the number of seconds is hidden. Move, resize or hide it with "Drink buff" in the editor. In the immersive mode, the drink ring shows when you drink, fades, and comes back when the drink runs low.
+The game can keep a buff in its list after the buff ended, for example the poison after you died from it. Its bar is then empty. The mod hides a buff with an empty bar and closes the row. When the bar fills again, the buff is back.
+
+The drink, food and potion buffs sit right of the food, water and rest rings. The game's line between them is hidden. Each one is a small ring, level with the food rings: blue for a drink, green for a food, gold for a potion. The ring shows the time that is left; the number of seconds is hidden. Move, resize or hide them together with "Drink, food and potion buffs" in the editor. In the immersive mode, each of these rings shows when its buff starts, fades, and comes back when the buff runs low.
 
 ### Aim, cooldowns and prompts
 
@@ -143,7 +145,19 @@ The drink buff sits right of the food, water and rest rings. The game's line bet
 
 `Scripts/cooldowns.lua` reads the 12 slices of the game's spell wheel. The wheel counts on while it is closed. For each spell that recovers, the mod shows a tile with the spell's icon, a gold fill and the game's own seconds.
 
+`Scripts/toolbar.lua` gives the tool bar the look of the cooldown tiles. The black square of each slot is see-through, with a thin gold edge. The slot number and the stack count are in the HUD font. The durability bar keeps the colours of the game, on a dark track. The slot in use has a bright gold edge in place of the orange frame of the game. The game builds a slot new when its item changes, so the mod looks at the eight slots about 7 times a second and paints a new slot again. The slots of the bag window stay as they are.
+
 `Scripts/letters.lua` puts a shadow on the letters of the pick-up prompt, the build panel and the repair mode. It keeps the words of the build and repair panels white, and it removes the faint dark shape behind the title of the build panel. The key letters, the red "inventory full" line and the cost rows keep the game's colours.
+
+`Scripts/pickups.lua` gives the list of picked-up items the same look. The dark band and the gold lines of each row are hidden. The texts are in the HUD font, with the shadow of the letters. The count is gold. The row of a new item has no sparks. The game tints "NEW MATERIAL !" near black for about two seconds. The mod changes the colour of that animation once, so the words are light from the start. The list is the element "Item pick-ups" in the editor.
+
+`Scripts/bednames.lua` puts a space into the name of a claimed bed roll: "Ann's Bed Roll". The game joins the owner and the name without a space. The mod changes the name that the bed roll gives to the game, so the prompt shows it with the space. The mod sets the same hook for a bed.
+
+`Scripts/quests.lua` gives the quests and unlocks the HUD font, with the shadow of the letters. The key letters keep the font of the game. A row of the panel is new for each notice, so the master copy of the row gets the font, and a new row has it from the start. The mod also looks at every text of the panel and changes each one once. The game made the panel for the right edge, so the element "Quests" moves only up and down in the editor, and it keeps its size.
+
+`Scripts/farmplot.lua` changes the panel over each farm plot. The water and compost icons are half their size. The clearing panel loses its dark band, its frame and the gloss of its bar. Its title is smaller, with the shadow of the letters, and its bar is brown. Each plot has its own panel, so the mod changes each panel once.
+
+The death screen is the element "Death screen" in the editor: move it or make it smaller there. You cannot hide it. Only the words and the bars change their size and place: the blur and the dark background still fill the screen.
 
 `Scripts/clock.lua` shows the time of day right of the tool bar while the immersive mode is on. It reads the time from the game's day and night dial, as RuneMap does. Each of its four pictures sits in its own Image widget. The engine frees a picture that only Lua holds, and Lua then crashes the game when it touches it.
 
@@ -151,17 +165,21 @@ The drink buff sits right of the food, water and rest rings. The game's line bet
 
 `Scripts/editor.lua` draws the F9 and F8 panel and the mark on the selected element. `main.lua` gives it a plain table of what to show. When a part of the mod failed, the panel shows a line with its name, so you can look in `UE4SS.log` for it.
 
-`Scripts/layout.lua` holds the position math: where each part sits on this screen, and what to write into its widget. `Scripts/settings.lua` reads and writes `runeui.txt`. Neither of them talks to the game, so both have tests that run without it. `Scripts/bars.lua`, `Scripts/avatar.lua` and `Scripts/buffs.lua` build on the game's bars, the level badge and the buff list. `main.lua` holds the list of parts, finds the game's widgets, applies the layout, and runs the keys and the editor.
+`Scripts/layout.lua` holds the position math: where each part sits on this screen, and what to write into its widget. `Scripts/settings.lua` reads and writes `runeui.txt`. `Scripts/modmenu.lua` is the page in Mod Menu: `modmenu.txt` lists the settings, Mod Menu gives their values as shared variables of UE4SS, and the script takes a value that the player changed there. It does not take the first values that it sees: without a `config.txt` they are the defaults of the page. None of them talks to the game, so all three have tests that run without it. `Scripts/bars.lua`, `Scripts/avatar.lua` and `Scripts/buffs.lua` build on the game's bars, the level badge and the buff list. `main.lua` holds the list of parts, finds the game's widgets, applies the layout, and runs the keys and the editor.
 
 ### Speed
 
-The mod finds the parts of the HUD with one search of all widgets. The time of a search depends on the UE4SS build. In a test, a search took about 15 ms with a recent experimental build. An older build reads every object in the game, and a search took 50 ms or more. So the search runs every 2 s only for the first half minute of a world and while F9 or F8 is open. Then it runs every 10 s, and at once when a part that it found is gone or the number of buffs changes.
+The mod finds the parts of the HUD with one search of all widgets. The game holds 7000 to 10000 widgets, and one search took 10 to 50 ms in a test. So the search runs when the mod starts, when a world starts or ends, and after a respawn. After that, UE4SS tells the mod about each new widget (`NotifyOnNewObject`). The mod keeps the widgets of the classes that its parts use. When a part asks for a class for the first time, and the mod did not keep a widget of that class, one more search runs.
+
+The mod matches its parts to the kept widgets again in four cases: a new widget came, a part that it found is gone, the number of buffs changed, or 10 s went by. This reads only the kept widgets, not all widgets of the game.
+
+An older UE4SS runs the timer on two threads (see below), or has no `NotifyOnNewObject`. There the mod does not use the reports, and the log shows "timed search". It searches every 2 s until all HUD parts are found (30 s at most) and while F9 or F8 is open. Then it searches every 10 s, and at once when a part is gone or the number of buffs changes. An older build also reads every object in the game for a search, which took 50 ms or more.
 
 To see a world change, the mod reads the controller of the local player on every step. It does not search for it.
 
 The timer of the mod runs on the game thread, with `LoopInGameThreadWithDelay`. An older UE4SS does not have this function. Then the log shows "timer: old UE4SS", and the timer uses two threads. Two threads in one Lua state can crash the game.
 
-Once a minute, the log gets two lines that start with `perf:`. The first shows the time of the mod's steps and searches, the number of widgets that the mod moves, and the memory that Lua uses. The second shows the FPS of the game: with RuneMap shown, and with RuneMap hidden. Menus and loading screens are not counted.
+Once a minute, the log gets three or four lines that start with `perf:`. The first shows the time of the mod's steps and searches, the number of widgets that the mod moves, and the memory that Lua uses. The second shows the FPS of the game: with RuneMap shown, and with RuneMap hidden. Menus and loading screens are not counted. The third shows the full searches for the game's widgets: how many ran, their time, and what started each one (the start of the mod, a new world, a respawn, or a class that a part asked for late). It also shows how many new widgets UE4SS reported, the time that the mod needed for them, and how many it kept. A fourth line shows the size of the kept lists, and how many scans a kept widget brought. With an older UE4SS, the searches start from the 10 s timer, the first seconds of a world, the editor, a new buff, or a part that the game took away. After a menu or the big map, the log also shows the time that RuneMap needs to get its view back.
 
 ### Screens
 
@@ -169,20 +187,22 @@ The mod reads the size of the screen and the HUD scale of the game every 2 s. A 
 
 ### Files that the mod writes (in `Win64`)
 
-- `runeui.txt`: every setting of the mod, in plain text with named values. The three layout profiles (one line per element: `vitals: x=-699 y=-907 scale=0.9 visible=1 opacity=1 edgex=0.5 edgey=1`), the profile in use, the map settings and the zoom of F8, the trim line of the main menu for the line under the bars, and the keys. Delete a line to get its default back. A value the mod does not know stays in the file.
+- `runeui.txt`: every setting of the mod, in plain text with named values. The three layout profiles (one line per element: `vitals: x=-699 y=-907 scale=0.9 visible=1 opacity=1 edgex=0.5 edgey=1`), the profile in use, the map settings and the zoom of F8, and the keys. Delete a line to get its default back. A value the mod does not know stays in the file.
 - `runeui.txt.tmp`: the file while the mod writes it. It is renamed to `runeui.txt` when the write is done, so a crash never leaves half a file.
 
-A mod older than 1.4 wrote six files instead: `runeui_layout.txt`, `runeui_layout_2.txt`, `runeui_layout_3.txt`, `runeui_profile.txt`, `runeui_mapzoom.txt`, `runeui_map.txt` and `runeui_menuart.txt`. When `runeui.txt` is missing, the mod reads them once and writes `runeui.txt` from them. It does not delete them.
+A mod older than 1.4 wrote six files instead: `runeui_layout.txt`, `runeui_layout_2.txt`, `runeui_layout_3.txt`, `runeui_profile.txt`, `runeui_mapzoom.txt` and `runeui_map.txt`. When `runeui.txt` is missing, the mod reads them once and writes `runeui.txt` from them. It does not delete them.
 
 In the `[keys]` part of `runeui.txt` you can change five keys: `editor` (F9), `map` (F8), `profile` (F7), `zoomin` (]) and `zoomout` ([). A key is a name: `F1` to `F12`, a letter, a digit, `Insert`, `Delete`, `Home`, `End`, `PgUp`, `PgDn`, `[` or `]`. The mod reads the keys when the game starts.
 
 When the game starts, the mod also writes its pictures into `ue4ss/Mods/RuneUI/Art`. It writes a picture only when it is missing or different.
 
+With Mod Menu, the mod also writes `ue4ss/Mods/RuneUI/config.txt`. That file is the copy of the page's settings that Mod Menu keeps. Do not edit it: the mod makes it equal to its own settings again, and Mod Menu reads it each time the menu opens.
+
 The mod does not use the network and does not start other programs.
 
 ## For developers
 
-The pictures are in `RuneUI/Art`: the day band, the needle, the north mark, the diamonds, the creature diamonds, the survival rings, the bar tracks, the dash of the buff rings, the staff's target mark, the four time of day icons, and the editor's corners and box line. `tools/make-runemap-art.js` draws them. Run `node tools/make-runemap-art.js` again after you change a colour or a size in it. The band is drawn for the game's night start of 0.795. If the game changes that value, the log says so.
+The pictures are in `RuneUI/Art`: the day band, the time arrow, the north arrow, the diamonds, the creature diamonds, the survival rings, the bar tracks, the staff's target mark, the four time of day icons, and the editor's corners and box line. `tools/make-runemap-art.js` draws them. Run `node tools/make-runemap-art.js` again after you change a colour or a size in it. The band is drawn for the game's night start of 0.795. If the game changes that value, the log says so.
 
 CurseForge does not accept `.png` files in a Dragonwilds mod. So the tool also writes all the pictures into `RuneUI/Scripts/art.lua` as base64 text. When the game starts, the mod writes them back into `RuneUI/Art`. `RuneUI/Art/readme.txt` keeps the `Art` folder in the zip. `node tools/check-art.js` checks that the mod writes the pictures back byte for byte.
 
@@ -194,7 +214,7 @@ CurseForge does not accept `.png` files in a Dragonwilds mod. So the tool also w
 
 `node tools/check-lua.js` checks the Lua files without the game: the syntax, that every global name is a Lua or UE4SS one, and that no top-level local name is declared twice. It also counts the top-level locals of each file. Lua allows 200, and a file with more does not load.
 
-`node tools/test-aim.js`, `test-immersive.js`, `test-cooldowns.js`, `test-find.js`, `test-letters.js` and `test-clock.js` run parts of the Lua against fake widgets, without the game. `test-layout.js` drives the position math on a 16:9 screen, a 21:9 screen and with the game's HUD scale. `test-settings.js` covers `runeui.txt` and the reading of the old files. `node tools/run-tests.js` runs all the `tools/test-*.js` files.
+`node tools/test-aim.js`, `test-immersive.js`, `test-cooldowns.js`, `test-find.js`, `test-letters.js` and `test-clock.js` run parts of the Lua against fake widgets, without the game. `test-layout.js` drives the position math on a 16:9 screen, a 21:9 screen and with the game's HUD scale. `test-settings.js` covers `runeui.txt` and the reading of the old files. `test-modmenu.js` covers the page in Mod Menu with made-up shared variables, and reads `modmenu.txt`. `node tools/run-tests.js` runs all the `tools/test-*.js` files.
 
 Each part of the mod is one file in `RuneUI/Scripts` with a `Tick(ctx)` or a `Scan(ctx)` and a `Forget(sameWorld)`. `main.lua` keeps them in one list (`AddPart`): the step calls each `Tick` in that order, each widget scan calls `Scan`, and a new world calls `Forget`. A new part is one file and one `AddPart` line.
 

@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
 -- F9 opens the editor, F8 the map settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.4"
+local VERSION = "1.5"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
@@ -78,7 +78,8 @@ local Elements = {
     -- beside the rings wherever they go (as Inside it stayed at its own default spot, far from rings he had moved:
     -- in game 01-10-2026). Centre: right of the rest ring, level with the rings (measured in game: 243 units right
     -- of the water ring).
-    { Id="drink",    Name="Drink buff",                     Classes={"WBP_HUD_DrinkBuffListEntry_C"},
+    -- Since 1.5 also the food and potion buffs: the same kind of entry, in lists beside the drink's (buffs.lua).
+    { Id="drink",    Name="Drink, food and potion buffs",   Classes={"WBP_HUD_DrinkBuffListEntry_C", "WBP_HUD_FoodBuffListEntry_C", "WBP_HUD_PotionBuffListEntry_C"},
       Follows="survival", A={0,1}, Center={X=328, Y=958}, Size={X=50, Y=50} },
     { Id="toolbar",  Name="Tool bar",                       Classes={"WBP_Inventory_QuickAccesBar_C"},
       A={0,0}, Center={X=330, Y=110}, Size={X=545, Y=62} },
@@ -121,8 +122,23 @@ local Elements = {
       A={0.5,0.5}, Center={X=960, Y=300}, Size={X=600, Y=120} },
     { Id="saving",   Name="Saving animation",               Classes={"WBP_SavingSpinner_C"},
       A={1,0}, Center={X=1738, Y=156}, Size={X=64, Y=64} },
+    -- Size: one entry is 440 wide (its header and its boxes, the game's files). OnlyY: the panel is made for the
+    -- right edge, so it stays there at its own size and moves only up and down (playtest, 02-10-2026).
     { Id="quests",   Name="Quests",                         Classes={"WBP_QuestAndUnlocks_C"},
-      Inside="notify", A={1,0.5}, Center={X=1800, Y=420}, Size={X=240, Y=160} },
+      Inside="notify", OnlyY=true, A={1,0.5}, Center={X=1700, Y=420}, Size={X=440, Y=160} },
+    -- The list of picked-up items hangs at the right edge, its top right corner at the middle of the screen's height
+    -- (probe 20, 02-10-2026: anchors 1, 0.5; top -40; alignment 1, 0), right under the quests' box. As a part of
+    -- "notify" only, its frame was in the middle of the screen and a smaller "notify" pulled it there (playtest,
+    -- 02-10-2026). Size: one notice is about 350 wide and 43 high (a screenshot of that day), three in the box.
+    { Id="pickups",  Name="Item pick-ups",                  Classes={"WBP_ItemPickups_C"},
+      Inside="notify", A={1,0.5}, Center={X=1740, Y=565}, Size={X=360, Y=130} },
+    -- The death screen (probes 24 and 25, 02-10-2026), made by the game at the first death: BackgroundBlur > Overlay_0
+    -- > [Background, the bar, "You Died", "Killed By", the cause, the timer, ..], all in the middle. The element is
+    -- Overlay_0, not the widget: the blur keeps the whole screen. KeepFull: the dark Background still fills it.
+    -- It starts at the game's size; the player makes it smaller in F9 (playtest, 02-10-2026). NoHide: it cannot
+    -- be hidden, as the blur would stay over the screen with nothing on it.
+    { Id="death",    Name="Death screen",                   Classes={"WBP_HUD_Death_C"},
+      Child="Overlay_0", Deep=true, KeepFull="Background", NoHide=true, Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=700, Y=320} },
     { Id="prompts",  Name="Center prompts",                 Classes={"WBP_HeldActionWidget_C", "WBP_HUD_InteractionPrompt_C", "WBP_CallToActionWidget_C"},
       A={0.5,0.5}, Center={X=960, Y=640}, Size={X=300, Y=60} },
     { Id="armor",    Name="Armor warning",                  Classes={"WBP_ArmourDurabilityDisplay_C"},
@@ -164,6 +180,8 @@ local Defaults = {
     daynight={X=42, Y=-29, Visible=false},   -- RuneMap's ring is the clock; the dial stays alive, unseen
     toolbar={X=628, Y=925},
     notify={X=0, Y=-20},
+    -- at the right edge, above the middle, over the list of picked-up items (playtest, 02-10-2026)
+    quests={Y=-60},
     xp={Y=55},
     levelup={Y=60, Scale=0.9},
     area={Y=40, Scale=0.85},
@@ -222,7 +240,7 @@ pcall(function()
 end)
 
 -- One file, runeui.txt, next to the game (1.4): the three layout profiles, the profile in use, the map settings and
--- the zoom, the trim line of the main menu, and the keys. Named values, so a player can read and edit it, and a new
+-- the zoom, and the keys. Named values, so a player can read and edit it, and a new
 -- version never breaks an old file. The files of 1.3 and before are read once, when runeui.txt is missing, and are
 -- left in place. settings.lua reads and writes the file (tested without the game).
 local Settings = LoadPart("settings")
@@ -239,6 +257,7 @@ if not Cfg then
     Cfg = Settings.Legacy(ReadText)
     if Cfg then Log("settings: read from the files of an older version") else Cfg = {} Log("no settings file yet, using defaults") end
 end
+Cfg.menuart = nil   -- the main menu's line under the bars, saved up to 1.4: the bars use a line of the game since 1.5
 local ElementIds = {}   -- the order of the rows in the file: the element list
 for _, E in ipairs(Elements) do ElementIds[#ElementIds + 1] = E.Id end
 local function SaveCfg()
@@ -262,12 +281,13 @@ local function LoadLayout()
         if type(r) == "table" then
             E.X, E.Y = N(r.x, -4000, 4000, 0), N(r.y, -4000, 4000, 0)
             E.Scale = N(r.scale, 0.3, 4.0, 1.0)
-            E.Visible = N(r.visible, 0, 1, 1) == 1
+            E.Visible = E.NoHide or N(r.visible, 0, 1, 1) == 1
             E.Opacity = math.floor(N(r.opacity, 0.2, 1.0, 1.0) * 10 + 0.5) / 10
             -- the edge it follows; a row without it (a file of 1.1 or older): from where it sits
             if r.edgex ~= nil and r.edgey ~= nil then E.TX, E.TY = Third(N(r.edgex, 0, 1, 0.5), 1), Third(N(r.edgey, 0, 1, 0.5), 1)
             else TargetFromSpot(E) end
             if E.Wait and r.wait ~= nil then E.Wait = math.floor(N(r.wait, 3, 30, E.Wait) + 0.5) end
+            if E.OnlyY then E.X, E.Scale, E.TX = 0, 1.0, 1 end   -- a layout saved before it was OnlyY
         end
     end
     Log("layout loaded, profile " .. Prof.N)
@@ -299,7 +319,7 @@ LoadLayout()
 
 local Avatar = nil    -- the level badge or character picture beside the bars, from avatar.lua; loaded near the main loop
 local Bars = nil      -- the bars' look and the line under them, from bars.lua; loaded there too
-local Buffs = nil     -- the buff rings, the buff row and the drink ring, from buffs.lua; loaded there too
+local Buffs = nil     -- the buffs under the bars, the buff row and the drink ring, from buffs.lua; loaded there too
 local RuneMap = nil   -- the minimap, from runemap.lua; loaded near the main loop
 local Survival = nil  -- food, water and rest, from survival.lua; the buffs borrow its ring. Loaded there too.
 local Immersive = nil -- the HUD fading when idle, from immersive.lua; loaded there too
@@ -309,6 +329,7 @@ local Cooldowns = nil -- the spell cooldown tiles, from cooldowns.lua; loaded th
 local Letters = nil   -- white letters with a shadow, from letters.lua; loaded there too (ctx Letters.Ctx)
 local Clock = nil     -- the time of day icon, from clock.lua; loaded there too
 local Ammo = nil      -- the ammo counter in a ring, from ammo.lua; loaded there too (ctx Ammo.Ctx)
+local Toolbar = nil   -- the tool bar as tiles, from toolbar.lua; loaded there too (ctx Toolbar.Ctx)
 
 local function ClassName(obj)
     local ok, n = pcall(function() return obj:GetClass():GetFName():ToString() end)
@@ -317,13 +338,14 @@ end
 
 -- One search for every widget per scan, sorted by class. One search per class (about 30) took up to 1 s on UE4SS
 -- builds without hash tables: the stutter reports of 28-09-2026. This one took 45 ms and found the same widgets.
-local Found = {}   -- class name -> widgets, from the last scan
+local Found = {}   -- class name -> widgets, from the last search and, since 1.5, the game's reports (Reports)
 -- class address -> class name: the name is read once per class, not once per widget (5000 widgets, 19 ms a scan
 -- on a UE4SS with hash tables, 28-09-2026). Emptied on a new world, in case a class is unloaded and its address reused.
 local ClassNames = {}
 local function ClassAddress(W) return W:GetClass():GetAddress() end
 -- FindClass's answers since the last search, by class and path: the parts ask for the same classes up to 5 times a
--- second (the spell slices, the chat, the aim), and between two searches the answer only loses widgets (30-09-2026)
+-- second (the spell slices, the chat, the aim), and between two searches the answer only loses widgets (30-09-2026).
+-- With the game's reports a class can gain a widget between two searches: FindAll empties this when it matches again.
 local FindCache = {}
 local function Valid(W) return W and W:IsValid() end
 local function SearchWidgets()
@@ -339,9 +361,56 @@ local function SearchWidgets()
     end
 end
 
+-- The game reports every new widget (1.5), so the search above runs once per world, not every 10 s: it walked
+-- 7000 to 10000 widgets in 10 to 50 ms, the hitches of the playtest of 01-10-2026. UE4SS calls NewWidget on the game
+-- thread, as it does the step (its source at 44afb36d: a widget made on a loading thread waits for the next engine
+-- tick). On: the report is registered, where the timer starts; an old UE4SS keeps the timed search.
+-- Wanted: the classes FindClass was asked for; a widget of another class is not kept. Dropped: the classes not kept
+-- since the last search. Walk: why the next scan must search (false: no search). Retry: the scans that still match
+-- the parts again after a kept widget, as a new widget has no tree and no parent yet. Seen, Kept, Time, Max: for
+-- the perf line; the reports run outside the step, so its times do not count them.
+-- Fresh: a widget was kept since the last scan, so the step scans soon (TickBody).
+local Reports = { On = false, Wanted = {}, Dropped = {}, Walk = "start", Retry = 0, Fresh = false, Quick = 0, Seen = 0, Kept = 0, Time = 0, Max = 0 }
+-- It returns nothing: a report that returns true is taken out, and in this UE4SS that can free the Lua thread all
+-- hooks of the mod run on (UE4SS issue 1345). The mod's own widgets come through here too, from inside the step.
+local function NewWidget(W)
+    local t0 = os.clock()
+    Reports.Seen = Reports.Seen + 1
+    local ok, a = pcall(ClassAddress, W)
+    if ok and a then
+        local c = ClassNames[a]
+        if not c then c = ClassName(W) ClassNames[a] = c end
+        if Reports.Wanted[c] then
+            local t = Found[c]
+            if t then t[#t + 1] = W else Found[c] = { W } end
+            Reports.Kept, Reports.Retry, Reports.Fresh = Reports.Kept + 1, 3, true
+        else
+            Reports.Dropped[c] = true
+        end
+    end
+    local took = os.clock() - t0
+    Reports.Time, Reports.Max = Reports.Time + took, math.max(Reports.Max, took)
+end
+-- Without the timed search a class's list only grows. Before FindClass reads it, drop the widgets that are gone, a
+-- freed slot that now holds an object of another class, and a widget listed twice (reported, and found by a search).
+local function StillOf(W, className) return W:IsValid() and ClassNames[ClassAddress(W)] == className and W:GetAddress() end
+local function Compact(className)
+    local keep, seen = {}, {}
+    for _, W in ipairs(Found[className] or {}) do
+        local ok, a = pcall(StillOf, W, className)
+        if ok and a and not seen[a] then seen[a] = true keep[#keep + 1] = W end
+    end
+    Found[className] = keep
+end
+
 -- Returns the widgets and, as a second list, their full names (read here once, so no caller reads them again).
 -- A cached answer is checked for widgets gone since; the lists are shared, so callers only read them.
 local function FindClass(className, pathEnds, useParent)
+    if Reports.On and not Reports.Wanted[className] then
+        Reports.Wanted[className] = true
+        -- the last search has every widget of the class, unless one was made since and not kept
+        if Reports.Dropped[className] and not Reports.Walk then Reports.Walk = "new class" end
+    end
     local ck = className .. "|" .. (useParent or 0) .. "|" .. (pathEnds and table.concat(pathEnds, "|") or "")
     local hit = FindCache[ck]
     if hit then
@@ -352,6 +421,7 @@ local function FindClass(className, pathEnds, useParent)
         return hit.W, hit.K
     end
     local out, keys = {}, {}
+    if Reports.On then Compact(className) end
     for _, W in ipairs(Found[className] or {}) do
         -- one object that cannot be read (a world being unloaded) must not stop the whole scan (27-09-2026)
         pcall(function()
@@ -410,7 +480,16 @@ end
 -- once when a widget it found is gone, or when the number of buffs changes (a new buff can bring a new entry
 -- widget, and its ring should not wait). A widget the game makes new waits 10 s at most for its place (review of
 -- 29-09-2026: 20 s was too long). Between searches the widgets of the last one are used. ForgetWorld drops them.
+-- Since 1.5 this is the way of an old UE4SS only: with the game's reports (Reports) the search runs once per world,
+-- and NextSearch times the matching of the parts to the widgets kept.
 local NextSearch = 0
+-- the full searches since the last perf line: how many, their time, and what set each off (PerfLog)
+local Searches = { N = 0, Sum = 0, Max = 0, Why = {} }
+-- After a new world or a respawn the HUD is searched on every scan, up to 30 s, so its parts are found as the game
+-- builds them. Three searches in a row that find the same number of parts end that early: the rest cost 10 to
+-- 50 ms each for nothing (playtest, 01-10-2026: hitches of 90 to 110 ms after a teleport and a respawn). A part
+-- the game builds later waits for the 10 s search. ForgetWorld starts it again. An old UE4SS only, as the timer is.
+local Settle = { Last = -1, Same = 0, Done = false }
 -- A freed widget's slot can go to a new object that still reads valid, so the name is compared too (review of
 -- 29-09-2026); AddInstance adds each widget and its name together. Avatar and RuneMap are ours and re-added each pass.
 local function AnyGone()
@@ -418,7 +497,7 @@ local function AnyGone()
         if not E.Custom then
             for n, W in ipairs(E.Instances) do
                 local ok, k = pcall(function() return W:IsValid() and W:GetFullName() end)
-                if not (ok and k == E.Keys[n]) then return true end
+                if not (ok and k == E.Keys[n]) then return E.Id end
             end
         end
     end
@@ -433,9 +512,26 @@ local function FindAll(editing, buffsNew)
     local now = os.clock()
     local buffs = (Buffs and Buffs.Changed()) or buffsNew   -- read on every pass, so the count stays current
     local searched = false
-    if now > NextSearch or now < SettleUntil + 30 or editing or buffs or AnyGone() then
+    local why
+    if Reports.On then
+        -- The game reports new widgets (Reports): a full search only when one is owed. The parts are matched again,
+        -- from the widgets kept, on what set off a search before; that reads some tens of widgets, not all of them.
+        why = Reports.Walk
+        searched = Reports.Retry > 0 or now > NextSearch or buffs or AnyGone()
+        if searched and not why then FindCache, NextSearch = {}, now + 10 end
+        if Reports.Retry > 0 then Reports.Retry = Reports.Retry - 1 end
+    else
+        why = (now > NextSearch and "timer") or (now < SettleUntil + 30 and not Settle.Done and "settle") or (editing and "editor")
+            or (buffs and "buffs") or AnyGone()
+    end
+    if why then
+        local t0 = os.clock()
         SearchWidgets()
+        local t = os.clock() - t0
+        Searches.N, Searches.Sum, Searches.Max = Searches.N + 1, Searches.Sum + t, math.max(Searches.Max, t)
+        Searches.Why[why] = (Searches.Why[why] or 0) + 1
         NextSearch = now + 10
+        Reports.Walk, Reports.Dropped = false, {}
         searched = true
     end
     for _, E in ipairs(Elements) do
@@ -467,6 +563,16 @@ local function FindAll(editing, buffsNew)
                     if W then AddInstance(E, W, k) end
                 end
             end
+        end
+    end
+    if why == "settle" then
+        local n = 0
+        for _, E in ipairs(Elements) do if not E.Custom then n = n + #E.Instances end end
+        Settle.Same = (n > 0 and n == Settle.Last) and Settle.Same + 1 or 0
+        Settle.Last = n
+        if Settle.Same >= 2 then
+            Settle.Done = true
+            Log(string.format("settled: %d HUD parts found, back to the 10 s search", n))
         end
     end
     pcall(ReadHud)
@@ -574,8 +680,24 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
             L.PX, L.PY = px, py
         end
     end
+    local moved = force or L.X ~= x or L.Y ~= y or L.S ~= scale
     if force or L.X ~= x or L.Y ~= y then W:SetRenderTranslation({ X = x, Y = y }) L.X, L.Y = x, y end
     if force or L.S ~= scale then W:SetRenderScale({ X = scale, Y = scale }) L.S = scale end
+    -- KeepFull: a child that fills the element and must still fill the screen. It gets the inverse of the element's
+    -- move and size, about the same middle: the element maps p to c + s*(p - c) + t, the child q to c + (q - c)/s - t/s.
+    if E.KeepFull and moved then
+        pcall(function()
+            local px, py = Layout.Pivot(E)   -- the element's own pivot: the child fills the same box
+            for i = 0, W:GetChildrenCount() - 1 do
+                local c = W:GetChildAt(i)
+                if c:GetFName():ToString() == E.KeepFull then
+                    c:SetRenderTransformPivot({ X = px, Y = py })
+                    c:SetRenderScale({ X = 1 / scale, Y = 1 / scale })
+                    c:SetRenderTranslation({ X = -x / scale, Y = -y / scale })
+                end
+            end
+        end)
+    end
     -- fade: the share of the opacity that goes into the render opacity. RuneMap sets its own (runemap.lua): its
     -- gold rings need it too.
     local fade = 1.0
@@ -674,59 +796,8 @@ local function FindPoppins()
     return Poppins
 end
 
--- The trim line with diamonds under the main menu's PLAY menu frames the bars (EnsureBarTrim). The menu's template
--- exists only while the main menu is loaded, so its picture's path and brush are written down then (plain values),
--- also into runeui_menuart.txt for a reload of the mod in the middle of the game.
-local function FindTemplate(cls, pattern)
-    for _, W in pairs(FindAllOf(cls) or {}) do
-        local ok, n = pcall(function() return W:GetFullName() end)
-        if ok and string.find(n, pattern, 1, true) then return W end
-    end
-end
-local MenuArt = nil
-local function CaptureMenuArt()
-    if MenuArt then return true end
-    local T = FindTemplate("Image", "WBP_MainMenu_LandingMenu_C:WidgetTree.Trim01")
-    if not T then return false end
-    local B = T.Brush
-    local b = { Res = B.ResourceObject:GetFullName():match("^%S+%s+(.+)$"), DrawAs = B.DrawAs,
-        Margin = { Left = B.Margin.Left, Top = B.Margin.Top, Right = B.Margin.Right, Bottom = B.Margin.Bottom },
-        Size = { X = B.ImageSize.X, Y = B.ImageSize.Y }, Tiling = B.Tiling, Tint = { R = 1, G = 1, B = 1, A = 1 } }
-    pcall(function() local c = B.TintColor.SpecifiedColor b.Tint = { R = c.R, G = c.G, B = c.B, A = c.A } end)
-    MenuArt = { Trim = b }
-    local t = b.Tint
-    Settings.Section(Cfg, "menuart").trim = string.format("%s|%s|%s,%s,%s,%s|%s,%s|%s|%s,%s,%s,%s", b.Res, tostring(b.DrawAs),
-        b.Margin.Left, b.Margin.Top, b.Margin.Right, b.Margin.Bottom, b.Size.X, b.Size.Y, tostring(b.Tiling), t.R, t.G, t.B, t.A)
-    SaveCfg()
-    Log("menu art saved: trim=" .. tostring(b.Res))
-    return true
-end
--- the saved trim line, from the settings file (the [menuart] section; the raw text of the line)
-local function LoadMenuArtFile()
-    local raw = Settings.Section(Cfg, "menuart").trim
-    if type(raw) ~= "string" or raw == "" then return nil end
-    local art = {}
-    local function split(s) local out = {} for p in string.gmatch(s, "([^|]+)") do table.insert(out, p) end return out end
-    local function nums(s) local out = {} for n in string.gmatch(s, "[^,]+") do table.insert(out, tonumber(n)) end return out end
-    -- a number in a range, or the default: the brush settings come from a file
-    local function num(v, lo, hi, d) v = tonumber(v) if not v or v ~= v then return d end return math.max(lo, math.min(hi, v)) end
-    pcall(function()   -- a malformed value is skipped, and the trim is read again from the main menu
-        local p = split(raw)
-        local m, s, c = nums(p[3]), nums(p[4]), nums(p[6])
-        art.Trim = { Res = p[1], DrawAs = math.floor(num(p[2], 0, 4, 3)), Tiling = math.floor(num(p[5], 0, 3, 0)),
-            Margin = { Left = num(m[1], 0, 1, 0), Top = num(m[2], 0, 1, 0), Right = num(m[3], 0, 1, 0), Bottom = num(m[4], 0, 1, 0) },
-            Size = { X = num(s[1], 1, 2048, 64), Y = num(s[2], 1, 2048, 64) },
-            Tint = { R = num(c[1], 0, 1, 1), G = num(c[2], 0, 1, 1), B = num(c[3], 0, 1, 1), A = num(c[4], 0, 1, 1) } }
-    end)
-    if next(art) then Log("menu art read from the settings file") return art end
-end
-local function FindMenuArt()
-    if not MenuArt then MenuArt = LoadMenuArtFile() end
-    return MenuArt or {}
-end
-
--- kind: the class the object must be, for the typed calls it goes into. The menu art paths are read back from
--- a file, and after a game patch another kind of object can sit at a saved path; the wrong kind can crash.
+-- kind: the class the object must be, for the typed calls it goes into. After a game patch another kind of object
+-- can sit at a known path; the wrong kind can crash.
 local function Asset(path, kind)
     if not path then return nil end
     if not string.match(path, "^/[%w_%./%-]+$") then Log("asset path not accepted: " .. path) return nil end
@@ -753,23 +824,6 @@ local function CachedTex(cache, key, outer, file)
     return tex
 end
 
--- An Image widget showing a saved brush, or nil
-local function ImageFromArt(tree, name, info)
-    if not info then return nil end
-    local tex = Asset(info.Res, "/Script/Engine.Texture2D")
-    if not tex then return nil end
-    local img = StaticConstructObject(Cls("/Script/UMG.Image"), tree, FName(name))
-    img:SetBrushFromTexture(tex, false)
-    local b = img.Brush
-    pcall(function() b.DrawAs = info.DrawAs end)
-    pcall(function() b.Margin = info.Margin end)
-    pcall(function() b.ImageSize = { X = info.Size.X, Y = info.Size.Y } end)
-    pcall(function() b.Tiling = info.Tiling end)
-    pcall(function() if info.Tint then b.TintColor = { SpecifiedColor = info.Tint, ColorUseRule = 0 } end end)
-    img:SetBrush(b)
-    return img
-end
-
 -- The F9 list by screen area (design sketch): the ninth of the screen an element sits in (Layout.Area). Read when
 -- the editor opens, so a row does not jump to another group while it moves; PgUp and PgDn go down this list.
 local Order = {}   -- element indexes in list order
@@ -793,12 +847,18 @@ local function Changed(E)
         or E.Opacity < 1
 end
 
--- the keys each panel lists (the design sketch)
-local EDIT_KEYS = { { { "PgUp", "PgDn" }, "Select" }, { { "←", "→", "↑", "↓" }, "Move" }, { { "+", "-" }, "Size" },
-    { { ",", "." }, "Opacity" }, { { "Home", "End" }, "Step" }, { { "Del", "Ins" }, "Hide, show" },
-    { { "Backspace" }, "Reset" }, { { "F9" }, "Save, close" } }
-local MAP_KEYS = { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { "[", "]" }, "Zoom" },
-    { { "Backspace" }, "Reset" }, { { "F9" }, "Layout" }, { { "F8" }, "Save, close" } }
+-- The keys each panel lists (the design sketch). KEY: the names of the five keys a player can change, as bound
+-- (KeyCode, at the keys below, writes them at load). So the lists are made when a panel is filled, not at load.
+local KEY = {}
+local function EditKeys()
+    return { { { "PgUp", "PgDn" }, "Select" }, { { "←", "→", "↑", "↓" }, "Move" }, { { "+", "-" }, "Size" },
+        { { ",", "." }, "Opacity" }, { { "Home", "End" }, "Step" }, { { "Del", "Ins" }, "Hide, show" },
+        { { "Backspace" }, "Reset" }, { { KEY.editor }, "Save, close" } }
+end
+local function MapKeys()
+    return { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { KEY.zoomout, KEY.zoomin }, "Zoom" },
+        { { "Backspace" }, "Reset" }, { { KEY.editor }, "Layout" }, { { KEY.map }, "Save, close" } }
+end
 local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
 -- the lines that are a plain On / Off, and the setting in runemap.lua each one flips
 local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
@@ -817,7 +877,7 @@ local function MapValue(i)
     return S[MAP_SWITCH[row]] and "On" or "Off"
 end
 local MAP_HINTS = {
-    RuneMap = { On = "The map is on. To only hide it, use Delete in F9.", Off = "The map is off. The mod does not build it at all." },
+    RuneMap = { Off = "The map is off. The mod does not build it at all." },   -- On names the editor's key: MapHint
     ["Faces north"] = { On = "North stays at the top of the map.", Off = "The map turns with the camera." },
     ["North mark"] = { On = "The mark on the gold ring shows where north is.", Off = "No north mark on the ring." },
     Creatures = { All = "Red diamonds for enemies, green for neutral animals.", ["Enemies only"] = "Only enemies. Neutral animals are not shown.",
@@ -831,7 +891,8 @@ local MAP_HINTS = {
 }
 local function MapHint(i, v)
     local row = MAP_ROWS[i]
-    if row == "Zoom" then return "Closer or farther. The [ and ] keys do the same at any time." end
+    if row == "Zoom" then return "Closer or farther. The " .. KEY.zoomout .. " and " .. KEY.zoomin .. " keys do the same at any time." end
+    if row == "RuneMap" and v == "On" then return "The map is on. To only hide it, use Delete in " .. KEY.editor .. "." end
     return MAP_HINTS[row] and MAP_HINTS[row][v] or ""
 end
 
@@ -848,8 +909,8 @@ end
 
 local function EditView()
     local E = Elements[Selected]
-    local v = { Mode = "edit", Title = "RUNE UI", SubA = "Map settings on", SubB = "F8", Profile = Prof.N,
-        Keys = EDIT_KEYS, Name = E.Name, Map = {}, Warn = Problems() }
+    local v = { Mode = "edit", Title = "RUNE UI", SubA = "Map settings on", SubB = KEY.map, Profile = Prof.N,
+        Keys = EditKeys(), Name = E.Name, Map = {}, Warn = Problems() }
     local cx, cy = Spot(E)
     local sx, sy = math.floor(cx + 0.5), math.floor(cy + 0.5)   -- on a 1920 x 1080 screen
     if E.Wait then   -- the immersive line: + and - set the wait
@@ -898,7 +959,7 @@ end
 local function MapView()
     local vals = {}
     for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
-    local v = { Mode = "map", Title = "RUNE MAP", SubA = "Layout on", SubB = "F9", Keys = MAP_KEYS, Warn = Problems(),
+    local v = { Mode = "map", Title = "RUNE MAP", SubA = "Layout on", SubB = KEY.editor, Keys = MapKeys(), Warn = Problems(),
         Name = MAP_ROWS[MapSel] .. ":  " .. vals[MapSel], Hint = MapHint(MapSel, vals[MapSel]), Rows = {} }
     for r = 1, #MAP_ROWS do v.Rows[r] = { Text = MAP_ROWS[r], Note = vals[r], Sel = r == MapSel } end
     return v
@@ -931,13 +992,17 @@ local function PanelAt(v)
 end
 
 -- State: what the panel shows now, as one string. View: the last view, placed again on every step, as the panel
--- knows its new size one frame after its content changed.
-local Panel = { State = "", View = nil, ErrorLogged = false }
+-- knows its new size one frame after its content changed. Both are set after the fill: a fill that failed is
+-- tried again on the next step (State was set first, and the panel stayed empty: playtest, 02-10-2026).
+-- Logged: the error texts of a step that are in the log, Lines: how many. A step that failed can fail again every
+-- 50 ms: each text is logged once, and 10 texts at most in a world, as a text may change from step to step.
+local Panel = { State = "", View = nil, Logged = {}, Lines = 0 }
 local function UpdateOverlay(now)
     local open = EditMode or MapMode
     if not Editor then return end
     if open and not Editor.Ready() and MayTry(Editor) and os.clock() > SettleUntil and LastController ~= "" then
-        local ok, err = Editor.Build({ Log = Log, Gen = function() return Gen end, Font = FindPoppins(), Asset = Asset })
+        local ok, err = Editor.Build({ Log = Log, Gen = function() return Gen end, Font = FindPoppins(), Asset = Asset,
+            ProfileKey = KEY.profile })
         if ok then Log("panel ready") Editor.Fails, Panel.State = 0, "" else Failed(Editor) Log("panel failed: " .. tostring(err)) end
     end
     if not Editor.Ready() then return end
@@ -960,23 +1025,32 @@ local function UpdateOverlay(now)
             end
             state = table.concat(parts, "|")
         end
+        -- opened before the fill: while the fill fails, the player sees the panel as it was last filled (empty
+        -- on the first open), not no panel
+        if not Editor.Shown then Editor.Open(true) Editor.Shown = true end
         if state ~= Panel.State then
-            Panel.State = state
-            Panel.View = MapMode and MapView() or EditView()
-            Editor.Update(Panel.View)
+            local v = MapMode and MapView() or EditView()
+            Editor.Update(v)
+            Panel.State, Panel.View = state, v
         end
         -- placed every step: the panel knows its new size one frame after its content changed
         if Panel.View then Editor.Place(PanelAt(Panel.View)) end
         Editor.Pulse(now)
-        if not Editor.Shown then Editor.Open(true) Editor.Shown = true end
     end)
-    if not ok and not Panel.ErrorLogged then Panel.ErrorLogged = true Log("panel update failed: " .. tostring(err)) end
+    if not ok then
+        err = tostring(err)
+        if not Panel.Logged[err] and Panel.Lines < 10 then
+            Panel.Logged[err], Panel.Lines = true, Panel.Lines + 1
+            Log("panel update failed: " .. err)
+        end
+    end
 end
 
 -- the arrows move the selected element by the step; a held arrow keeps moving it (see HoldMove)
 local function Move(dx, dy)
     local E = Elements[Selected]
     if not EditMode or IsSwitch(E) then return end
+    if E.OnlyY then dx = 0 end
     E.X, E.Y = E.X + dx * Step, E.Y + dy * Step
     E.Moved = true   -- on saving, it follows the edge nearest to where it now sits (Retarget)
 end
@@ -984,7 +1058,6 @@ end
 
 local LastScan = -100
 local NextBuffCount = 0
-local NextArtTry = 0
 local ApplyErrorLogged = false
 local TickAlive = false
 local SaveRequested = false
@@ -1028,11 +1101,11 @@ do
     if not ok then Log("pictures not written: " .. tostring(err)) end
 end
 Survival = LoadPart("survival")
--- The parts that build on the game's widgets: the avatar, the bars and the buff rings. They share main.lua's
+-- The parts that build on the game's widgets: the avatar, the bars and the buffs. They share main.lua's
 -- helpers through one table, and survival.lua's ring and Find. Listed first: their Scan runs in this order, and
--- the buff rings' step runs before the map's, as it always did.
+-- the buffs' step runs before the map's, as it always did.
 local Util = { Log = Log, ById = ById, Uniq = Uniq, G = G, ClearOurs = ClearOurs, ClassName = ClassName,
-    FindClass = FindClass, Asset = Asset, SetColor = SetColor, ImageFromArt = ImageFromArt, FindMenuArt = FindMenuArt,
+    FindClass = FindClass, Asset = Asset, SetColor = SetColor,
     MayTry = MayTry, Failed = Failed, CachedTex = CachedTex, Survival = Survival }
 Avatar = LoadPart("avatar")
 if Avatar then Avatar.Init(Util) AddPart("avatar", Avatar, Util) end
@@ -1081,7 +1154,8 @@ AddPart("aim", Aim, AimCtx)
 Cooldowns = LoadPart("cooldowns")
 if Cooldowns then
     Cooldowns.Ctx = { Log = Log, ById = ById, Find = Survival and Survival.Find,
-        On = function() return ById("cooldowns").Visible end, Editing = MapCtx.Editing,
+        -- Editing: F9 only. With MapCtx.Editing the sample tiles also showed with the map settings (F8) open.
+        On = function() return ById("cooldowns").Visible end, Editing = function() return EditMode end,
         -- the spell wheel's slices only: the spell book has a second wheel of the same slices (probe, 29-09-2026).
         -- With their names, as FindClass gives them.
         Slices = function() return FindClass("WBP_SurvivalSorcery_RadialSlice_C", Cooldowns.Ctx.SlicePath) end,
@@ -1101,7 +1175,25 @@ local ClockCtx = { Log = Log, ById = ById, On = function() return ById("immersiv
 AddPart("clock", Clock, ClockCtx)
 Letters = LoadPart("letters")
 if Letters then Letters.Ctx = { Log = Log, Find = FindClass } AddPart("letters", Letters, Letters.Ctx) end
--- last: the parts above may change what it fades, and ApplyAll reads its opacity after it
+Toolbar = LoadPart("toolbar")
+if Toolbar then Toolbar.Ctx = { Log = Log, ById = ById, G = G, Font = FindPoppins } AddPart("toolbar", Toolbar, Toolbar.Ctx) end
+do   -- no name of its own: main.lua is near Lua's limit of 200 locals
+    local P = LoadPart("pickups")
+    if P then AddPart("pickups", P, { Log = Log, Find = FindClass, Font = FindPoppins }) end
+    P = LoadPart("farmplot")
+    if P then AddPart("farm plots", P, { Log = Log, Find = FindClass }) end
+    P = LoadPart("quests")
+    if P then
+        AddPart("quests", P, { Log = Log, Find = FindClass, Font = FindPoppins, Collect = Letters and Letters.Collect })
+    end
+    P = LoadPart("bednames")
+    if P then
+        AddPart("bed names", P, { Log = Log, Hook = RegisterHook, Text = FText,
+            Find = function(path) local o = Cls(path) if o ~= nil and o:IsValid() then return o:GetAddress() end end })
+    end
+end
+-- last of the parts that draw: the parts above may change what it fades, and ApplyAll reads its opacity after it
+-- (the Mod Menu part, added at the keys, comes after it and draws nothing)
 AddPart("immersive", Immersive, ImmersiveCtx, true)
 Editor = LoadPart("editor")
 
@@ -1113,11 +1205,13 @@ Editor = LoadPart("editor")
 local function ForgetWorld(sameWorld)
     for _, E in ipairs(Elements) do E.Instances, E.Keys, E.PartsOp, E.PartsW, E.Last = {}, {}, {}, {}, {} end
     Found, FindCache, NextSearch = {}, {}, 0   -- the last widget search's handles; search again at once
+    Reports.Walk = sameWorld and "restart" or "new world"
     if Editor then Editor.Fails, Editor.RetryAt = 0, 0 end   -- new tries (see MayTry); the parts reset their own in Forget
     Tint = {}   -- a HUD made again may reuse a name: set the opacity colour again, it costs one call per widget
     if not sameWorld then
-        -- the editor panel of the old world is off the screen: build a new one on the next F9
-        if Editor then Editor.Forget() Editor.Shown, Panel.State = false, "" end
+        -- the editor panel of the old world is off the screen: build a new one on the next F9, and say its
+        -- errors again if it fails again
+        if Editor then Editor.Forget() Editor.Shown, Panel.State, Panel.Logged, Panel.Lines = false, "", {}, 0 end
         -- these remember widgets by full name; the old world's widgets are gone
         OrigOpacity, Touched, Unclipped, ClassNames, IsUW = {}, {}, {}, {}, {}
     end
@@ -1127,6 +1221,7 @@ local function ForgetWorld(sameWorld)
     end
     Gen = Gen + 1
     SettleUntil = os.clock() + 3
+    Settle = { Last = -1, Same = 0, Done = false }
     Log(sameWorld and "player restart: old handles dropped" or "new world: old handles dropped")
 end
 local LocalPlayer = nil   -- the local player object lives as long as the game
@@ -1223,6 +1318,25 @@ local function PerfLog(now)
         end
     end
     Log("perf: game " .. (#parts > 0 and table.concat(parts, "; ") or "HUD not on screen"))
+    local why = {}
+    for k, n in pairs(Searches.Why) do why[#why + 1] = k .. " " .. n end
+    table.sort(why)
+    Log(string.format("perf: %d full searches, avg %.0f ms, max %.0f ms (%s); %s", Searches.N,
+        Searches.Sum / math.max(1, Searches.N) * 1000, Searches.Max * 1000, table.concat(why, ", "),
+        Reports.On and string.format("%d new widgets reported in %.0f ms, max %.0f ms, %d kept", Reports.Seen,
+            Reports.Time * 1000, Reports.Max * 1000, Reports.Kept) or "no reports, timed search"))
+    if Reports.On then
+        -- the kept lists, as FindClass reads a whole list when the parts are matched again: their size and the longest
+        local n, top, topN = 0, "none", 0
+        for c in pairs(Reports.Wanted) do
+            local k = #(Found[c] or {})
+            n = n + k
+            if k > topN then top, topN = c, k end
+        end
+        Log(string.format("perf: %d widgets in the kept lists, the longest %s with %d; %d scans brought by a kept widget", n, top, topN, Reports.Quick))
+    end
+    Searches = { N = 0, Sum = 0, Max = 0, Why = {} }
+    Reports.Seen, Reports.Kept, Reports.Time, Reports.Max, Reports.Quick = 0, 0, 0, 0, 0
     Perf = { From = now, Ticks = 0, Sum = 0, Max = 0, Watch = 0, Scans = 0, ScanSum = 0, ScanMax = 0 }
     Fps.By = {}
 end
@@ -1263,8 +1377,8 @@ local function TickBody()
     Perf.Watch = Perf.Watch + (os.clock() - now)
     CountFrames(now)
 
-    -- the widgets every 2 s, in the editor too: faster scans stuttered (27-09 and 28-09-2026). The full search
-    -- inside runs less often (FindAll).
+    -- the widgets every 2 s, in the editor too: faster scans stuttered when each held a full search (27-09 and
+    -- 28-09-2026). The full search inside runs less often (FindAll); sooner scans come from the two cases below.
     -- Sooner when the buff count changes: a new drink took up to 2 s to become its ring (playtest, 01-10-2026). The
     -- count is a few plain numbers; the search it brings runs once per new buff.
     local buffsNew = false
@@ -1273,29 +1387,32 @@ local function TickBody()
         local okB, b = Buffs and pcall(Buffs.Changed)
         buffsNew = okB and b or false
     end
-    local scanned = now - LastScan > 2.0 or buffsNew
+    -- Sooner too when the game reported a widget that a part uses: the drink's entry can come after its count
+    -- changed, and the ring then waited for the 2 s scan (playtest, 01-10-2026). 4 scans a second at most, as a
+    -- new HUD comes as some hundred widgets over a few seconds.
+    local quick = Reports.Fresh and now - LastScan > 0.25
+    local scanned = now - LastScan > 2.0 or buffsNew or quick
     if scanned then
-        LastScan = now
+        if quick then Reports.Quick = Reports.Quick + 1 end   -- for the perf line: a class the game makes all the time would show here
+        LastScan, Reports.Fresh = now, false
         local scanFrom = os.clock()
         local okFind, errFind = pcall(FindAll, EditMode or MapMode, buffsNew)
         if not okFind and not ApplyErrorLogged then ApplyErrorLogged = true Log("finding widgets failed: " .. tostring(errFind)) end
         if now > SettleUntil then
-            -- the parts that build on the game's widgets (the avatar, the bars, the buff rings), once per scan
+            -- the parts that build on the game's widgets (the avatar, the bars, the buffs), once per scan
             for _, P in ipairs(Parts) do
                 if P.M.Scan then
                     local okS, errS = pcall(P.M.Scan, P.Ctx)
                     if not okS and not P.M.ErrorLogged then P.M.ErrorLogged = true P.Error = tostring(errS) Log(P.Name .. " scan failed: " .. P.Error) end
                 end
             end
-            if buffsNew and Buffs then Buffs.NextRings = 0 end   -- a new ring shows its time in this step too
+            if buffsNew and Buffs then Buffs.NextRings = 0 end   -- a new buff or drink ring is right in this step too
         end
         local scan = os.clock() - scanFrom
         Perf.Scans, Perf.ScanSum, Perf.ScanMax = Perf.Scans + 1, Perf.ScanSum + scan, math.max(Perf.ScanMax, scan)
     end
-    -- try every 3 s for the first 3 minutes (the main menu); a full scan of images is too heavy to repeat forever
-    if not MenuArt and now < 180 and now > (NextArtTry or 0) then NextArtTry = now + 3 pcall(CaptureMenuArt) end
 
-    -- every part's step, in the order of the list; the immersive mode is last, before ApplyAll reads its opacity
+    -- every part's step, in the order of the list; the immersive mode is the last that draws, before ApplyAll reads its opacity
     for _, P in ipairs(Parts) do
         if now > SettleUntil and (P.Early or now > 20) then
             local okP, errP = P.M.Tick and pcall(P.M.Tick, P.Ctx)
@@ -1324,8 +1441,14 @@ end
 -- The whole step on the game thread. The older timer below runs part of it on UE4SS's own thread, at the same
 -- moment as the game thread's part: Lua cannot do that, and it crashed the game inside UE4SS.dll (27-09 and
 -- 28-09-2026, with "Ref was not function" errors in the log). The call throws when UE4SS has no game thread hook.
+-- The game's reports of new widgets (Reports) only with this timer: its step and the reports both run on the game
+-- thread, one after the other. Registered from the game thread too: UE4SS adds it to a list its hook reads there.
 if LoopInGameThreadWithDelay and ExecuteInGameThreadWithDelay
-    and pcall(ExecuteInGameThreadWithDelay, 2000, function() LoopInGameThreadWithDelay(50, TimerStep) end) then
+    and pcall(ExecuteInGameThreadWithDelay, 2000, function()
+        Reports.On = NotifyOnNewObject ~= nil and pcall(NotifyOnNewObject, "/Script/UMG.UserWidget", NewWidget)
+        Log(Reports.On and "widgets: the game reports new ones, no timed search" or "widgets: no reports from this UE4SS, timed search")
+        LoopInGameThreadWithDelay(50, TimerStep)
+    end) then
     Log("timer: on the game thread")
 else
     Log("timer: old UE4SS, the timer runs on two threads; a newer UE4SS experimental build is more stable")
@@ -1371,12 +1494,69 @@ local function KeyCode(what)
     local keys = Settings.Section(Cfg, "keys")
     if keys[what] == nil then keys[what] = KEY_DEFAULT[what] end   -- written on the next save, so the player sees the line
     local name = tostring(keys[what])
-    local code = VK[name] or VK[string.upper(name)]
+    local shown = VK[name] and name or string.upper(name)   -- f9 in the file is the F9 key
+    local code = VK[shown]
     if not code then
         Log("keys: " .. what .. "=" .. name .. " is not a key the mod knows, using " .. KEY_DEFAULT[what])
-        code = VK[KEY_DEFAULT[what]]
+        shown = KEY_DEFAULT[what]
+        code = VK[shown]
     end
+    KEY[what] = shown   -- the name the panels show
     return code
+end
+
+-- Rune UI's page in the mod "Mod Menu" (1.5, modmenu.lua): the rows of RuneUI/modmenu.txt, each with the mod's
+-- real value and the way to change it, as F8 and F9 do it. A key works after a restart, as from runeui.txt.
+do   -- no name of its own: main.lua is near Lua's limit of 200 locals
+    local MM = LoadPart("modmenu")
+    if MM then
+        local rows = {}
+        local function Row(key, get, set) rows[#rows + 1] = { Key = key, Get = get, Set = set } end
+        -- first: Mod Menu's "reset" gives every row at once, and the rows below belong to the profile in use
+        Row("profile", function() return tostring(Prof.N) end,
+            function(v) for _ = 1, 2 do if Prof.N ~= tonumber(v) then Prof.Next() end end end)
+        local keys = Settings.Section(Cfg, "keys")
+        for _, what in ipairs({ "editor", "map", "profile", "zoomin", "zoomout" }) do
+            Row("key_" .. what, function() return MM.KeyToMenu(keys[what]) or MM.KeyToMenu(KEY_DEFAULT[what]) end,
+                function(v)
+                    local name = MM.KeyFromMenu(v)
+                    if not name then Log("keys: " .. tostring(v) .. " from Mod Menu is not a key the mod knows, " .. what .. " stays") return end
+                    keys[what] = name
+                    SaveCfg()
+                end)
+        end
+        -- the immersive mode and the creatures are rows of the layout: the step's save writes them (SaveRequested)
+        local I, C = ById("immersive"), ById("creatures")
+        Row("immersive", function() return I.Visible end, function(v) I.Visible = v == true SaveRequested = true end)
+        Row("immersive_wait", function() return I.Wait or 8 end,
+            function(v) I.Wait = math.floor(Settings.Num(v, 3, 30, 8) + 0.5) SaveRequested = true end)
+        if RuneMap then
+            local S = RuneMap.Set
+            for _, k in ipairs({ "Map", "North", "Mark", "Ore", "Herbs", "Essence", "Trees" }) do
+                Row("map_" .. k, function() return S[k] end, function(v) S[k] = v == true RuneMap.Dirty = true end)
+            end
+            Row("map_creatures", function() return (not C.Visible) and "Off" or (S.Neutral and "All" or "Enemies only") end,
+                function(v) C.Visible, S.Neutral = v ~= "Off", v == "All" RuneMap.Dirty = true SaveRequested = true end)
+            Row("map_drawing", function() return S.Smooth and "Smooth" or "Faster" end,
+                function(v) S.Smooth = v == "Smooth" RuneMap.Dirty = true end)
+        end
+        AddPart("mod menu", MM, { Log = Log, Rows = rows, ReadFile = ReadText,
+            Read = function(name)
+                local ok, v = pcall(function() return ModRef:GetSharedVariable("ModMenu.RuneUI." .. name) end)
+                if ok then return v end
+            end,
+            WriteFile = function(path, text)
+                local f = io.open(path, "w")
+                if not f then return false end
+                local ok = f:write(text)
+                f:close()
+                return ok and true or false
+            end,
+            -- The step sorts the editor's list when it sees the editor open at its start. This opens it in the middle
+            -- of a step, and the panel is filled at the end of the same step: with no list yet, the first fill
+            -- failed and the panel stayed blank (playtest, 02-10-2026).
+            OpenEditor = function() MapMode = false EditMode = true pcall(SortOrder) end }, true)
+    end
 end
 
 RegisterKeyBind(KeyCode("editor"), function()
@@ -1451,7 +1631,7 @@ local function Resize(d)
     if not EditMode then return end
     -- on the immersive line + / - set the wait before fading, 3 to 30 s (playtest, 29-09-2026); numbers only here
     if E.Wait then E.Wait = math.max(3, math.min(30, E.Wait + (d > 0 and 1 or -1))) return end
-    if IsSwitch(E) then return end
+    if IsSwitch(E) or E.OnlyY then return end
     E.Scale = math.max(0.3, math.min(4.0, math.floor((E.Scale + d) * 100 + 0.5) / 100))   -- up to 400%
 end
 RegisterKeyBind(VK.Plus, function() Resize(0.05) end)     -- the number pad
@@ -1471,7 +1651,7 @@ RegisterKeyBind(VK.Period, function() Fade(0.1) end)
 -- F7: the next layout profile, only while the editor is open (the step saves this one and loads the next)
 RegisterKeyBind(KeyCode("profile"), function() if EditMode then Prof.Wanted = true end end)
 
-RegisterKeyBind(VK.Delete, function() if EditMode then Elements[Selected].Visible = false end end)
+RegisterKeyBind(VK.Delete, function() if EditMode and not Elements[Selected].NoHide then Elements[Selected].Visible = false end end)
 RegisterKeyBind(VK.Insert, function() if EditMode then Elements[Selected].Visible = true end end)
 local NoDefaults = {}
 RegisterKeyBind(VK.Backspace, function()
@@ -1485,4 +1665,4 @@ RegisterKeyBind(VK.Backspace, function()
     TargetFromSpot(E)
 end)
 
-Log("loaded, press F9 in game for the layout, F8 for the map")
+Log("loaded, press " .. KEY.editor .. " in game for the layout, " .. KEY.map .. " for the map")

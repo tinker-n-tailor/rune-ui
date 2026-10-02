@@ -1,7 +1,8 @@
 -- RuneMap, the minimap (design sketch, 27-09-2026): the game's own minimap widget, fed by our own map view,
 -- in a gold ring that is also the clock. The middle of the night is at the top and noon at the bottom; the
 -- ring keeps the game's own share of night (about a fifth), so dawn sits near 1 o'clock and dusk near 11.
--- A gold needle on the ring points at the time of day, and a mark on the inner ring shows north.
+-- A gold arrow between the two gold rings points at the time of day, and a bigger arrow with an N shows north
+-- (1.5; before, a needle across the ring and a round mark on the inner ring).
 -- F8 (1.1, main.lua) turns the map on or off and sets faces north, the north mark, the creatures, the resources
 -- (resources.lua), the zoom and how often the map draws.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
@@ -13,7 +14,7 @@ local M = { W = nil, Fails = 0, Dirty = false, ResetWanted = false, PendingZoom 
 local D = 180                  -- map diameter; the art tool draws the band for the same size
 local BOX = D + 44             -- the whole element: map, day band and gold rings
 local C = BOX / 2
-local R_DIAMOND = D / 2 + 17
+local R_DIAMOND, DIAMOND = D / 2 + 17, 16   -- the marks on the outer gold ring; 13 units before 1.5 ("a bit bigger")
 -- The game's clock (first test, 27-09-2026): the day and night dial's material holds "Fill Amount", the share
 -- of the day cycle gone (0 = dawn), and "Night Start", where night begins (0.795). The ring puts the middle of
 -- the night at the top.
@@ -123,14 +124,17 @@ local function Disc(tree, name, size, fill, outline, width)
     return box, img
 end
 
--- Pictures drawn by tools/make-runemap-art.js: the day band, the needle and the diamonds. Smooth, where
+-- Pictures drawn by tools/make-runemap-art.js: the day band, the time arrow, the north arrow and the diamonds. Smooth, where
 -- rings of small pieces came out jagged (in-game test, 27-09-2026). The band assumes the game's night
 -- start of 0.795. The pictures ship with the mod; a missing one is logged and left out.
 local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
 local ART_NIGHT_START = 0.795
-local NEEDLE_W, NEEDLE_H = 10, 30
-local R_NEEDLE = D / 2 + 13   -- the tip just inside the inner gold ring, the cap outside the outer one
-local R_NORTH, NORTH_SIZE = D / 2 + 2, 17   -- the north mark: on the inner gold ring
+-- The time arrow (1.5, sizes picked live in the game on 02-10-2026): 13 x 19 units seen, between the two gold rings
+-- and a little over both; a smaller one that stayed inside the band was "super tiny". It points out.
+local NEEDLE_W, NEEDLE_H = 14.3, 21.5
+local R_NEEDLE = D / 2 + 9.5
+-- The north arrow: from the inner gold ring out past the outer one, so it is the biggest mark on the ring.
+local R_NORTH, NORTH_SIZE = D / 2 + 14, 26
 -- The camera's yaw at which north is at the top of the ring. The view needs InheritedYawOffset 90 to put the
 -- camera's forward at the top, so the map's own top (north on the big map) is yaw -90. Checked in game by
 -- playtest, 29-09-2026: the mark and "Faces north" agree with the big map (M).
@@ -391,7 +395,7 @@ local function BuildRing(ctx, tree, map)
     if diaTex then
         for _, deg in ipairs({ 90, 180, 270 }) do
             local x, y = OnRing(R_DIAMOND, deg)
-            Place(top, Picture(tree, "RU_MapDiamond" .. deg, diaTex, 13), x, y, 13, 13)
+            Place(top, Picture(tree, "RU_MapDiamond" .. deg, diaTex, DIAMOND), x, y, DIAMOND, DIAMOND)
         end
     end
     -- the creature diamonds: hidden pictures here hold them, so the engine keeps them while map icons use them
@@ -407,7 +411,7 @@ local function BuildRing(ctx, tree, map)
             AddCentred(ov, keep)
         end
     end
-    -- the north mark on the inner gold ring (1.1, shape A of the design sketch of 28-09-2026); under the needle
+    -- the north mark (1.1; since 1.5 an arrow with the N cut into it); under the time arrow
     local northTex = LoadArt(ctx, "runemap_north.png")
     if northTex then
         local okM, errM = pcall(function()
@@ -416,8 +420,8 @@ local function BuildRing(ctx, tree, map)
         end)
         if not okM then ctx.Log("runemap: north mark not drawn: " .. tostring(errM)) end
     end
-    -- the clock hand, chosen over the sun and the moon (design sketch, 27-09-2026): a gold needle
-    -- across the band that points at the map's centre
+    -- the clock hand: a gold arrow on the day band that points out. Chosen over the sun and the moon twice
+    -- (design sketch, 27-09-2026, and live in the game, 02-10-2026: a spark and a sun were tried, "arrow was better")
     local needleTex = LoadArt(ctx, "runemap_needle.png")
     if needleTex then
         local okN, errN = pcall(function()
@@ -481,7 +485,7 @@ local function ApplySettings(ctx)
         tostring(S.Mark), S.Smooth and "drawn every frame" or "drawn every second frame"))
 end
 
--- The mark slides round the inner ring as the camera turns: the view sits on the camera arm, so its yaw is the
+-- The mark slides round the ring as the camera turns, and turns with its place, so it points out: the view sits on the camera arm, so its yaw is the
 -- camera's. Facing north, the map's top is north, so the mark stays at the top.
 local function UpdateNorth()
     if not (M.NorthSlot and M.Set.Mark) then return end
@@ -495,6 +499,7 @@ local function UpdateNorth()
     M.LastNorth = deg
     local x, y = OnRing(R_NORTH, deg)
     M.NorthSlot:SetPosition({ X = x - NORTH_SIZE / 2, Y = y - NORTH_SIZE / 2 })
+    M.NorthImg:SetRenderTransformAngle(deg)
 end
 
 -- The F9 opacity. The whole map through its user widget, which leaves the editor's blinking (render opacity)
@@ -522,11 +527,19 @@ end
 -- terrain was added again and the map set up again (second F7 test of 27-09-2026).
 local function SetUpAgain(ctx)
     local map = M.Map
+    local t0 = os.clock()
     -- ours only on a map with no terrain yet: every add made another copy of the same pieces (29-09-2026)
     local n = 0
     pcall(function() n = map.Backgrounds:GetArrayNum() end)
     if n == 0 then pcall(AddBackgrounds, ctx, map) end
-    local ok, err = pcall(function() map:ReinitShape() map:RetryMapSize() map:ForceLayoutPrepass() end)
+    local t1 = os.clock()
+    -- one call at a time, each timed (the log line below); they stop at the first that fails, as one call did
+    local ok, err = pcall(function() map:ReinitShape() end)
+    local t2 = os.clock()
+    if ok then ok, err = pcall(function() map:RetryMapSize() end) end
+    local t3 = os.clock()
+    if ok then ok, err = pcall(function() map:ForceLayoutPrepass() end) end
+    local t4 = os.clock()
     if not ok then ctx.Log("runemap: set up again failed: " .. tostring(err)) end
     -- The plugin adds the terrain pictures again each time the big map (M) opens: 2 more each visit, 12 after five
     -- (log of 29-09-2026), and the map draws every copy. The first set-up after a build notes how many there are;
@@ -540,6 +553,9 @@ local function SetUpAgain(ctx)
         for i = kids - 1, M.TerrainAt, -1 do canvas:GetChildAt(i):RemoveFromParent() end
         if kids > M.TerrainAt then Once(ctx, "terraincopies", "runemap: extra terrain copies taken off the map") end
     end)
+    local ms = function(a, b) return (b - a) * 1000 end
+    ctx.Log(string.format("runemap: set up again in %.1f ms (terrain %.1f, shape %.1f, size %.1f, layout %.1f, trim %.1f)",
+        ms(t0, os.clock()), ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4), ms(t4, os.clock())))
 end
 
 local function Build(ctx)
@@ -868,9 +884,10 @@ function M.Tick(ctx)
             -- back from the big map: it had taken the map view over, and ours stayed empty (27-09-2026).
             -- Give our view back and set the map up again.
             if shown and M.Shown == false then
+                local t0 = os.clock()
                 pcall(function() M.Map:SetMapView(M.View) M.Map:BroadcastMapView() end)
                 M.SetUpAt = os.clock() + 0.3
-                ctx.Log("runemap: back from a menu, map set up again")
+                ctx.Log(string.format("runemap: back from a menu, view given back in %.1f ms", (os.clock() - t0) * 1000))
             end
             M.Shown = shown
             -- the creature icons at once, not at the next scan: the big map must never show them
@@ -913,7 +930,7 @@ function M.Tick(ctx)
     M.LastDeg = deg
     local x, y = OnRing(R_NEEDLE, deg)
     M.NeedleSlot:SetPosition({ X = x - NEEDLE_W / 2, Y = y - NEEDLE_H / 2 })
-    M.NeedleImg:SetRenderTransformAngle(deg)   -- the picture points down, at the centre when on top
+    M.NeedleImg:SetRenderTransformAngle(deg)   -- the picture points up: out, when on top
 end
 
 -- for resources.lua (main.lua sets M.Res): the helpers it shares with the creatures

@@ -1,40 +1,48 @@
 -- The bars: a plain dark track behind each fill, one colour per bar, stamina green, health on top, no health
--- numbers, the game's shadow and icons hidden; and the trim line of the main menu under the bars. main.lua loads
+-- numbers, the game's shadow and icons hidden; and the gold line of the loading screen under the bars. main.lua loads
 -- this file with pcall; its Scan runs once per widget scan.
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, ImageFromArt, FindMenuArt, MayTry, Failed, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    Asset, SetColor, ImageFromArt, FindMenuArt = ctx.Asset, ctx.SetColor, ctx.ImageFromArt, ctx.FindMenuArt
+    Asset, SetColor = ctx.Asset, ctx.SetColor
     MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
 end
 
--- The trim line with the diamond from under the main menu's PLAY list, under the bars (design sketch,
--- 27-09-2026). It lives in the bars widget like the badge, so it moves and sizes with the bars.
+-- The gold line of the loading screen under the bars (seen live, 02-10-2026; before: the main menu's trim line,
+-- read from the menu and saved). The picture, 1048x34, is pointed at its right end only: two copies, each squeezed
+-- into half of the box, in a HorizontalBox, the left one mirrored, make a line pointed at both ends. It lives in the
+-- bars widget like the badge, so it moves and sizes with the bars.
+local LINE = "/Game/Art/UI/Loading/T_Trim_Line_Gold.T_Trim_Line_Gold"
 local BarTrim = { HostName = nil }
 local function EnsureBarTrim()
     if not MayTry(BarTrim) then return end
     local VE = ById("vitals")
     local V = VE.Instances[1]
     if not (V and V:IsValid()) or BarTrim.HostName == VE.Keys[1] then return end
-    if not FindMenuArt().Trim then return end   -- not saved from the main menu yet; try again later
     local ok, err = pcall(function()
-        local line = ImageFromArt(V.WidgetTree, Uniq("RU_BarTrim"), FindMenuArt().Trim)
-        if not line then error("trim picture not loaded") end
+        local tex = Asset(LINE, "/Script/Engine.Texture2D")
+        if not tex then error("line picture not loaded") end
+        local row = StaticConstructObject(StaticFindObject("/Script/UMG.HorizontalBox"), V.WidgetTree, G("RU_BarTrimRow"))
+        for half = 1, 2 do
+            local img = StaticConstructObject(StaticFindObject("/Script/UMG.Image"), V.WidgetTree, G("RU_BarTrim"))
+            img:SetBrushFromTexture(tex, false)
+            if half == 1 then local b = img.Brush b.Mirroring = 1 img:SetBrush(b) end   -- the left half points left
+            row:AddChildToHorizontalBox(img):SetSize({ SizeRule = 1, Value = 1 })   -- each half fills half the box
+        end
         local box = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), V.WidgetTree, G("RU_BarTrimBox"))
-        box:SetWidthOverride(330)   -- the bars' width; the picture is 335x17
-        box:SetHeightOverride(17)
-        box:SetContent(line)
+        box:SetWidthOverride(330)   -- the bars' width
+        box:SetHeightOverride(10.7)
+        box:SetContent(row)
         ClearOurs(V.WidgetTree.RootWidget, "RU_BarTrimBox")
         local slot = V.WidgetTree.RootWidget:AddChildToOverlay(box)
-        -- just under the bars' bottom edge: its box at 787,1006 on a 16:9 screen. Centred and at the bottom like
-        -- the bars and the badge (see EnsureAvatar), so it stays under the bars on a wide screen too:
-        -- Right = 960 - 952 and Bottom = 1080 - 1023.
+        -- just under the bars' bottom edge. Centred and at the bottom like the bars and the badge (see
+        -- EnsureAvatar), so it stays under the bars on a wide screen too. Right = 960 - 952; Bottom as seen live.
         slot:SetHorizontalAlignment(2)
         slot:SetVerticalAlignment(3)
-        slot:SetPadding({ Left = 0, Top = 0, Right = 8, Bottom = 57 })
+        slot:SetPadding({ Left = 0, Top = 0, Right = 8, Bottom = 63.3 })
         BarTrim.HostName, BarTrim.W = VE.Keys[1], box   -- the immersive mode fades it with the bars
     end)
     if ok then Log("bar trim ready") BarTrim.Fails = 0 else Failed(BarTrim) Log("bar trim failed: " .. tostring(err)) end

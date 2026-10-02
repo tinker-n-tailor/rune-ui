@@ -63,6 +63,8 @@ local function Walk(ctx, H, W)
     end
 end
 
+M.Collect = Collect   -- quests.lua walks its panel with it
+
 function M.Forget() M.Hosts = {} end
 
 function M.Tick(ctx)

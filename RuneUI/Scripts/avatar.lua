@@ -5,10 +5,10 @@
 local M = { W = nil, HostName = nil, Tex = nil }   -- W: the badge's box, the F9 element "avatar"
 local Avatar = M
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, ImageFromArt, FindMenuArt, MayTry, Failed, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    Asset, SetColor, ImageFromArt, FindMenuArt = ctx.Asset, ctx.SetColor, ctx.ImageFromArt, ctx.FindMenuArt
+    Asset, SetColor = ctx.Asset, ctx.SetColor
     MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
 end
 
@@ -48,14 +48,6 @@ local function BuildLevelBadge(tree)
         local _, gameText = ReadPowerLevel()
         local fi = txt.Font
         if gameText then fi.FontObject = gameText.Font.FontObject end
-        -- the editor title's font, from the main menu buttons (chosen 27-09-2026); the inventory font is the fallback
-        pcall(function()
-            local mf = FindMenuArt().Font
-            local fo = mf and Asset(mf.Res, "/Script/Engine.Font")
-            if not fo then return end
-            fi.FontObject = fo
-            if mf.Typeface then fi.TypefaceFontName = FName(mf.Typeface) end
-        end)
         fi.Size = 26
         pcall(function() fi.OutlineSettings.OutlineSize = 2 fi.OutlineSettings.OutlineColor = { R = 0, G = 0, B = 0, A = 0.9 } end)
         txt:SetFont(fi)

@@ -60,16 +60,21 @@ When you hide RuneMap, the mod takes the map off the screen. The game then does 
 
 "Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
 
+Rune UI has a page in the mod Mod Menu: https://www.nexusmods.com/runescapedragonwilds/mods/548
+To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
+
 FILES THAT THE MOD WRITES (IN WIN64)
 
 runeui.txt      every setting of the mod, in plain text with named values
 runeui.txt.tmp  the file while the mod writes it
 
-A mod older than 1.4 wrote six files instead: runeui_layout.txt, runeui_layout_2.txt, runeui_layout_3.txt, runeui_profile.txt, runeui_mapzoom.txt, runeui_map.txt and runeui_menuart.txt. When runeui.txt is missing, the mod reads them once and writes runeui.txt from them. It does not delete them.
+A mod older than 1.4 wrote six files instead: runeui_layout.txt, runeui_layout_2.txt, runeui_layout_3.txt, runeui_profile.txt, runeui_mapzoom.txt and runeui_map.txt. When runeui.txt is missing, the mod reads them once and writes runeui.txt from them. It does not delete them.
 
 In the [keys] part of runeui.txt you can change five keys: editor (F9), map (F8), profile (F7), zoomin (]) and zoomout ([). A key is a name: F1 to F12, a letter, a digit, Insert, Delete, Home, End, PgUp, PgDn, [ or ]. The mod reads the keys when the game starts.
 
 When the game starts, the mod also writes its pictures into ue4ss/Mods/RuneUI/Art. It writes a picture only when it is missing or different.
+
+With Mod Menu, the mod also writes ue4ss/Mods/RuneUI/config.txt. That file is the copy of the page's settings that Mod Menu keeps. Do not edit it: the mod makes it equal to its own settings again, and Mod Menu reads it each time the menu opens.
 
 The mod does not use the network and does not start other programs.
 

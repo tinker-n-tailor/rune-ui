@@ -2,6 +2,44 @@
 
 All changes to Rune UI, newest first.
 
+## 1.5 (03-10-2026)
+
+1.5 is a big patch of the HUD look: the item pick-ups, the quests, the tool bar, the buffs, the farm plots and RuneMap. It also adds a page in Mod Menu and two new elements in the editor.
+
+### New
+
+- Rune UI has a page in the mod Mod Menu, for players who have it: press Esc, then MODS. The page has the five keys that you can change, the immersive mode and its wait, the settings of RuneMap without the zoom, the layout profile, and a button that opens the editor. A key that you change works after you start the game again. `runeui.txt` stays the settings file of the mod. Without Mod Menu, nothing changes.
+- The tool bar has the look of the cooldown tiles: see-through slots with a thin gold edge, the numbers in the HUD font, and a dark track behind the durability bar. The slot in use has a bright gold edge.
+- Food and potion buffs are rings, as the drink buff is: green for a food, gold for a potion. The ring shows the time that is left, without the number. In the editor, "Drink buff" is now "Drink, food and potion buffs" and moves all of them.
+- The editor has a new element, "Item pick-ups": the list of items that you picked up, at the right edge of the screen. Move, resize or hide it by itself. Before, it moved only with "Notifications", whose frame is in the middle of the screen, and a smaller "Notifications" pulled the list toward the middle.
+- The rows of that list have the look of the HUD: no dark band and no gold lines, the HUD font, a shadow on the letters, and the count in gold.
+- The row of a new item has the look of the other rows. It has no sparks. "NEW MATERIAL !" is light from the start, with a little room under the name of the item. It does not blink. The game showed it near black for about two seconds.
+- The quests and unlocks have the HUD font, with a shadow on the letters, as the item pick-ups. The panel keeps the look, the slide-in and the sparks of the game.
+- The farm plots: the water and compost icons over a plot are half their size. The clearing panel has no dark band and no frame. It has a smaller title with a shadow, and a brown bar in place of the red one.
+- The editor has a new element, "Death screen": move it or make it smaller. You cannot hide it. The blur and the dark background still fill the screen.
+
+### Fixed
+
+- The editor panel and the map settings panel show the keys that you set in the `[keys]` part of `runeui.txt`. Before, they showed only F9, F8, F7, [ and ].
+- The lock-on diamond is in the middle of the staff's target mark. It was a few pixels right and below.
+- The sample tiles of the spell cooldowns show only in the editor (F9). They also showed while the map settings (F8) were open.
+- A buff that ended does not stay on the screen. The game kept the poison in its list after the poison ended, with an empty bar. The mod hides a buff with an empty bar, also when the game shows it again.
+- The drink, food and potion buffs stay whole when you move them far from the food, water and rest rings. The game cut them at the edge of their lists.
+- A claimed bed roll shows its name with a space: "Ann's Bed Roll". The game shows "Ann'sBed Roll". The mod sets the same fix for a bed: "Ann's Bed".
+- The F9 and F8 panel fills again after an error. After one error, the panel stayed empty until you changed something in it. `UE4SS.log` shows each different error of the panel once in each world, and 10 at most. Before, it showed only the first error after the mod started.
+
+### Changed
+
+- The frame of "Quests" in the editor has the width of the panel, 440. It was 240.
+- The quests and unlocks (the panel with "Press J", and the perk panel with its video) stay at the right edge, at the size of the game. The game made the panel for that edge. In the editor, "Quests" moves only up and down. It starts above the middle, over the list of picked-up items. A layout that you saved before keeps its height.
+- The line under the bars is the gold line of the loading screen, pointed at both ends. It was the line of the main menu, and the mod had to see the main menu once to save it. The `[menuart]` part of `runeui.txt` is not used any more. The mod removes it the next time it saves the file.
+- Buffs are not rings any more. Each buff is its icon with a thin bar under it. The bar shows the time that is left, in the buff's colour from the game. A buff without a timer has no bar. The icon has a dark shadow, so you can read it over bright grass. As rings, the buffs looked like the food, water and rest rings, and a buff without a timer had a pink ring.
+- RuneMap: the rare trees are a violet triangle. The gold one was hard to tell from the brown ore.
+- RuneMap: the time of day is a gold arrow between the two gold rings. The needle reached out past the ring. The north mark is a bigger gold arrow with the N cut into it. The three diamonds on the ring are a little bigger.
+- The mod does not search all widgets of the game every 10 seconds. One search took 10 to 50 ms, a hitch even when you stood still. Now UE4SS tells the mod about each new widget, and the mod keeps the ones that its parts use. A full search runs when the mod starts, when a world starts or ends, and after a respawn. A new buff and the open editor start no search.
+- With an older UE4SS (the log shows "timed search"), the timed search stays. There, the search every 2 seconds after you enter a world or respawn stops when the HUD parts are all found. It ran for 30 seconds.
+- The perf lines in UE4SS.log show the full searches and what started them, the new widgets that UE4SS reported with their time and how many the mod kept, and the time RuneMap needs after a menu.
+
 ## 1.4 (01-10-2026)
 
 1.4 is the first release since 1.2. It also holds everything in 1.3, which was not released on its own. The changes of 1.4 itself are in how the mod is built, and in one settings file.

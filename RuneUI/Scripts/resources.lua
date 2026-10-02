@@ -1,6 +1,6 @@
 -- Ore, herbs, rune essence and rare trees on RuneMap (playtest, 29-09-2026). A shape for each group, since the
--- creatures are the diamonds: ore a brown square, herbs a green triangle, essence a blue circle, rare trees a gold
--- triangle pointing down (tools/make-runemap-art.js). Common things stay off the map: stone, berries, flax, oak, ash.
+-- creatures are the diamonds: ore a brown square, herbs a green triangle, essence a blue circle, rare trees a violet
+-- triangle pointing down (tools/make-runemap-art.js; gold before 1.5, too close to the brown ore). Common things stay off the map: stone, berries, flax, oak, ash.
 -- An ore rock with no chunks left ("depleted" in the game) and a picked plant hide until they grow back. F8
 -- (main.lua) has a switch for each group. runemap.lua calls Scan every few seconds while the map is on screen, the
 -- same way as the creatures, and passes itself (M) for the player, the settings, the shapes and its helpers.

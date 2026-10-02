@@ -1,13 +1,14 @@
--- The buffs: the buff list turned into a row, each buff a ring in its own colour, and the drink buff a ring beside
--- the food, water and rest rings. main.lua loads this file with pcall. Its Scan runs once per widget scan; its
--- Tick turns the rings every half second, and at once when a new buff came (NextRings).
+-- The buffs: the buff list turned into a row, each buff its icon with the game's thin bar under it, and the drink,
+-- food and potion buffs as rings beside the food, water and rest rings. main.lua loads this file with pcall. Its Scan
+-- runs once per widget scan; its Tick turns the drink rings and gives each buff's shadow its picture every half second,
+-- and at once when a new buff came (NextRings).
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, ImageFromArt, FindMenuArt, MayTry, Failed, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    Asset, SetColor, ImageFromArt, FindMenuArt = ctx.Asset, ctx.SetColor, ctx.ImageFromArt, ctx.FindMenuArt
+    Asset, SetColor = ctx.Asset, ctx.SetColor
     MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
 end
 
@@ -44,7 +45,12 @@ local function BuffsChanged()
             Drinks.ListsKey, Drinks.Lists = k, {}
             for _, name in ipairs({ "HydrationBuffListView", "SustenanceBuffListView", "PotionBuffListView" }) do
                 local Lv = Survival.Find(U, name)
-                if Lv then Drinks.Lists[#Drinks.Lists + 1] = Lv end
+                if Lv then
+                    Drinks.Lists[#Drinks.Lists + 1] = Lv
+                    -- each list cuts at its own box (clipping 1, probe 12): a ring moved far in F9 was cut (02-10-2026)
+                    local okC, errC = pcall(function() Lv:SetClipping(0) end)
+                    if not okC then Log("buffs: " .. name .. " still cuts: " .. tostring(errC)) end
+                end
             end
             if #Drinks.Lists < 3 then Log("buffs: " .. #Drinks.Lists .. " of the 3 lists by the food rings found") end
         end
@@ -91,134 +97,158 @@ local function EnsureBuffRow()
     end
 end
 
----------------------------------------------------------------- round buffs
+---------------------------------------------------------------- buffs under the bars
 
--- Each buff entry is: SizeBox > Overlay > [icon, Overlay > [straight bar, title]]. The mod hides the bar
--- and the title, makes the entry square, and puts the ring of food, water and rest under the icon (the pick,
--- 29-09-2026, in place of the ring of dashes): dark back, coloured ring, dark centre. The bar's material holds
--- the time left; the ring shows that share. A buff without a timer (its bar is hidden by the game) gets a full ring.
--- The game's XP ring was tried first (27-09-2026): the row squashed it into an oval and the game drew it white.
-local RING_BOX = 50    -- the ring; the row keeps the size of the dashes' box
-local BUFF_GAP = 10    -- room between two rings (playtest, 29-09-2026: they nearly touched)
-local BUFF_ICON = 28   -- the game's icon in the ring's centre; its picture has an empty edge
--- Centred by the numbers, some of the game's pictures look high: their art sits high in its square (in-game test,
--- 27-09-2026: 3.5 at 32). Others are centred and sat 1.5 units low at 3.5 (the overeating face and the house,
--- a screenshot of 29-09-2026): 2 favours the centred ones. Optical, by picture; units at an icon of 32.
--- The new character's half sun (Fresh Start) is heavy at the bottom and looked low at 2 (playtest, 29-09-2026).
--- The overeating face sat 2 units left and 0.5 low at 2 (measured on a screenshot, 01-10-2026): { X, Y }.
-local BUFF_NUDGE = { Default = 2, T_Icon_Sml_FreshStart = 0.5, T_Icon_Sml_Overeating = { X = 2.3, Y = 1.4 } }
+-- Each buff entry is: SizeBox > Overlay > [icon, Overlay > [ProgressBarImage, TitleText]]. The buff is its icon with
+-- the game's thin bar close under it, and no title: it sits under the bars and looks like one of them. As rings (1.2
+-- to 1.4) the buffs looked like the food, water and rest rings and the drink, food and potion buffs (playtest,
+-- 02-10-2026). The game fills the bar, gives it the buff's colour, and hides it for a buff without a timer, so the
+-- mod only places it. (The hidden bar holds a test pink, which the rings showed: probe 13, 02-10-2026.)
+-- The icon stands bare on the world, and on grass by day it was hard to read: a dark copy of it sits behind it, as
+-- the letters' shadow (letters.lua). Sizes and shadow picked live in the game, 02-10-2026.
+local BUFF_BOX = { W = 46, H = 50 }     -- one entry of the row
+local BUFF_ICON = 42                    -- the game's icon; its picture has a wide empty edge
+local BUFF_BAR = { W = 26, H = 4 }      -- as wide as the icon's art
+local BUFF_LIFT, BUFF_BAR_UP = -4, -6   -- the icon and the bar, both moved up: a small gap between the two
 local BuffPics = {}   -- the icon pictures already named in the log, once each
-local BUFF_ART = { Back = "upkeep_back.png", Half = "upkeep_half.png", Centre = "upkeep_centre.png" }
--- the three pictures: the rings hold them; these handles are only reused while valid, and dropped with the world
-local BuffArt = {}
-local BuffDeco = {}          -- entry full name -> { W, Right, Left (the ring's halves), Bar, Lit }
-local BuffParamLogged = false
--- a buff with no colour of its own: the sketch's #ffd173, as linear light
-local C_RING_GOLD = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 }
+local BUFF_SHADE, BUFF_SHADE_OFF = { R = 0, G = 0, B = 0, A = 0.85 }, 1.5
+local BuffDeco = {}   -- entry full name -> { W, Box, Icon, Bar, Shade, Pic, Over }
+local NO_PAD = { Left = 0, Top = 0, Right = 0, Bottom = 0 }
 
-local function BuffTextures(outer)
-    for k, file in pairs(BUFF_ART) do CachedTex(BuffArt, k, outer, "ue4ss/Mods/RuneUI/Art/" .. file) end
-    return BuffArt
+-- The shadow takes the icon's picture. An entry is reused for another buff, so the picture is read every time. The
+-- game loads it late: while the icon has none, the shadow is unseen. Pic is written last: a set that fails is tried again.
+local function ShadeBuff(d)
+    local tex = d.Icon.Brush.ResourceObject
+    if not (tex and tex:IsValid()) then
+        if d.Pic then d.Pic = nil d.Shade:SetRenderOpacity(0.0) end
+        return
+    end
+    local pic = tex:GetFName():ToString()
+    if pic == d.Pic then return end
+    d.Shade:SetRenderOpacity(0.0)   -- a set that fails must not leave the last buff's shadow under this icon
+    d.Shade:SetBrushFromTexture(tex, false)
+    d.Shade:SetRenderOpacity(1.0)
+    d.Pic = pic
+    if not BuffPics[pic] then BuffPics[pic] = true Log("buff icon: " .. pic) end
+end
+
+-- The share of time left, from the bar's material; nil for a buff without a timer (the game hides its bar)
+local function BuffFill(bar)
+    local v = bar:GetVisibility()
+    if v == 1 or v == 2 then return nil end
+    local mid = bar.Brush.ResourceObject
+    if not (mid and mid:IsValid()) then return nil end
+    local f
+    mid.ScalarParameterValues:ForEach(function(_, e)
+        local p = e:get()
+        if p.ParameterInfo.Name:ToString() == "Fill" then f = p.ParameterValue end
+    end)
+    return f
+end
+
+-- The game keeps a buff that is over in its list: the poison's entry stayed, its bar shown and empty, long after the
+-- poison ended (probes 29 to 32, 02-10-2026; as a ring in 1.4 too). A shown, empty bar means the buff is over: the
+-- entry goes unseen and 1 unit wide, so the row closes. It stays shown for the game, which fills the bar again when
+-- the buff comes back; then the entry is back. An entry is reused for another buff, so the bar is read every time.
+-- One read is enough: with two, the old poison showed for a second each time the game built its list again.
+-- The game can show the entry again while the buff is still over (playtest, 02-10-2026: the old poison squeezed into
+-- its 1 unit, a thin mark between two buffs), so an entry that is over is made unseen on every look.
+local function HideOver(d)
+    local f = BuffFill(d.Bar)
+    local over = f ~= nil and f <= 0.0005
+    if over ~= (d.Over or false) then
+        d.Over = over
+        d.Box:SetWidthOverride(over and 1 or BUFF_BOX.W)
+        if not over then d.W:SetRenderOpacity(1.0) end
+    end
+    if over and d.W:GetRenderOpacity() > 0 then d.W:SetRenderOpacity(0.0) end
 end
 
 local function DecorateBuff(E)
     local k = E:GetFullName()
     if BuffDeco[k] then return end
     BuffDeco[k] = { W = E }
-    if not Survival then return end   -- no ring to borrow: the buff keeps the game's look
     local ok, err = pcall(function()
-        local tree = E.WidgetTree
-        local box = tree.RootWidget
+        local box = E.WidgetTree.RootWidget
         local ov = box:GetContent()
-        ClearOurs(ov, "RU_RingBox")   -- a ring of ours from an earlier round
-        -- the game's two: the bar's Overlay and the icon. Found by class, not place: a decorated entry has
-        -- the icon moved to the end.
+        ClearOurs(ov, "RU_BuffShade")   -- a shadow of ours from an earlier round
+        -- the game's two: the bar's Overlay and the icon, by class
         local icon, barBox
         for i = 0, ov:GetChildrenCount() - 1 do
             local c = ov:GetChildAt(i)
             if ClassName(c) == "Overlay" then barBox = c else icon = c end
         end
-        if not (icon and barBox) then error("icon or bar not found") end
-        local bar = barBox:GetChildAt(0)
-        local art = BuffTextures(E)
-        box:SetWidthOverride(RING_BOX + BUFF_GAP)   -- the ring stays in the middle: half the gap on each side
-        box:SetHeightOverride(RING_BOX)
-        barBox:SetRenderOpacity(0.0)   -- the straight bar and the title stay alive for the game, just unseen
-        pcall(function() E:SetClipping(0) box:SetClipping(0) ov:SetClipping(0) end)   -- the list must not cut the ring
-        local ring, right, left = Survival.Ring(tree, Uniq("RU_Ring"), RING_BOX, art, C_RING_GOLD)
-        -- the list can give the entry less height than the ring: after leaving a house (in-game test,
-        -- 29-09-2026) the dark pictures were squashed and the coloured ring cut. On a canvas the ring keeps its
-        -- own size, centred on the entry like the icon.
-        local canvas = StaticConstructObject(StaticFindObject("/Script/UMG.CanvasPanel"), tree, G("RU_RingCanvas"))
-        local rs = canvas:AddChildToCanvas(ring)
-        rs:SetAutoSize(false)
-        rs:SetAnchors({ Minimum = { X = 0.5, Y = 0.5 }, Maximum = { X = 0.5, Y = 0.5 } })
-        rs:SetAlignment({ X = 0.5, Y = 0.5 })
-        rs:SetPosition({ X = 0, Y = 0 })
-        rs:SetSize({ X = RING_BOX, Y = RING_BOX })
-        local ringBox = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), tree, G("RU_RingBox"))
-        ringBox:SetWidthOverride(RING_BOX)
-        ringBox:SetHeightOverride(RING_BOX)
-        ringBox:SetContent(canvas)
-        local cs = ov:AddChildToOverlay(ringBox)
-        cs:SetHorizontalAlignment(2) cs:SetVerticalAlignment(2)
-        -- the icon goes on top of the ring: an Overlay draws its last child last. Icon and ring both sit on the
-        -- entry's centre; top-left with padding put the icon ~4 units high (test of 27-09-2026).
-        icon:RemoveFromParent()
-        local is = ov:AddChildToOverlay(icon)
-        is:SetHorizontalAlignment(2) is:SetVerticalAlignment(2)
-        pcall(function() icon:SetDesiredSizeOverride({ X = BUFF_ICON, Y = BUFF_ICON }) end)
-        pcall(function() icon:SetRenderTranslation({ X = 0, Y = BUFF_NUDGE.Default * BUFF_ICON / 32 }) end)   -- by picture: UpdateBuffRings
-        BuffDeco[k].Right, BuffDeco[k].Left, BuffDeco[k].Bar, BuffDeco[k].Lit = right, left, bar, ""
-        BuffDeco[k].Icon = icon
-    end)
-    if not ok then Log("round buff failed: " .. tostring(err)) end
-end
-
--- Share of time left, 0..1, from the straight bar's material; nil when the buff has no timer
-local BuffParam = nil
-local function BuffShare(bar)
-    local v = bar:GetVisibility()
-    if v == 1 or v == 2 then return nil end
-    local mid = bar.Brush.ResourceObject
-    local vals = {}
-    mid.ScalarParameterValues:ForEach(function(_, e)
-        local p = e:get()
-        vals[p.ParameterInfo.Name:ToString()] = p.ParameterValue
-    end)
-    if not BuffParamLogged then
-        BuffParamLogged = true
-        local names = {}
-        for n, v in pairs(vals) do table.insert(names, n .. "=" .. string.format("%.2f", v)) end
-        Log("buff bar material values: " .. table.concat(names, ", "))
-        for n in pairs(vals) do
-            local l = string.lower(n)
-            if string.find(l, "progress") or string.find(l, "percent") or string.find(l, "fill") then BuffParam = n end
+        local bar, title
+        for i = 0, (barBox and barBox:GetChildrenCount() or 0) - 1 do
+            local c = barBox:GetChildAt(i)
+            local n = c:GetFName():ToString()
+            if n == "ProgressBarImage" then bar = c elseif n == "TitleText" then title = c end
         end
-        if not BuffParam then for n in pairs(vals) do BuffParam = BuffParam or n end end
-        Log("buff ring reads " .. tostring(BuffParam))
-    end
-    local v = BuffParam and vals[BuffParam]
-    if v == nil then return nil end
-    return math.max(0, math.min(1, v))
+        if not (icon and bar and title) then error("icon, bar or title not found") end
+        box:SetWidthOverride(BUFF_BOX.W)
+        box:SetHeightOverride(BUFF_BOX.H)
+        E:SetRenderOpacity(1.0)   -- an entry that HideOver left unseen in an earlier round
+        -- the list can give the entry less height than its box (after leaving a house, 29-09-2026): nothing cuts it
+        pcall(function() E:SetClipping(0) box:SetClipping(0) ov:SetClipping(0) end)
+        title:SetRenderOpacity(0.0)   -- alive for the game, just unseen
+        local function Place(W, v)    -- centred; at the middle (2) or the bottom (3) of its box
+            local s = W.Slot
+            s:SetHorizontalAlignment(2) s:SetVerticalAlignment(v) s:SetPadding(NO_PAD)
+        end
+        Place(barBox, 3) Place(bar, 3)
+        local shade = StaticConstructObject(StaticFindObject("/Script/UMG.Image"), E.WidgetTree, G("RU_BuffShade"))
+        shade:SetColorAndOpacity(BUFF_SHADE)
+        shade:SetRenderOpacity(0.0)   -- an Image without a picture is a plain box
+        -- the shadow, then the icon on top of it: an Overlay draws its last child last
+        ov:AddChildToOverlay(shade)
+        icon:RemoveFromParent()
+        ov:AddChildToOverlay(icon)
+        Place(shade, 2) Place(icon, 2)
+        shade:SetDesiredSizeOverride({ X = BUFF_ICON, Y = BUFF_ICON })
+        shade:SetRenderTranslation({ X = BUFF_SHADE_OFF, Y = BUFF_LIFT + BUFF_SHADE_OFF })
+        icon:SetDesiredSizeOverride({ X = BUFF_ICON, Y = BUFF_ICON })
+        icon:SetRenderTranslation({ X = 0, Y = BUFF_LIFT })
+        bar:SetDesiredSizeOverride({ X = BUFF_BAR.W, Y = BUFF_BAR.H })
+        bar:SetRenderTranslation({ X = 0, Y = BUFF_BAR_UP })
+        local d = BuffDeco[k]
+        d.Box, d.Icon, d.Bar, d.Shade = box, icon, bar, shade
+        pcall(ShadeBuff, d)
+        pcall(HideOver, d)   -- at once: after a respawn the poison that ended must not show until the next look
+    end)
+    if not ok then Log("buff under the bars failed: " .. tostring(err)) end
 end
 
 ---------------------------------------------------------------- the drink buff
 
 -- The drink buff is not in the buff row: it sits beside the food, water and rest rings, inside their widget.
 -- VerticalBox_0 > Overlay_0 [Background, ItemImage, ProgressBarImageBackground, ProgressBarImage] and Overlay_1
--- [TextBackground, DurationText] (probe, 01-10-2026). It gets the buff ring; the game's round pictures and the
--- seconds under it go unseen (playtest, 01-10-2026: the ring shows the time). The icon stays on top.
--- RING: the buff rings' size, as it is a buff (playtest, 01-10-2026). ICON: the drink pictures have wider empty edges
--- than the buffs' (at the buffs' share the art looked small); 36 matches the house's art. LIFT: the game sets
+-- [TextBackground, DurationText] (probe, 01-10-2026). It gets the ring of food, water and rest, smaller: dark back,
+-- coloured ring, dark centre. The game's round pictures and the seconds under it go unseen (playtest, 01-10-2026:
+-- the ring shows the time). The icon stays on top.
+-- RING: 50 (playtest, 01-10-2026). ICON: the drink pictures have wide empty edges. LIFT: the game sets
 -- the drink 6.5 units below the food rings' centre (measured in game, 01-10-2026); the game's hidden 61-unit
 -- pictures still size the entry, so the ring stays centred where the game's was.
--- COLOUR: the water ring's #5fb2dc. Deco: entry full name -> { W, Root, Right, Left, Text, Value, Lit, Most, Last }.
+-- Deco: entry full name -> { W, Root, Right, Left, Text, Value, Lit, Most, Last }.
 -- One table: main.lua is near Lua's limit of 200 locals.
-Drinks.RING, Drinks.ICON, Drinks.LIFT = RING_BOX, 36, 6.5
-Drinks.COLOUR, Drinks.Deco = { R = 0.115, G = 0.445, B = 0.716, A = 1.0 }, {}
+-- The food and potion buffs sit in the same place, in lists of their own, and their entries have the same tree
+-- (probe 11, 01-10-2026), so they get the same ring (1.5). COLOURS, by the entry's class: a drink in the water
+-- ring's #5fb2dc, a food in the food ring's #78c265, a potion in the sketch's gold #ffd173, as it has no ring of its
+-- own. All as linear light. At most 2 drinks, 3 foods and 1 potion at once (the game's wiki, 01-10-2026).
+Drinks.RING, Drinks.ICON, Drinks.LIFT = 50, 36, 6.5
+Drinks.Deco = {}
+Drinks.COLOURS = {
+    WBP_HUD_DrinkBuffListEntry_C = { R = 0.115, G = 0.445, B = 0.716, A = 1.0 },
+    WBP_HUD_FoodBuffListEntry_C = { R = 0.188, G = 0.540, B = 0.130, A = 1.0 },
+    WBP_HUD_PotionBuffListEntry_C = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 } }
+-- the ring's three pictures: the rings hold them; these handles are only reused while valid, and dropped with the world
+local RING_ART = { Back = "upkeep_back.png", Half = "upkeep_half.png", Centre = "upkeep_centre.png" }
+local RingArt = {}
+local function RingTextures(outer)
+    for k, file in pairs(RING_ART) do CachedTex(RingArt, k, outer, "ue4ss/Mods/RuneUI/Art/" .. file) end
+    return RingArt
+end
 
-function Drinks.Decorate(E, k)
+function Drinks.Decorate(E, k, colour)
     if Drinks.Deco[k] then return end
     Drinks.Deco[k] = { W = E }
     if not Survival then return end
@@ -234,7 +264,7 @@ function Drinks.Decorate(E, k)
         end
         local text = Survival.Find(under, "DurationText")
         if not (icon and text) then error("icon or seconds not found") end
-        local ring, right, left = Survival.Ring(tree, Uniq("RU_DrinkRing"), Drinks.RING, BuffTextures(E), Drinks.COLOUR)
+        local ring, right, left = Survival.Ring(tree, Uniq("RU_DrinkRing"), Drinks.RING, RingTextures(E), colour)
         -- the game's rings and seconds go unseen only once ours stands; the seconds are still written, and read
         for _, c in ipairs(rings) do c:SetRenderOpacity(0.0) end
         under:SetRenderOpacity(0.0)
@@ -292,48 +322,20 @@ end
 -- from the last widget search, which runs at once when the number of buffs changes (FindAll)
 local function FindBuffEntries()
     for _, E in ipairs(FindClass("WBP_HUD_StatusEffectListEntry_C")) do DecorateBuff(E) end
-    local list, keys = FindClass("WBP_HUD_DrinkBuffListEntry_C")
-    for i, E in ipairs(list) do Drinks.Decorate(E, keys[i]) end
+    for class, colour in pairs(Drinks.COLOURS) do
+        local list, keys = FindClass(class)
+        for i, E in ipairs(list) do Drinks.Decorate(E, keys[i], colour) end
+    end
 end
 
-local function UpdateBuffRings()
+-- An entry the game built again is placed again on the next scan
+local function UpdateBuffs()
     for k, d in pairs(BuffDeco) do
-        if not (d.W and d.W:IsValid()) then
+        if not (d.W and d.W:IsValid()) or (d.Icon and not (d.Icon:IsValid() and d.Bar:IsValid() and d.Shade:IsValid())) then
             BuffDeco[k] = nil
-        elseif d.Right and not (d.Bar and d.Bar:IsValid() and d.Right:IsValid() and d.Left:IsValid()) then
-            BuffDeco[k] = nil   -- the game rebuilt this entry; it is decorated again on the next scan
-        elseif d.Right then
-            local okS, share = pcall(BuffShare, d.Bar)
-            if not okS or not share then share = 1 end   -- no timer: a full ring
-            -- the buff's own colour from its bar ("Bar Color 1": poison green, slow yellow, 27-09-2026), already
-            -- linear light; a list entry is reused for another buff, so it is read every time. Gold when there is none.
-            local on = C_RING_GOLD
-            pcall(function()
-                d.Bar.Brush.ResourceObject.VectorParameterValues:ForEach(function(_, e)
-                    local p = e:get()
-                    if p.ParameterInfo.Name:ToString() == "Bar Color 1" then
-                        local c = p.ParameterValue
-                        on = { R = c.R, G = c.G, B = c.B, A = 1.0 }
-                    end
-                end)
-            end)
-            -- the icon's nudge by its picture (BUFF_NUDGE); an entry is reused for another buff, so it is read every time
-            pcall(function()
-                local pic = d.Icon.Brush.ResourceObject:GetFName():ToString()
-                if pic == d.Pic then return end
-                d.Pic = pic
-                local n = BUFF_NUDGE[pic] or BUFF_NUDGE.Default
-                if type(n) ~= "table" then n = { X = 0, Y = n } end
-                d.Icon:SetRenderTranslation({ X = n.X * BUFF_ICON / 32, Y = n.Y * BUFF_ICON / 32 })
-                if not BuffPics[pic] then BuffPics[pic] = true Log("buff icon: " .. pic) end
-            end)
-            local key = string.format("%.3f %.2f %.2f %.2f", share, on.R, on.G, on.B)
-            if key ~= d.Lit then
-                d.Lit = key
-                d.Right:SetColorAndOpacity(on)
-                d.Left:SetColorAndOpacity(on)
-                Survival.Turn(d, share)
-            end
+        elseif d.Icon then
+            pcall(ShadeBuff, d)
+            pcall(HideOver, d)
         end
     end
 end
@@ -345,13 +347,13 @@ function M.Scan() EnsureBuffRow() FindBuffEntries() end
 M.NextRings = 0
 function M.Tick()
     local now = os.clock()
-    if now > M.NextRings then M.NextRings = now + 0.5 UpdateBuffRings() Drinks.Update() end
+    if now > M.NextRings then M.NextRings = now + 0.5 UpdateBuffs() Drinks.Update() end
 end
 
 -- a new world or a player restart: every handle into the old HUD is dropped
 function M.Forget(sameWorld)
     BuffItems = nil
-    BuffDeco, BuffArt, Drinks.Deco, Drinks.Lists, Drinks.ListsKey, Drinks.Items = {}, {}, {}, {}, nil, nil
+    BuffDeco, RingArt, Drinks.Deco, Drinks.Lists, Drinks.ListsKey, Drinks.Items = {}, {}, {}, {}, nil, nil
     if not sameWorld then BuffRowDone = {} end   -- the old world's lists are gone; a restart keeps the row
     M.Items = nil
 end

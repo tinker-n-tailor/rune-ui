@@ -11,6 +11,9 @@ local M = {}
 local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
 -- the orb's box is 32 units; the sketch's diamond is about 14 (playtest, 29-09-2026: the orb's own size is "way too big")
 local DIAMOND_SCALE = 0.45
+-- the game's orb sits right of and below the middle of the staff's target mark; this puts the diamond in it
+-- (measured in game, 01-10-2026, 2560x1440)
+local DIAMOND_MOVE = { X = -3.6, Y = -5.6 }
 -- the marks by name; images are tinted, bars get a fill colour, the bow's ring has its colour in its material
 -- The staff's ring (MagicIcon) stayed white with the image tint (in game 30-09-2026): its brush's own tint as well.
 local MARKS = { Crosshair = "image", MagicIcon = "brush", StaminaProgressBar = "bar", SightRing = "material" }
@@ -222,6 +225,7 @@ local function Diamond(ctx)
         b.ImageSize = Saved[host] and Saved[host].Size or { X = 64, Y = 64 }   -- 64: the game's orb (probe)
         o.W:SetBrush(b)
         o.W:SetRenderScale({ X = DIAMOND_SCALE, Y = DIAMOND_SCALE })
+        o.W:SetRenderTranslation(DIAMOND_MOVE)
         Once(ctx, "diamond", "aim: gold diamond on the lock-on")
     end
 end
@@ -239,6 +243,7 @@ local function Undiamond()
     b.ImageSize = s.Size
     o.W:SetBrush(b)
     o.W:SetRenderScale({ X = 1, Y = 1 })
+    o.W:SetRenderTranslation({ X = 0, Y = 0 })
 end
 
 -- the F9 line off: the game's colours and orb back. The widgets are looked up again, as after a player restart the

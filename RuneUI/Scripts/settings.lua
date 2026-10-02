@@ -5,7 +5,7 @@ local M = {}
 M.FILE = "runeui.txt"
 local HEADER = "# Rune UI settings. The mod writes this file. Delete a line to get its default back.\n"
 -- sections in the file's order; any other section is kept and written after these
-local ORDER = { "general", "layout 1", "layout 2", "layout 3", "map", "menuart", "keys" }
+local ORDER = { "general", "layout 1", "layout 2", "layout 3", "map", "keys" }
 -- the fields of a layout row in the order of the old files, so a row reads like the line it replaced
 local FIELDS = { "x", "y", "scale", "visible", "opacity", "edgex", "edgey", "wait" }
 
@@ -186,11 +186,6 @@ function M.Legacy(read)
     for line in Lines(s) do
         local k, v = string.match(line, "^(%a+)=(%d)")
         if k and MAP_KEYS[k] then M.Section(t, "map")[k] = v == "1" and 1 or 0 end
-    end
-    s = get("runeui_menuart.txt", "hudeditor_menuart.txt")
-    for line in Lines(s) do
-        local raw = string.match(line, "^trim=(.-)\r?$")
-        if raw then M.Section(t, "menuart").trim = raw end
     end
     return found and t or nil
 end
