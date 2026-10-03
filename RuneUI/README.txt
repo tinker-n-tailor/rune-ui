@@ -54,14 +54,18 @@ Drawing           Faster: the map draws every second frame. Smooth: every frame.
 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an avatar.png in the RuneUI folder.
 
-"Creatures on RuneMap" and "Icons beside the bars" only switch a thing on or off. "Creatures on RuneMap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+"Creatures on the minimap", "Icons beside the bars" and "Rune XP (XP under the bars)" only switch a thing on or off. "Creatures on the minimap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+
+"Rune XP" shows the XP that you get under the bars. The gold line under the bars becomes the XP bar: it gets thick, and a bright fill moves from its left end to your progress in the level. Under the line you see the icon of the skill, its name and the XP. Then all of it fades, and the plain line is back. The XP moves and sizes with the bars. The name of the skill is in English in every language of the game. When two skills get XP in the same instant, Rune XP shows them one after the other. Hide "Rune XP" to get the XP circle of the game back.
+
+With a gamepad, the menu shortcuts (chat, map, spell book, building, bag) show the buttons of the gamepad. While the bag is open and a gamepad is in use, the tool bar sits at its own place in the bag, because a gamepad goes from slot to slot by their places on the screen. The tool bar goes back to your place when you close the bag, or when you use the mouse or the keyboard.
 
 When you hide RuneMap, the mod takes the map off the screen. The game then does not draw the map, and you get back the frames that it costs.
 
-"Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
+"Arrow and rune count" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
 
 Rune UI has a page in the mod Mod Menu: https://www.nexusmods.com/runescapedragonwilds/mods/548
-To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
+To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, the Rune XP switch, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode, Rune XP and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
 
 FILES THAT THE MOD WRITES (IN WIN64)
 

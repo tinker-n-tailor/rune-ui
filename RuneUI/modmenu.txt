@@ -22,6 +22,10 @@
     { "key": "immersive_wait", "type": "slider", "label": "Wait before the fade", "min": 3, "max": 30, "step": 1, "default": 8, "suffix": " s",
       "tooltip": "Seconds without anything happening before the HUD fades." },
 
+    { "type": "header", "label": "XP" },
+    { "key": "rune_xp", "type": "toggle", "label": "Rune XP", "default": true,
+      "tooltip": "On: the XP shows under the bars, and the gold line fills as the XP bar. Off: the game's XP circle. Each layout profile has its own." },
+
     { "type": "header", "label": "RuneMap" },
     { "key": "map_Map", "type": "toggle", "label": "RuneMap", "default": true,
       "tooltip": "Off: the mod does not build the map at all. To only hide the map, use Delete in the editor." },

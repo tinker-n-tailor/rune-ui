@@ -108,8 +108,9 @@ local function Decorate(ctx, row)
                 si:SetHorizontalAlignment(2)
                 si:SetVerticalAlignment(2)
             end
-            -- the key: the game's key box unseen, ours at the bottom of the button
-            pcall(function() ctx.Find(entry, "ScaleBox_0"):SetRenderOpacity(0.0) end)
+            -- the key: the game's key box unseen, ours at the bottom of the button (Tick swaps the two for a gamepad)
+            local gameKey
+            pcall(function() gameKey = ctx.Find(entry, "ScaleBox_0") gameKey:SetRenderOpacity(0.0) end)
             local border = New("Border", tree, n .. "Key")
             border:SetBrushFromTexture(cap)
             local b = border.Background
@@ -125,10 +126,12 @@ local function Decorate(ctx, row)
             ks:SetPadding({ Left = 0, Top = 0, Right = 0, Bottom = 6 })
             local fill
             pcall(function() fill = ctx.Find(entry, "EncumbranceRadialImage").Brush.ResourceObject end)
-            Built[#Built + 1] = { Name = ename, Right = rImg, Left = lImg, Fill = fill, Value = nil, Red = nil }
+            Built[#Built + 1] = { Name = ename, Right = rImg, Left = lImg, Fill = fill, Value = nil, Red = nil,
+                GameKey = gameKey, Key = border }
         end)
         if not ok then ctx.Log("menu buttons: " .. ename .. " failed: " .. tostring(err)) end
     end
+    M.Pad = nil   -- new key boxes: Tick sets them for the input in use
     ctx.Log("menu buttons: " .. #Built .. " rings")
 end
 
@@ -144,7 +147,7 @@ end
 
 function M.Forget()
     Built = {}
-    M.Host, M.Tried, M.Chat, M.List = nil, nil, nil, nil
+    M.Host, M.Tried, M.Chat, M.List, M.Pad = nil, nil, nil, nil, nil
 end
 
 function M.Tick(ctx)
@@ -177,6 +180,20 @@ function M.Tick(ctx)
         M.Host = name
         Decorate(ctx, row)
         M.Tried = not Alive()
+    end
+    -- With a gamepad our key box holds a keyboard key, so the game's own key box shows: it draws the gamepad's
+    -- button (play test, 03-10-2026: the boxes said Enter, M, Q, B and Tab with a gamepad in hand).
+    local okPad, pad = pcall(ctx.Pad)
+    pad = okPad and pad or false
+    if pad ~= M.Pad then
+        M.Pad = pad
+        for _, b in ipairs(Built) do
+            pcall(function()
+                b.Key:SetRenderOpacity(pad and 0.0 or 1.0)
+                if b.GameKey and b.GameKey:IsValid() then b.GameKey:SetRenderOpacity(pad and 1.0 or 0.0) end
+            end)
+        end
+        ctx.Log("menu buttons: keys for " .. (pad and "a gamepad" or "the keyboard"))
     end
     for _, b in ipairs(Built) do
         pcall(function()

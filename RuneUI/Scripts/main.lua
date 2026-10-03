@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
 -- F9 opens the editor, F8 the map settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.5"
+local VERSION = "1.6"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
@@ -63,23 +63,23 @@ end
 -- Child: move only this named child of the widget's root, not the whole widget.
 local Elements = {
     { Id="vitals",   Name="Health, stamina and shield bars", Classes={"WBP_HUD_PlayerVitalsBars_C"},
-      Full=true, A={0.5,1}, Center={X=952, Y=967}, Size={X=330, Y=75} },
-    { Id="avatar",   Name="Level badge / avatar",            Custom="avatar",
+      Full=true, A={0.5,1}, Center={X=952, Y=967}, Size={X=330, Y=75}, Below=36 },   -- Below: the line and Rune XP's row
+    { Id="avatar",   Name="Level badge",                     Custom="avatar",
       Inside="vitals", A={0.5,1}, Center={X=744.5, Y=967}, Size={X=69, Y=69} },
-    { Id="weapon",   Name="Weapon buff",                    Classes={"WBP_HUD_WeaponEnhancements_C"},
+    { Id="weapon",   Name="Weapon effect",                   Classes={"WBP_HUD_WeaponEnhancements_C"},
       Inside="vitals", A={0.5,1}, Center={X=1316, Y=911}, Size={X=44, Y=44} },
     -- the area effects (Scorch, Imarus' gaze) sit in the row above the bars; with the bars at the top of the
     -- screen that row is off screen, so they move on their own. Centre read from in-game screenshot, 27-09-2026.
     { Id="region",   Name="Area effects (Scorch, Imarus)",  Classes={"WBP_ImarusGazeRadial_C", "WBP_RegionEffectRadial_C"},
       Inside="vitals", A={0.5,1}, Center={X=952, Y=911}, Size={X=44, Y=44} },
-    { Id="survival", Name="Food, water and rest",           Classes={"WBP_SurvivalCore_Upkeep_C"},
+    { Id="survival", Name="Food, water and rest rings",          Classes={"WBP_SurvivalCore_Upkeep_C"},
       Inside="vitals", A={0,1}, Center={X=158, Y=968}, Size={X=215, Y=95} },
     -- the drink ring, inside the food rings' widget (1.3, playtest: "make it movable and scalable"). Follows: it stays
     -- beside the rings wherever they go (as Inside it stayed at its own default spot, far from rings he had moved:
     -- in game 01-10-2026). Centre: right of the rest ring, level with the rings (measured in game: 243 units right
     -- of the water ring).
     -- Since 1.5 also the food and potion buffs: the same kind of entry, in lists beside the drink's (buffs.lua).
-    { Id="drink",    Name="Drink, food and potion buffs",   Classes={"WBP_HUD_DrinkBuffListEntry_C", "WBP_HUD_FoodBuffListEntry_C", "WBP_HUD_PotionBuffListEntry_C"},
+    { Id="drink",    Name="Buff rings (drink, food, potion)",  Classes={"WBP_HUD_DrinkBuffListEntry_C", "WBP_HUD_FoodBuffListEntry_C", "WBP_HUD_PotionBuffListEntry_C"},
       Follows="survival", A={0,1}, Center={X=328, Y=958}, Size={X=50, Y=50} },
     { Id="toolbar",  Name="Tool bar",                       Classes={"WBP_Inventory_QuickAccesBar_C"},
       A={0,0}, Center={X=330, Y=110}, Size={X=545, Y=62} },
@@ -87,10 +87,10 @@ local Elements = {
       Full=true, A={0.5,0}, Center={X=960, Y=86}, Size={X=600, Y=120} },
     -- no element for the MiniMap addon's map any more: RuneMap replaces it, and the big map (M) and RuneMap's
     -- own map are of the same class, so hiding that element hid them too (27-09-2026)
-    { Id="runemap",  Name="RuneMap",                       Custom="map",
+    { Id="runemap",  Name="Minimap (RuneMap)",                      Custom="map",
       A={1,0}, Center={X=1792, Y=128}, Size={X=224, Y=224} },
     -- no widget of its own: hiding it in the editor turns the creature diamonds on RuneMap off
-    { Id="creatures", Name="Creatures on RuneMap",          Custom="creatures",
+    { Id="creatures", Name="Creatures on the minimap",         Custom="creatures",
       A={1,0}, Center={X=1792, Y=128}, Size={X=40, Y=40} },
     -- no widget of its own either: showing it shows the game's icons beside the bars (hidden at first)
     { Id="baricons", Name="Icons beside the bars",          Custom="baricons",
@@ -99,38 +99,41 @@ local Elements = {
     { Id="immersive", Name="Immersive mode (fades when idle)", Custom="immersive",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     -- no widget of its own either: shown, the aim marks are gold and the lock-on orb is our diamond (aim.lua)
-    { Id="aim",      Name="Gold aim and lock-on",           Custom="aim",
+    { Id="aim",      Name="Crosshair and lock-on",          Custom="aim",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     -- our own icon, right of the tool bar: the time of day while immersive mode is on (clock.lua; sketch of 01-10-2026)
-    { Id="clock",    Name="Time of day icon (immersive)",   Custom="clock",
+    { Id="clock",    Name="Day and night icon",            Custom="clock",
       A={0.5,1}, Center={X=1286, Y=1035}, Size={X=40, Y=40} },
-    { Id="daynight", Name="Time of day (game dial)",       Classes={"WBP_HUD_DayAndNight_C"},
+    { Id="daynight", Name="Day and night dial",          Classes={"WBP_HUD_DayAndNight_C"},
       NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
-    { Id="buffs",    Name="Buffs",                          Classes={"WBP_HUD_EffectsDisplayLists_C"},
+    { Id="buffs",    Name="Buffs and debuffs",                         Classes={"WBP_HUD_EffectsDisplayLists_C"},
       Full=true, A={0,1}, Center={X=151, Y=871}, Size={X=200, Y=85} },
-    { Id="notify",   Name="Notifications",                  Classes={"WBP_HUD_Notifications_C"},
+    { Id="notify",   Name="All notices (group)",                 Classes={"WBP_HUD_Notifications_C"},
       Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=400, Y=200} },
-    { Id="xp",       Name="XP popup",                       Classes={"WBP_Notifications_ExperienceProgressContainer_C"},
+    { Id="xp",       Name="XP circle",                      Classes={"WBP_Notifications_ExperienceProgressContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=960, Y=130}, Size={X=120, Y=95} },
-    { Id="xpfloat",  Name="Floating XP",                    Classes={"WBP_FloatingExperienceContainer_C"},
+    -- no widget of its own: shown, the XP is under the bars (xp.lua); hidden, the game's circle is back
+    { Id="runexp",   Name="Rune XP (XP under the bars)",    Custom="runexp",
+      A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
+    { Id="xpfloat",  Name="XP numbers",                    Classes={"WBP_FloatingExperienceContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=860, Y=551}, Size={X=110, Y=40} },
-    { Id="levelup",  Name="Level up",                       Classes={"WBP_LevelUpNotification_C"},
+    { Id="levelup",  Name="Level up notice",                      Classes={"WBP_LevelUpNotification_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=300}, Size={X=500, Y=150} },
-    { Id="area",     Name="New area",                       Classes={"WBP_AreaUnlockNotification_C"},
+    { Id="area",     Name="New area notice",                      Classes={"WBP_AreaUnlockNotification_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=250}, Size={X=700, Y=160} },
     { Id="banner",   Name="Title banner",                   Classes={"WBP_TitleBannerWidget_C"},
       A={0.5,0.5}, Center={X=960, Y=300}, Size={X=600, Y=120} },
-    { Id="saving",   Name="Saving animation",               Classes={"WBP_SavingSpinner_C"},
+    { Id="saving",   Name="Saving icon",                    Classes={"WBP_SavingSpinner_C"},
       A={1,0}, Center={X=1738, Y=156}, Size={X=64, Y=64} },
     -- Size: one entry is 440 wide (its header and its boxes, the game's files). OnlyY: the panel is made for the
     -- right edge, so it stays there at its own size and moves only up and down (playtest, 02-10-2026).
-    { Id="quests",   Name="Quests",                         Classes={"WBP_QuestAndUnlocks_C"},
+    { Id="quests",   Name="Quests and unlocks",                        Classes={"WBP_QuestAndUnlocks_C"},
       Inside="notify", OnlyY=true, A={1,0.5}, Center={X=1700, Y=420}, Size={X=440, Y=160} },
     -- The list of picked-up items hangs at the right edge, its top right corner at the middle of the screen's height
     -- (probe 20, 02-10-2026: anchors 1, 0.5; top -40; alignment 1, 0), right under the quests' box. As a part of
     -- "notify" only, its frame was in the middle of the screen and a smaller "notify" pulled it there (playtest,
     -- 02-10-2026). Size: one notice is about 350 wide and 43 high (a screenshot of that day), three in the box.
-    { Id="pickups",  Name="Item pick-ups",                  Classes={"WBP_ItemPickups_C"},
+    { Id="pickups",  Name="Picked-up items",                 Classes={"WBP_ItemPickups_C"},
       Inside="notify", A={1,0.5}, Center={X=1740, Y=565}, Size={X=360, Y=130} },
     -- The death screen (probes 24 and 25, 02-10-2026), made by the game at the first death: BackgroundBlur > Overlay_0
     -- > [Background, the bar, "You Died", "Killed By", the cause, the timer, ..], all in the middle. The element is
@@ -139,31 +142,31 @@ local Elements = {
     -- be hidden, as the blur would stay over the screen with nothing on it.
     { Id="death",    Name="Death screen",                   Classes={"WBP_HUD_Death_C"},
       Child="Overlay_0", Deep=true, KeepFull="Background", NoHide=true, Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=700, Y=320} },
-    { Id="prompts",  Name="Center prompts",                 Classes={"WBP_HeldActionWidget_C", "WBP_HUD_InteractionPrompt_C", "WBP_CallToActionWidget_C"},
+    { Id="prompts",  Name="Interaction prompts",                Classes={"WBP_HeldActionWidget_C", "WBP_HUD_InteractionPrompt_C", "WBP_CallToActionWidget_C"},
       A={0.5,0.5}, Center={X=960, Y=640}, Size={X=300, Y=60} },
-    { Id="armor",    Name="Armor warning",                  Classes={"WBP_ArmourDurabilityDisplay_C"},
+    { Id="armor",    Name="Armor damage warning",                 Classes={"WBP_ArmourDurabilityDisplay_C"},
       A={0,0}, Center={X=960, Y=540}, Size={X=200, Y=60} },
-    { Id="itembrk",  Name="Item break warning",             Classes={"WBP_Notification_ItemBreak_C"},
+    { Id="itembrk",  Name="Broken item warning",            Classes={"WBP_Notification_ItemBreak_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=580}, Size={X=100, Y=30} },
     { Id="menuico",  Name="Menu icons",                     Classes={"WBP_HUD_CompositeVariableMenu_C"},
       Full=true, A={1,1}, Center={X=1668, Y=975}, Size={X=380, Y=95} },
     -- Parts: hiding it hides only the prompts, not the menu buttons that live inside it (see ApplyOne)
-    { Id="legend",   Name="Attack and block prompts",       Classes={"WBP_HUD_InputsLegend_C"},
+    { Id="legend",   Name="Combat key hints",               Classes={"WBP_HUD_InputsLegend_C"},
       Parts=true, Full=true, A={1,1}, Center={X=1780, Y=760}, Size={X=280, Y=200} },
     -- chat, map, spell book, building and bag: the row under the prompts, in rings (menubuttons.lua; design sketch
     -- A, 29-09-2026). Deep: the row is three levels down the legend's world page (widget dump, 29-09-2026).
-    { Id="menubtn",  Name="Menu buttons (chat, map, bag)",  Classes={"WBP_InputLegend_World_C"},
+    { Id="menubtn",  Name="Menu shortcuts",                 Classes={"WBP_InputLegend_World_C"},
       Child="HorizontalBox_436", Deep=true, Inside="legend", A={1,1}, Center={X=1659, Y=953}, Size={X=395, Y=123} },
     -- our own tiles, one per recovering spell (cooldowns.lua; design sketch C, 29-09-2026): left, middle height.
     -- Size: cooldowns.lua's box of six tiles.
     { Id="cooldowns", Name="Spell cooldowns",               Custom="cooldowns",
       A={0,0.5}, Center={X=70, Y=540}, Size={X=60, Y=400} },
-    { Id="wheel",    Name="Wheel, arrow and R",             Classes={"WBP_DomInputIconWidget_C"},
+    { Id="wheel",    Name="Tool wheel hint",                Classes={"WBP_DomInputIconWidget_C"},
       PathEnds={"WBP_Inventory_MainPanel_C_%d+%.WidgetTree_%d+%.RadialKBM$"}, UseParent=3,
       A={0,0}, Center={X=638, Y=120}, Size={X=30, Y=60} },
     -- the rune and arrow count of the staff and the bow: only its box moves, the crosshair stays in the middle
     -- (the reticles' trees, read in game 27-09-2026: VerticalBox_0 holds the ammo name and the count)
-    { Id="ammo",     Name="Ammo counter",                   Classes={"WBP_ReticleMagic_C", "WBP_ReticleRangedADS_C"},
+    { Id="ammo",     Name="Arrow and rune count",                  Classes={"WBP_ReticleMagic_C", "WBP_ReticleRangedADS_C"},
       Child="VerticalBox_0", NoClip=true, A={0.5,0.5}, Center={X=840, Y=551}, Size={X=262, Y=34} },   -- name, disk, count
 }
 
@@ -748,10 +751,61 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
     end
 end
 
+-- The bag and the gamepad (1.6; play test and probes, 03-10-2026). The game's tool bar is the top row of the bag's
+-- panel, and a gamepad goes from slot to slot by their places on the screen. With the bar moved away from the panel,
+-- the gamepad found no way between the bar and the bag. So while the bag is open and a gamepad is in use, the bar
+-- sits at its own place. With the mouse nothing was wrong, so the bar stays where the player put it; the mod reads
+-- the input in use and changes with it (Ivan, 03-10-2026: "prepoznas input pa menja").
+-- Open: the bag's tab row, next to the bar in the same box, is shown (it is collapsed, 1, while the bag is closed),
+-- and the focus is inside the bag's content. The tab row alone is not enough: after the entry into a world it is
+-- shown until the bag was open once, and the bar sat in the bag all that time (play test, 03-10-2026). The focus is
+-- in the content exactly while a gamepad moves in the bag (probe 3, 03-10-2026).
+local Bag = { Tabs = nil, Content = nil, Input = nil, Open = false }
+local PadInUse
+local function BagOpen()
+    local bar = ById("toolbar").Instances[1]
+    if not (bar and bar:IsValid()) then Bag.Tabs, Bag.Content = nil, nil return false end
+    local T, C = Bag.Tabs, Bag.Content
+    if not (T and T:IsValid() and C and C:IsValid()) then
+        T = nil
+        local box, tree = bar:GetParent(), bar:GetOuter()
+        if not (box:IsValid() and tree:IsValid()) then Bag.Tabs, Bag.Content = nil, nil return false end
+        for i = 0, box:GetChildrenCount() - 1 do
+            local c = box:GetChildAt(i)
+            if c:IsValid() and c:GetFName():ToString() == "TabGroupOverlay" then T = c break end
+        end
+        C = tree:GetOuter()   -- the widget whose tree holds the bar: the bag's content (InventoryContent)
+        if not (T and C and C:IsValid()) then Bag.Tabs, Bag.Content = nil, nil return false end
+        Bag.Tabs, Bag.Content = T, C
+    end
+    return T:GetVisibility() ~= 1 and C:HasFocusedDescendants()
+end
+-- A gamepad is the input in use (the game's input subsystem: 0 mouse and keyboard, 1 gamepad, 2 touch).
+function PadInUse()
+    local S = Bag.Input
+    if not (S and S:IsValid()) then
+        if os.clock() < (Bag.InputAt or 0) then return false end
+        Bag.InputAt = os.clock() + 5   -- none found: the search walks every object, so not at every call
+        S = nil
+        for _, o in pairs(FindAllOf("CommonInputSubsystem") or {}) do
+            if o:IsValid() and not string.find(o:GetFullName(), "Default__", 1, true) then S = o break end
+        end
+        Bag.Input = S
+    end
+    return S ~= nil and S:GetCurrentInputType() == 1
+end
+
 local function ApplyAll(force)
+    local now = os.clock()
+    if now >= (Bag.Next or 0) then   -- ten looks a second are enough: the bar moves within a blink of the bag
+        Bag.Next = now + 0.1
+        local okBag, open = pcall(function() return BagOpen() and PadInUse() end)
+        Bag.Open = okBag and open or false   -- the bag is open and a gamepad is in use
+    end
     for i, E in ipairs(Elements) do
         local sel = EditMode and i == Selected
         local lx, ly, ls = LocalTransform(E)
+        if Bag.Open and E.Id == "toolbar" and not EditMode then lx, ly, ls = 0, 0, 1 end   -- the editor shows the saved place
         for n, W in ipairs(E.Instances) do ApplyOne(W, E.Keys[n], lx, ly, ls, E, sel, force) end
     end
     RestoreAllRequested = false
@@ -1144,8 +1198,15 @@ local MenuCtx = { Log = Log, ById = ById, Find = Survival and Survival.Find, Rin
     Text = function(tree, name, size, color, s)
         return MakeText(tree, name, size, color, s, FindPoppins())
     end,
-    Chat = function() return FindClass("WBP_ClosedChat_C")[1] end }
+    Chat = function() return FindClass("WBP_ClosedChat_C")[1] end, Pad = PadInUse }
 AddPart("menu buttons", MenuButtons, MenuCtx)
+do   -- Rune XP: the XP under the bars (xp.lua)
+    local Xp = Survival and LoadPart("xp")   -- it finds the game's parts with survival.lua's Find
+    AddPart("rune xp", Xp, { Log = Log, ById = ById, G = G, ClearOurs = ClearOurs, Asset = Asset, Font = FindPoppins,
+        Find = Survival and Survival.Find,
+        MayTry = MayTry, Failed = Failed, Trim = function() return Bars and Bars.Trim.W end,
+        On = function() return ById("runexp").Visible end })
+end
 Aim = LoadPart("aim")
 local AimCtx = { Log = Log, On = function() return ById("aim").Visible end,
     Reticle = function() return FindClass("WBP_HUD_ReticleWidget_C")[1] end,
@@ -1207,6 +1268,7 @@ local function ForgetWorld(sameWorld)
     Found, FindCache, NextSearch = {}, {}, 0   -- the last widget search's handles; search again at once
     Reports.Walk = sameWorld and "restart" or "new world"
     if Editor then Editor.Fails, Editor.RetryAt = 0, 0 end   -- new tries (see MayTry); the parts reset their own in Forget
+    Bag.Tabs, Bag.Content, Bag.Input = nil, nil, nil
     Tint = {}   -- a HUD made again may reuse a name: set the opacity colour again, it costs one call per widget
     if not sameWorld then
         -- the editor panel of the old world is off the screen: build a new one on the next F9, and say its
@@ -1528,6 +1590,8 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
         -- the immersive mode and the creatures are rows of the layout: the step's save writes them (SaveRequested)
         local I, C = ById("immersive"), ById("creatures")
         Row("immersive", function() return I.Visible end, function(v) I.Visible = v == true SaveRequested = true end)
+        local X = ById("runexp")
+        Row("rune_xp", function() return X.Visible end, function(v) X.Visible = v == true SaveRequested = true end)
         Row("immersive_wait", function() return I.Wait or 8 end,
             function(v) I.Wait = math.floor(Settings.Num(v, 3, 30, 8) + 0.5) SaveRequested = true end)
         if RuneMap then

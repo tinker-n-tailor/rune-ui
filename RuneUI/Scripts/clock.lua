@@ -1,7 +1,7 @@
 -- The time of day in immersive mode (playtest, 01-10-2026: "atleast some kind of indicator what time of the day is"):
 -- one small icon right of the tool bar. Half a sun rising at dawn, the sun by day, half a sun setting at dusk, the
 -- moon at night (design sketch, option 4). Shown only while immersive mode is on, and while the editor is open so
--- it can be moved; it is the "Time of day icon" line in F9. The time comes from the game's own dial (runemap.lua).
+-- it can be moved; it is the "Day and night icon" line in F9. The time comes from the game's own dial (runemap.lua).
 -- main.lua moves it like any element and loads this file with pcall.
 
 local M = {}

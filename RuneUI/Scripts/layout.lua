@@ -29,7 +29,7 @@ function M.ById(id)
 end
 
 -- Elements with no widget of their own: they only switch something on or off
-function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" end
+function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" end
 -- Elements the mod draws on the viewport, not inside the game's HUD scale box
 function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" end
 
@@ -110,7 +110,9 @@ function M.ScreenBox(E)
     local cx, cy = M.FinalCenter(E)
     local sz = E.Scale * (M.OnViewport(E) and 1 or M.Hud.S) * (E.Follows and M.ById(E.Follows).Scale or 1)
     local w, h = E.Size.X * sz, E.Size.Y * sz
-    return cx - w / 2, cy - h / 2, w, h
+    -- Below: room under the element's own box that belongs to it (the XP row under the bars). Only the frame grows;
+    -- the centre, and so every saved layout, stays as it is.
+    return cx - w / 2, cy - h / 2, w, h + (E.Below or 0) * sz
 end
 
 -- E's centre and size on a 1920 x 1080 screen, for the F9 readouts; a Follows element is carried by its parent

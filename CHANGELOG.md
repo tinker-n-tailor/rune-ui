@@ -2,6 +2,23 @@
 
 All changes to Rune UI, newest first.
 
+## 1.6 (03-10-2026)
+
+### New
+
+- Rune XP: the XP that you get shows under the bars. The gold line under the bars becomes the XP bar. It gets thick, and a bright fill moves from its left end to your progress in the level. Under the line you see the icon of the skill, its name and the XP. Then all of it fades, and the plain line is back. Rune XP moves and sizes with the bars. It is on at first. To get the XP circle of the game back, hide "Rune XP (XP under the bars)" in the editor, or turn "Rune XP" off on the page in Mod Menu. Each layout profile has its own. When two skills get XP in the same instant, Rune XP shows them one after the other.
+
+### Changed
+
+- The elements in the editor have clearer names. For example: "Menu buttons (chat, map, bag)" is "Menu shortcuts", "Item pick-ups" is "Picked-up items", "Center prompts" is "Interaction prompts", "Ammo counter" is "Arrow and rune count", "XP popup" is "XP circle", and "RuneMap" is "Minimap (RuneMap)". Your layout stays as it is: only the names changed.
+
+### Fixed
+
+- A gamepad moves between the bag and the tool bar again. The game puts the tool bar in the top row of the bag, and a gamepad goes from slot to slot by their places on the screen. Rune UI moved the bar away from the bag, so the gamepad found no way between the two. While the bag is open and a gamepad is in use, the tool bar now sits at its own place in the bag. It goes back to your place when you close the bag. With the mouse and the keyboard, the bar stays where you put it.
+- The menu buttons (chat, map, spell book, building, bag) show the buttons of the gamepad when you play with one. Before, they showed the keyboard keys. With a gamepad the key box is the game's own.
+- The bright edge of the tool bar is always on the slot of the item in your hand. Before, it stayed on the slot of the item before at times, when you changed the item with a key or with the tool wheel.
+- The gold edges of the tool bar slots go away while the tool wheel is open. Before, they stayed on the screen without the bar. In the editor, the edges also dim with the tool bar.
+
 ## 1.5 (03-10-2026)
 
 1.5 is a big patch of the HUD look: the item pick-ups, the quests, the tool bar, the buffs, the farm plots and RuneMap. It also adds a page in Mod Menu and two new elements in the editor.

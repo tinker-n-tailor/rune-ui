@@ -10,6 +10,13 @@
 -- its square. EquippedImage is seen (visibility 4) on the slot in use, else collapsed.
 -- The game builds a slot new when its item changes, so each step looks at every slot again: a new one is painted
 -- whole, a known one costs about twenty calls. main.lua moves the bar as "toolbar" and loads this file with pcall.
+-- The edge is an outline, and an outline ignores the opacity of the widgets above it (see cooldowns.lua). While the
+-- tool wheel is open, the game sets the bag's main panel, 8 widgets above the bar, to opacity 0 (probes of
+-- 03-10-2026): the bar went and our edges stayed. So the edge takes the opacity of every widget from the bar up to
+-- the top of the HUD by its own colour, and is hidden at opacity 0.
+-- The game draws the edge again only when a call tells it to, and a brush written in place tells it nothing: the
+-- bright edge stayed on the slot of the item before, and the edges stayed with the wheel open (play test and
+-- probes 5 to 7, 03-10-2026). So each change of an edge ends with two changes of its visibility.
 
 local M = {}
 
@@ -53,13 +60,43 @@ local function Style(ctx, T)
     T:SetShadowColorAndOpacity({ R = 0, G = 0, B = 0, A = 0.8 })
 end
 
-local function Edge(S, used)
-    if S.Used == used then return end
-    S.Used = used
+local function Edge(S, used, op)
+    if S.Used == used and S.Op == op then return end
+    S.Used, S.Op = used, op
+    local c = used and GOLD or EDGE
     local b = S.Edge.Brush
     b.OutlineSettings.Width = used and 2 or 1
-    b.OutlineSettings.Color = { SpecifiedColor = used and GOLD or EDGE, ColorUseRule = 0 }
+    b.OutlineSettings.Color = { SpecifiedColor = { R = c.R, G = c.G, B = c.B, A = c.A * op }, ColorUseRule = 0 }
     S.Edge:SetBrush(b)
+    S.Edge:SetVisibility(1)                    -- collapsed and back in one step: the game draws the edge again
+    S.Edge:SetVisibility(op > 0.01 and 3 or 2)   -- 3 seen, takes no clicks; 2 hidden
+end
+
+-- The opacity of the bar on the screen: its own times that of every widget above it. The widgets are found once
+-- for each bar: the parents in a tree, then the widget that holds the tree, up to the top of the HUD.
+local Above = {}
+local function Opacity(n, bar)
+    local C = Above[n]
+    if not (C and C.Addr == bar:GetAddress()) then
+        C = { Addr = bar:GetAddress() }
+        local w = bar
+        while Ok(w) and #C < 20 do
+            C[#C + 1] = w
+            local p = w:GetParent()
+            if not Ok(p) then
+                local tree = w:GetOuter()
+                p = Ok(tree) and tree:GetClass():GetFName():ToString() == "WidgetTree" and tree:GetOuter() or nil
+            end
+            w = p
+        end
+        Above[n] = C
+    end
+    local op = 1
+    for _, w in ipairs(C) do
+        if not w:IsValid() then Above[n] = nil return 1 end   -- found again at the next look
+        op = op * w:GetRenderOpacity()
+    end
+    return op
 end
 
 -- The durability bar keeps the game's colours: its pale tan, and its warning colours. A gold fill was in the
@@ -125,7 +162,7 @@ end
 
 -- A known slot, on every look: the square and the edge of the slot in use. The square's
 -- values are written when the material is a new one, and once a second in case the game wrote its own again.
-local function Keep(S, now)
+local function Keep(S, now, op)
     local m = S.Item.Brush.ResourceObject
     if Ok(m) then
         local a = m:GetAddress()
@@ -137,7 +174,7 @@ local function Keep(S, now)
         end
     end
     local v = S.Eq and S.Eq:GetVisibility()
-    Edge(S, v ~= nil and v ~= 1 and v ~= 2)   -- 1 collapsed, 2 hidden
+    Edge(S, v ~= nil and v ~= 1 and v ~= 2, op)   -- 1 collapsed, 2 hidden
 end
 
 -- Known: the same slot, the same inner slot in it, and every part Keep calls still there. A part that the game
@@ -145,7 +182,7 @@ end
 -- finds a slot whose inner parts the game cleared. A new inner overlay or a new ItemImage alone in a kept slot is
 -- not found until the engine frees the old one, about a minute (which parts the game builds new is not known,
 -- 02-10-2026).
-local function Look(ctx, key, W, now)
+local function Look(ctx, key, W, now, op)
     if not Ok(W) then M.Slots[key] = nil return end
     local S = M.Slots[key]
     local known = false
@@ -166,10 +203,10 @@ local function Look(ctx, key, W, now)
         M.Slots[key] = S
         if S then M.Painted = (M.Painted or 0) + 1 end
     end
-    if S then Keep(S, now) end
+    if S then Keep(S, now, op) end
 end
 
-function M.Forget() M.Slots = {} end
+function M.Forget() M.Slots = {} Above = {} end
 
 function M.Tick(ctx)
     local now = os.clock()
@@ -181,8 +218,10 @@ function M.Tick(ctx)
             local tree = bar.WidgetTree
             local grid = Ok(tree) and tree.RootWidget
             if Ok(grid) then
+                local okO, op = pcall(Opacity, n, bar)
+                if not okO then Once(ctx, "opacity", "tool bar: opacity not read: " .. tostring(op)) op = 1 end
                 for i = 0, grid:GetChildrenCount() - 1 do
-                    local ok, err = pcall(Look, ctx, n .. ":" .. i, grid:GetChildAt(i), now)
+                    local ok, err = pcall(Look, ctx, n .. ":" .. i, grid:GetChildAt(i), now, op)
                     if not ok then Once(ctx, "slot", "tool bar: a slot not painted: " .. tostring(err)) end
                 end
             end

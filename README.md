@@ -21,7 +21,7 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 <tr>
 <td width="33%" valign="top"><img src="docs/bars.jpg" alt="Health, stamina and special bars with the level badge"><br><b>Clean bars</b><br>Health on top, stamina in green, a plain dark track behind each bar.</td>
 <td width="33%" valign="top"><img src="docs/buffs.jpg" alt="Two round buffs under the bars, one with a ring of dashes"><br><b>Round buffs</b><br>Each buff is a round icon. A ring of dashes shows the time left, in the buff's own colour.</td>
-<td width="33%" valign="top"><img src="docs/ammo.jpg" alt="Rune count of the staff beside the survival rings"><br><b>Ammo counter</b><br>The rune and arrow count of the staff and the bow moves away from the crosshair, to where you want it.</td>
+<td width="33%" valign="top"><img src="docs/ammo.jpg" alt="Rune count of the staff beside the survival rings"><br><b>Arrow and rune count</b><br>The rune and arrow count of the staff and the bow moves away from the crosshair, to where you want it.</td>
 </tr>
 </table>
 
@@ -84,13 +84,17 @@ Press F8 in the game for the settings of RuneMap. The panel opens under the map.
 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an `avatar.png` in the `RuneUI` folder.
 
-"Creatures on RuneMap" and "Icons beside the bars" only switch a thing on or off. "Creatures on RuneMap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+"Creatures on the minimap", "Icons beside the bars" and "Rune XP (XP under the bars)" only switch a thing on or off. "Creatures on the minimap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+
+"Rune XP" shows the XP that you get under the bars. The gold line under the bars becomes the XP bar: it gets thick, and a bright fill moves from its left end to your progress in the level. Under the line you see the icon of the skill, its name and the XP. Then all of it fades, and the plain line is back. The XP moves and sizes with the bars. The name of the skill is in English in every language of the game. When two skills get XP in the same instant, Rune XP shows them one after the other. Hide "Rune XP" to get the XP circle of the game back.
+
+With a gamepad, the menu shortcuts (chat, map, spell book, building, bag) show the buttons of the gamepad. While the bag is open and a gamepad is in use, the tool bar sits at its own place in the bag, because a gamepad goes from slot to slot by their places on the screen. The tool bar goes back to your place when you close the bag, or when you use the mouse or the keyboard.
 
 When you hide RuneMap, the mod takes the map off the screen. The game then does not draw the map, and you get back the frames that it costs.
 
-"Ammo counter" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
+"Arrow and rune count" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
 
-Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedragonwilds/mods/548). To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
+Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedragonwilds/mods/548). To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, the Rune XP switch, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode, Rune XP and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
 
 ## Gallery
 
@@ -137,11 +141,11 @@ Each buff is its icon with a thin bar under it, so it looks like a small copy of
 
 The game can keep a buff in its list after the buff ended, for example the poison after you died from it. Its bar is then empty. The mod hides a buff with an empty bar and closes the row. When the bar fills again, the buff is back.
 
-The drink, food and potion buffs sit right of the food, water and rest rings. The game's line between them is hidden. Each one is a small ring, level with the food rings: blue for a drink, green for a food, gold for a potion. The ring shows the time that is left; the number of seconds is hidden. Move, resize or hide them together with "Drink, food and potion buffs" in the editor. In the immersive mode, each of these rings shows when its buff starts, fades, and comes back when the buff runs low.
+The drink, food and potion buffs sit right of the food, water and rest rings. The game's line between them is hidden. Each one is a small ring, level with the food rings: blue for a drink, green for a food, gold for a potion. The ring shows the time that is left; the number of seconds is hidden. Move, resize or hide them together with "Buff rings (drink, food, potion)" in the editor. In the immersive mode, each of these rings shows when its buff starts, fades, and comes back when the buff runs low.
 
 ### Aim, cooldowns and prompts
 
-`Scripts/aim.lua` makes the aim marks gold: the crosshair, the bow's ring, dot and stamina bar, and the lock-on bracket. A gold diamond replaces the lock-on orb. The game makes a new ring for each staff target from one template. The mod puts a gold diamond into that template once, so each new ring has it. When "Gold aim and lock-on" is off in F9, the marks are white again, also after a restart of the player.
+`Scripts/aim.lua` makes the aim marks gold: the crosshair, the bow's ring, dot and stamina bar, and the lock-on bracket. A gold diamond replaces the lock-on orb. The game makes a new ring for each staff target from one template. The mod puts a gold diamond into that template once, so each new ring has it. When "Crosshair and lock-on" is off in F9, the marks are white again, also after a restart of the player.
 
 `Scripts/cooldowns.lua` reads the 12 slices of the game's spell wheel. The wheel counts on while it is closed. For each spell that recovers, the mod shows a tile with the spell's icon, a gold fill and the game's own seconds.
 
@@ -149,11 +153,13 @@ The drink, food and potion buffs sit right of the food, water and rest rings. Th
 
 `Scripts/letters.lua` puts a shadow on the letters of the pick-up prompt, the build panel and the repair mode. It keeps the words of the build and repair panels white, and it removes the faint dark shape behind the title of the build panel. The key letters, the red "inventory full" line and the cost rows keep the game's colours.
 
-`Scripts/pickups.lua` gives the list of picked-up items the same look. The dark band and the gold lines of each row are hidden. The texts are in the HUD font, with the shadow of the letters. The count is gold. The row of a new item has no sparks. The game tints "NEW MATERIAL !" near black for about two seconds. The mod changes the colour of that animation once, so the words are light from the start. The list is the element "Item pick-ups" in the editor.
+`Scripts/xp.lua` is Rune XP. It reads the XP notice that the game shows (the icon, the text, and the progress from the material of the ring), and it draws the row and the fill in the bars widget. It makes the circles of the game unseen by the size of their grid, because the game animates their opacity. `tools/test-xp.js` tests the motion of the fill and the fade without the game.
+
+`Scripts/pickups.lua` gives the list of picked-up items the same look. The dark band and the gold lines of each row are hidden. The texts are in the HUD font, with the shadow of the letters. The count is gold. The row of a new item has no sparks. The game tints "NEW MATERIAL !" near black for about two seconds. The mod changes the colour of that animation once, so the words are light from the start. The list is the element "Picked-up items" in the editor.
 
 `Scripts/bednames.lua` puts a space into the name of a claimed bed roll: "Ann's Bed Roll". The game joins the owner and the name without a space. The mod changes the name that the bed roll gives to the game, so the prompt shows it with the space. The mod sets the same hook for a bed.
 
-`Scripts/quests.lua` gives the quests and unlocks the HUD font, with the shadow of the letters. The key letters keep the font of the game. A row of the panel is new for each notice, so the master copy of the row gets the font, and a new row has it from the start. The mod also looks at every text of the panel and changes each one once. The game made the panel for the right edge, so the element "Quests" moves only up and down in the editor, and it keeps its size.
+`Scripts/quests.lua` gives the quests and unlocks the HUD font, with the shadow of the letters. The key letters keep the font of the game. A row of the panel is new for each notice, so the master copy of the row gets the font, and a new row has it from the start. The mod also looks at every text of the panel and changes each one once. The game made the panel for the right edge, so the element "Quests and unlocks" moves only up and down in the editor, and it keeps its size.
 
 `Scripts/farmplot.lua` changes the panel over each farm plot. The water and compost icons are half their size. The clearing panel loses its dark band, its frame and the gloss of its bar. Its title is smaller, with the shadow of the letters, and its bar is brown. Each plot has its own panel, so the mod changes each panel once.
 
