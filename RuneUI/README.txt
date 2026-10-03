@@ -80,7 +80,7 @@ The mod does not use the network and does not start other programs.
 
 MORE
 
-Pictures, details and the source code: https://github.com/Filch-Dev/rune-ui
+Pictures, details and the source code: https://github.com/tinker-n-tailor/rune-ui
 The code of Rune UI is under the MIT licence. See LICENSE.txt.
 
 Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.
