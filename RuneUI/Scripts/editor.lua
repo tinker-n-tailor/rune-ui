@@ -13,7 +13,7 @@ local PANEL_BG = "/Game/Art/UI/ShaderWork/MI_Menu_PanelBG_Shared.MI_Menu_PanelBG
 local WIDTH, PAD = 460, 28   -- 420 left four key boxes and a long name no room (playtest, 01-10-2026)
 local INNER = WIDTH - 2 * PAD
 local MAP_W, MAP_H = INNER, math.floor(INNER * 9 / 16)   -- the screen map: a 16:9 screen
-M.ROWS, M.BOXES, M.KEYS, M.CAPS = 10, 40, 8, 4            -- list lines (group titles too), map boxes, key cells, caps a cell
+M.ROWS, M.BOXES, M.KEYS, M.CAPS = 11, 40, 8, 4            -- list lines (group titles too), map boxes, key cells, caps a cell
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Hex(h, a)

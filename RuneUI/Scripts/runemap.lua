@@ -65,11 +65,13 @@ end
 -- (playtest, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
 -- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
 -- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
+-- Name: the player's own name, which the game prints on its own marker for you (see ScanOwnNameLabels below) --
+-- RuneMap never drew that text itself, the player's own position and heading already have their own needle.
 -- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
 -- in main.lua's settings file: Store is its [map] section, Save writes the file (Attach, called once at start).
 -- neutral creatures start hidden: they take room on the map (29-09-2026)
 local SETTING_START = { Map = true, North = false, Mark = true, Smooth = false, Neutral = false, Ore = true, Herbs = true,
-    Essence = true, Trees = true }
+    Essence = true, Trees = true, Name = true }
 M.Set = {}
 for k, v in pairs(SETTING_START) do M.Set[k] = v end
 M.Store, M.Save = {}, function() end
@@ -612,6 +614,92 @@ local function Build(ctx)
     end
 end
 
+---------------------------------------------------------------- our own name on the map
+
+-- F8 Name. The game puts a marker on the map for the local player the same way it does for every creature
+-- and resource (WBP_Dominion_MinimapInternal_Icon_C, the plugin's own generic marker widget -- not one
+-- RuneMap builds), and that marker's IconLabel child prints the player's name next to it. Off hides just
+-- that one label (SetVisibility only; its text is left alone, so turning it back on needs no re-scan).
+--
+-- Found by matching the label's own text against the local player's name, not by structure: the marker
+-- class is shared by every single thing on the map (over a thousand live instances, most of them resources
+-- and creatures), and nothing on it says "this one is the player's own" to search by instead.
+local OwnLabels = {}   -- cached IconLabel widgets currently showing the local player's own name
+
+-- WBP_DomTextBlock_C (the game's own text-block wrapper, used for IconLabel and the nameplate below) does
+-- not answer GetText() directly -- its real TextBlock sits one level into its own WidgetTree. Bounded
+-- depth, every step pcall'd: an unexpected widget shape just yields nil here instead of erroring.
+local function WidgetText(Widget, Depth)
+    if not (Widget and Widget:IsValid()) or (Depth or 0) > 4 then return nil end
+    local okT, Txt = pcall(function() return Widget:GetText():ToString() end)
+    if okT and Txt and Txt ~= "" then return Txt end
+    local okTree, Tree = pcall(function() return Widget.WidgetTree end)
+    if okTree and Tree and Tree:IsValid() then
+        local okRoot, Root = pcall(function() return Tree.RootWidget end)
+        if okRoot and Root and Root:IsValid() then
+            local found = WidgetText(Root, (Depth or 0) + 1)
+            if found then return found end
+        end
+    end
+    return nil
+end
+
+-- PlayerState:GetPlayerName() hands back an FString that never converts to a plain Lua string here (tried
+-- :ToString() and a plain-string check; both still printed a raw pointer) -- so this reads the name from
+-- the same place the screen already shows it instead: the floating 3D nameplate above the character
+-- (WBP_Player_Nameplate_C -> PlayerNameTextBlock), through the same WidgetText() this file already trusts
+-- for IconLabel itself. In single-player this is unambiguous (only one nameplate exists); multiplayer
+-- would need this to also match the nameplate to M.Pawn, not just take the first one found -- not done yet.
+local function OwnPlayerName()
+    local ok, plates = pcall(FindAllOf, "WBP_Player_Nameplate_C")
+    if not (ok and plates) then return nil end
+    for _, P in pairs(plates) do
+        local okOk, text = pcall(function()
+            if not (P and P:IsValid()) then return nil end
+            local okC, Child = pcall(function() return P.PlayerNameTextBlock end)
+            if okC and Child then return WidgetText(Child) end
+            return nil
+        end)
+        if okOk and text and text ~= "" then return text end
+    end
+    return nil
+end
+
+-- Every 2 s, always (see the Tick call site for why this can't stop once one label is found) -- same cost
+-- and cadence as the creatures scan below; walking every IconLabel on the map is not a per-frame search.
+-- Replaces OwnLabels wholesale each time, so an instance that disappeared (pause menu closed) drops out on
+-- its own, same as a pruned-invalid one.
+local function ScanOwnNameLabels(ctx)
+    local want = OwnPlayerName()
+    if not want then return end
+    local ok, labels = pcall(FindAllOf, "WBP_DomTextBlock_C")
+    if not (ok and labels) then return end
+    local found = {}
+    for _, L in pairs(labels) do
+        pcall(function()
+            if L and L:IsValid() and L:GetFName():ToString() == "IconLabel" and WidgetText(L) == want then
+                found[#found + 1] = L
+            end
+        end)
+    end
+    OwnLabels = found
+    if #OwnLabels > 0 then Once(ctx, "ownname", "runemap: found " .. #OwnLabels .. " own-name label(s) on the map") end
+end
+
+-- Cheap: just a prune and a SetVisibility per cached label, so this runs every Tick, not on the scan's timer.
+-- vis 4 (SelfHitTestInvisible) is the game's own shown state for this label; 1 (Collapsed) is RuneMap's off,
+-- the same pair main.lua's other map switches use (e.g. the north mark image).
+local function ApplyOwnNameVisibility()
+    for i = #OwnLabels, 1, -1 do
+        local L = OwnLabels[i]
+        if not (L and L:IsValid()) then
+            table.remove(OwnLabels, i)
+        else
+            pcall(function() L:SetVisibility(M.Set.Name and 4 or 1) end)
+        end
+    end
+end
+
 ---------------------------------------------------------------- creatures on the map
 
 -- Red diamonds for enemies, green for neutral animals. Each creature gets the map plugin's own icon, so the
@@ -771,6 +859,7 @@ function M.Forget(sameWorld)
     M.SetUpAt, M.NeedleSlot, M.NeedleImg, M.NextRes = nil, nil, nil, 0   -- a new world scans for resources at once
     DropParts()
     if sameWorld then DropCreatureIcons() else Creatures = {} end
+    OwnLabels = {}   -- a new world's labels are new objects; a player restart's may be gone too
     if M.Res then pcall(sameWorld and M.Res.Drop or M.Res.Forget) end
     M.CreatureWay, M.WayLogged = nil, nil   -- a way that failed while a world loaded gets a new try
 end
@@ -876,6 +965,15 @@ function M.Tick(ctx)
         local okR, errR = pcall(M.Res.Scan, ctx, M)
         if not okR then Once(ctx, "resources", "runemap: resources failed: " .. tostring(errR)) end
     end
+    -- every 2 s, not only while OwnLabels is empty: the pause menu's own map (and the big "M" map) build a
+    -- separate instance of the same marker widget, so one can appear while the minimap's is already cached
+    -- -- stopping at the first find would leave that second one always showing, toggle or not.
+    if os.clock() > (M.NextName or 0) then
+        M.NextName = os.clock() + 2.0
+        local okN, errN = pcall(ScanOwnNameLabels, ctx)
+        if not okN then Once(ctx, "ownname_err", "runemap: own-name scan failed: " .. tostring(errN)) end
+    end
+    ApplyOwnNameVisibility()
     -- hide with the game's HUD (menus, the big map)
     pcall(function()
         local V = ctx.ById("vitals").Instances[1]

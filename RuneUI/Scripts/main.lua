@@ -913,10 +913,10 @@ local function MapKeys()
     return { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { KEY.zoomout, KEY.zoomin }, "Zoom" },
         { { "Backspace" }, "Reset" }, { { KEY.editor }, "Layout" }, { { KEY.map }, "Save, close" } }
 end
-local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
+local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Your name", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
 -- the lines that are a plain On / Off, and the setting in runemap.lua each one flips
-local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
-    Essence = "Essence", ["Rare trees"] = "Trees" }
+local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", ["Your name"] = "Name", Ore = "Ore",
+    Herbs = "Herbs", Essence = "Essence", ["Rare trees"] = "Trees" }
 
 -- The F8 lines: the value of each, and a hint for the selected one
 local function MapValue(i)
@@ -934,6 +934,7 @@ local MAP_HINTS = {
     RuneMap = { Off = "The map is off. The mod does not build it at all." },   -- On names the editor's key: MapHint
     ["Faces north"] = { On = "North stays at the top of the map.", Off = "The map turns with the camera." },
     ["North mark"] = { On = "The mark on the gold ring shows where north is.", Off = "No north mark on the ring." },
+    ["Your name"] = { On = "Your name shows next to your own marker on the map.", Off = "Your name is hidden on the map." },
     Creatures = { All = "Red diamonds for enemies, green for neutral animals.", ["Enemies only"] = "Only enemies. Neutral animals are not shown.",
         Off = "No creature diamonds on the map." },
     Ore = { On = "Ore rocks near you. Empty rocks hide until they grow back.", Off = "No ore on the map." },
@@ -1596,7 +1597,7 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
             function(v) I.Wait = math.floor(Settings.Num(v, 3, 30, 8) + 0.5) SaveRequested = true end)
         if RuneMap then
             local S = RuneMap.Set
-            for _, k in ipairs({ "Map", "North", "Mark", "Ore", "Herbs", "Essence", "Trees" }) do
+            for _, k in ipairs({ "Map", "North", "Mark", "Name", "Ore", "Herbs", "Essence", "Trees" }) do
                 Row("map_" .. k, function() return S[k] end, function(v) S[k] = v == true RuneMap.Dirty = true end)
             end
             Row("map_creatures", function() return (not C.Visible) and "Off" or (S.Neutral and "All" or "Enemies only") end,

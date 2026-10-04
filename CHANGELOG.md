@@ -2,6 +2,12 @@
 
 All changes to Rune UI, newest first.
 
+## Unreleased
+
+### New
+
+- F8: a new "Your name" switch, next to "North mark". Off hides your name on RuneMap, next to your own marker (the game prints it there itself; RuneMap does not draw it). On by default, so nothing changes unless you turn it off.
+
 ## 1.6 (03-10-2026)
 
 ### New
