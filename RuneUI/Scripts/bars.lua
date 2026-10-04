@@ -4,18 +4,16 @@
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival, GoldLine
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
     Asset, SetColor = ctx.Asset, ctx.SetColor
-    MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
+    MayTry, Failed, CachedTex, Survival, GoldLine = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival, ctx.GoldLine
 end
 
 -- The gold line of the loading screen under the bars (seen live, 02-10-2026; before: the main menu's trim line,
--- read from the menu and saved). The picture, 1048x34, is pointed at its right end only: two copies, each squeezed
--- into half of the box, in a HorizontalBox, the left one mirrored, make a line pointed at both ends. It lives in the
--- bars widget like the badge, so it moves and sizes with the bars.
-local LINE = "/Game/Art/UI/Loading/T_Trim_Line_Gold.T_Trim_Line_Gold"
+-- read from the menu and saved), drawn by goldline.lua. It lives in the bars widget like the badge, so it moves and
+-- sizes with the bars.
 local BarTrim = { HostName = nil }
 local function EnsureBarTrim()
     if not MayTry(BarTrim) then return end
@@ -23,15 +21,11 @@ local function EnsureBarTrim()
     local V = VE.Instances[1]
     if not (V and V:IsValid()) or BarTrim.HostName == VE.Keys[1] then return end
     local ok, err = pcall(function()
-        local tex = Asset(LINE, "/Script/Engine.Texture2D")
+        local tex = Asset(GoldLine.PATH, "/Script/Engine.Texture2D")
         if not tex then error("line picture not loaded") end
-        local row = StaticConstructObject(StaticFindObject("/Script/UMG.HorizontalBox"), V.WidgetTree, G("RU_BarTrimRow"))
-        for half = 1, 2 do
-            local img = StaticConstructObject(StaticFindObject("/Script/UMG.Image"), V.WidgetTree, G("RU_BarTrim"))
-            img:SetBrushFromTexture(tex, false)
-            if half == 1 then local b = img.Brush b.Mirroring = 1 img:SetBrush(b) end   -- the left half points left
-            row:AddChildToHorizontalBox(img):SetSize({ SizeRule = 1, Value = 1 })   -- each half fills half the box
-        end
+        local row = GoldLine.Row(function(cls, name)
+            return StaticConstructObject(StaticFindObject("/Script/UMG." .. cls), V.WidgetTree, G(name))
+        end, tex, "RU_BarTrim")
         local box = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), V.WidgetTree, G("RU_BarTrimBox"))
         box:SetWidthOverride(330)   -- the bars' width
         box:SetHeightOverride(10.7)

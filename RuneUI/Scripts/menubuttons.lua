@@ -156,6 +156,7 @@ function M.Tick(ctx)
     -- the chat's message count: the immersive mode shows the row when it grows
     local okC, errC = pcall(function()
         local chat = ctx.Chat()
+        if not (chat and chat:IsValid()) then M.List = nil return end   -- the main menu has no chat: nothing to read
         -- the list is found once per chat widget: the walk to it cost dozens of calls, twice a second (30-09-2026)
         local L = M.List
         if not (L and L.Addr == chat:GetAddress() and L.W:IsValid()) then

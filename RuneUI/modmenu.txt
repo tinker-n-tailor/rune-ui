@@ -26,6 +26,13 @@
     { "key": "rune_xp", "type": "toggle", "label": "Rune XP", "default": true,
       "tooltip": "On: the XP shows under the bars, and the gold line fills as the XP bar. Off: the game's XP circle. Each layout profile has its own." },
 
+    { "key": "slim_level_up", "type": "toggle", "label": "Slim level up", "default": true,
+      "tooltip": "On: a level up shows under the bars, in the place of the XP, and the game's big banner is unseen. Off: the game's banner. It is also off while Rune XP is off. Each layout profile has its own." },
+
+    { "type": "header", "label": "Quest tracker" },
+    { "key": "quest_next", "type": "toggle", "label": "Show next steps", "default": false,
+      "tooltip": "On: a quest with a clean list of steps also shows up to 3 steps after the current one. Each layout profile has its own." },
+
     { "type": "header", "label": "RuneMap" },
     { "key": "map_Map", "type": "toggle", "label": "RuneMap", "default": true,
       "tooltip": "Off: the mod does not build the map at all. To only hide the map, use Delete in the editor." },
@@ -41,6 +48,8 @@
       "tooltip": "Rune essence near you." },
     { "key": "map_Trees", "type": "toggle", "label": "Rare trees", "default": true,
       "tooltip": "Dead trees, yew, magic trees and anima bark near you." },
+    { "key": "map_immersive", "type": "choice", "label": "In immersive mode", "options": ["Nothing", "Map", "Compass"], "default": "Nothing",
+      "tooltip": "What stays while the immersive mode is on. Nothing: the map and the compass are hidden. Map: the map stays, and the quest tracker with it. Compass: the game's compass stays. It has a gold line, and it shows the marks of the map. A compass hidden in the editor stays hidden." },
     { "key": "map_creatures", "type": "choice", "label": "Creatures", "options": ["All", "Enemies only", "Off"], "default": "Enemies only",
       "tooltip": "All: red diamonds for enemies, green for neutral animals. Enemies only: neutral animals are not shown." },
     { "key": "map_drawing", "type": "choice", "label": "Drawing", "options": ["Smooth", "Faster"], "default": "Faster",

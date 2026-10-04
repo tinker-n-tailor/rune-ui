@@ -20,6 +20,23 @@ end
 
 function M.Section(t, name) if type(t[name]) ~= "table" then t[name] = {} end return t[name] end
 
+-- What stays in the immersive mode for direction (the map setting "In immersive mode", 1.7). The file holds the
+-- number: 0 Nothing, 1 Map, 2 Compass. The first version of the setting was On or Off, saved as 1 and 0: 1 reads as Map
+-- and 0 as Nothing. A name typed by hand reads too. Anything else is Nothing.
+M.STAY = { "Nothing", "Map", "Compass" }
+function M.StayFrom(v)
+    local n = tonumber(v)
+    if n and n == math.floor(n) and M.STAY[n + 1] then return M.STAY[n + 1] end
+    if type(v) == "string" then
+        for _, name in ipairs(M.STAY) do if string.lower(v) == string.lower(name) then return name end end
+    end
+    return M.STAY[1]
+end
+function M.StayTo(name)
+    for i, s in ipairs(M.STAY) do if s == name then return i - 1 end end
+    return 0
+end
+
 -- only plain decimal text is a number: tonumber also takes "0x1F", which would not come back the same
 local function Value(s)
     if string.match(s, "^[-+]?%d*%.?%d+$") or string.match(s, "^[-+]?%d+%.$") or string.match(s, "^[-+]?%d*%.?%d+[eE][-+]?%d+$") then

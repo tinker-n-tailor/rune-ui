@@ -62,7 +62,6 @@ end
 
 local function Edge(S, used, op)
     if S.Used == used and S.Op == op then return end
-    S.Used, S.Op = used, op
     local c = used and GOLD or EDGE
     local b = S.Edge.Brush
     b.OutlineSettings.Width = used and 2 or 1
@@ -70,6 +69,7 @@ local function Edge(S, used, op)
     S.Edge:SetBrush(b)
     S.Edge:SetVisibility(1)                    -- collapsed and back in one step: the game draws the edge again
     S.Edge:SetVisibility(op > 0.01 and 3 or 2)   -- 3 seen, takes no clicks; 2 hidden
+    S.Used, S.Op = used, op   -- stored last: after a call that failed, the next look does the change again
 end
 
 -- The opacity of the bar on the screen: its own times that of every widget above it. The widgets are found once

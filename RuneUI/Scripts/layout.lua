@@ -29,9 +29,9 @@ function M.ById(id)
 end
 
 -- Elements with no widget of their own: they only switch something on or off
-function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" end
+function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" or E.Custom == "questnext" or E.Custom == "slimlevel" end
 -- Elements the mod draws on the viewport, not inside the game's HUD scale box
-function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" end
+function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" or E.Custom == "questtracker" end
 
 -- The edge an element follows on a screen of another shape: the third of the screen it sits in,
 -- left, middle or right (and top, middle or bottom). v is where it ends up, size the screen's.

@@ -2,9 +2,37 @@
 
 All changes to Rune UI, newest first.
 
-## 1.6 (03-10-2026)
+## [1.7] - 2026-10-04
 
-### New
+1.7 adds a quest tracker, a slim level up under the bars and a gold compass. It also lets you pick what stays for direction in the immersive mode.
+
+### Added
+
+- Quest tracker: under the minimap, at the top right, the mod shows the main quest and the quest that you track in the journal. Each has a small label, the name of the quest in gold and the step in white. A thin gold line is on top, and there is no background. A finished quest never shows. While the game shows its own quest or unlock notice under the map, the tracker goes away, and it comes back after the notice. In the immersive mode the tracker goes with the map: while the map stays (the map setting "In immersive mode"), the tracker stays too. When the map is hidden, the tracker fades, and it comes back for a moment when a step changes. It is an element in the editor: move, size and hide it. Each layout profile has its own.
+- Slim level up: when you reach a new level, the game's big banner in the middle of the screen does not show. Under the bars, in the row of Rune XP, a level up shows for as long as the game's notice is on screen, bigger than an XP notice. It grows in with a short pop while it fades in, and it keeps its size while it fades out. The row has the gold line bright and full, the icon of the skill, its name in white capitals, and "Level N" in gold at the right end. The sparks of the banner do not show. The sound stays as the game makes it. A level up wins over an XP notice in the row. It is on at first. To get the game's banner back, hide "Slim level up (under the bars)" in the editor, or turn "Slim level up" off on the page in Mod Menu. It is also off while Rune XP is hidden. Each layout profile has its own.
+- "Show next steps" (a switch in the editor, "Quest tracker: next steps", and a row on the page in Mod Menu): a quest with a list of steps in a clear order also shows up to three steps after the current one, dimmed. A quest with a mixed list shows only its current step. The switch is off at first.
+- The map setting "In immersive mode", in the map settings (F8) and on the page in Mod Menu, picks what stays for direction while the immersive mode is on. Nothing: the immersive mode hides the map and the compass, as before. Map: the map stays, and the quest tracker with it. Compass: the game's compass stays, and the map is away. A compass that you hid in the editor stays hidden, also with Compass. The setting is Nothing at first.
+- Compass, gold style: the game's compass gets the gold of the mod. A gold line sits on the white line of the strip, and the game's middle mark is gold. The letters stay white. This is always on while the compass shows, and it has no switch. A compass that you hid in the editor stays hidden.
+- Compass, marks of the map: while the compass shows and the map does not, the compass shows the creatures, ore, herbs, rune essence and rare trees that you switched on in the map settings (F8). The marks have the shapes of the map, without the dark outline. A mark sits where its thing is, as you see it from where you look. A far mark is smaller and dimmer, and a mark at the edge of the compass fades out. The marks move smoothly when you turn. You see them in the immersive mode with "In immersive mode" at Compass, and also when RuneMap is off. There are no new settings.
+
+### Changed
+
+- Map settings (F8): a row with more than two values shows its value between < and >. The rows are "Creatures", "In immersive mode" and "Zoom". Left and Right change the value, as before.
+- The pointed gold line under the bars, the XP bar and the top of the quest tracker come from one piece of code. They look as before.
+- Immersive mode: stamina that is not full does not bring the bars back. Before, a run brought them back. The bars come back when your health is not full. The game still plays its sound and its flash when the stamina is gone.
+- Immersive mode: a debuff in the buff row shows for the whole time that it lasts. A good buff (Cosiness, Sheltered, Well Rested, Prayer) shows when you get it, stays for your wait, and fades. A new buff does not bring the other good buffs back, and a debuff that comes shows only the debuff. A good buff that comes back after it ended shows again, for example when you walk under a roof again. All good buffs come back with the bars, for example in a fight. The game does not say which buffs are good, so the mod has a list of the good ones. Every other buff counts as a debuff, also a new one that the mod does not know. When a good buff fades, the row closes, so a debuff does not stand beside a gap. Outside the immersive mode, nothing changes. The drink, food and potion rings work as before.
+- The time of day icon of the immersive mode is off, and it is not in the editor list. Its code stays in the mod.
+- Rune UI has a new licence from this version. The mod stays free to use, and its code stays open to read. You may not upload it again, publish a changed version, or use parts of it in another mod without the permission of the author. Versions 1.0 to 1.6 stay under the MIT licence. See LICENSE.txt in the mod folder.
+
+### Fixed
+
+- The compass keeps its strip with the letters. Before, a compass that was hidden at the start of a world and shown later had only its marks. The game draws the strip once, so the mod now asks the game to draw it again when the compass comes back.
+- A buff that ended leaves no thin line in the buff row. Before, a thin pale line showed at times between two buffs: the game showed the ended buff again, and the mod had it squeezed to almost no width. The mod now also hides the icon and the bar of an ended buff.
+- A buff without a timer does not stay in the buff row after it ends. For example, the weight icon stayed at times after a death, with an empty bag. The game marks such a buff as over but can leave its icon on the screen. The mod now hides it.
+
+## [1.6] - 2026-10-03
+
+### Added
 
 - Rune XP: the XP that you get shows under the bars. The gold line under the bars becomes the XP bar. It gets thick, and a bright fill moves from its left end to your progress in the level. Under the line you see the icon of the skill, its name and the XP. Then all of it fades, and the plain line is back. Rune XP moves and sizes with the bars. It is on at first. To get the XP circle of the game back, hide "Rune XP (XP under the bars)" in the editor, or turn "Rune XP" off on the page in Mod Menu. Each layout profile has its own. When two skills get XP in the same instant, Rune XP shows them one after the other.
 
@@ -19,11 +47,11 @@ All changes to Rune UI, newest first.
 - The bright edge of the tool bar is always on the slot of the item in your hand. Before, it stayed on the slot of the item before at times, when you changed the item with a key or with the tool wheel.
 - The gold edges of the tool bar slots go away while the tool wheel is open. Before, they stayed on the screen without the bar. In the editor, the edges also dim with the tool bar.
 
-## 1.5 (03-10-2026)
+## [1.5] - 2026-10-03
 
 1.5 is a big patch of the HUD look: the item pick-ups, the quests, the tool bar, the buffs, the farm plots and RuneMap. It also adds a page in Mod Menu and two new elements in the editor.
 
-### New
+### Added
 
 - Rune UI has a page in the mod Mod Menu, for players who have it: press Esc, then MODS. The page has the five keys that you can change, the immersive mode and its wait, the settings of RuneMap without the zoom, the layout profile, and a button that opens the editor. A key that you change works after you start the game again. `runeui.txt` stays the settings file of the mod. Without Mod Menu, nothing changes.
 - The tool bar has the look of the cooldown tiles: see-through slots with a thin gold edge, the numbers in the HUD font, and a dark track behind the durability bar. The slot in use has a bright gold edge.
@@ -57,11 +85,11 @@ All changes to Rune UI, newest first.
 - With an older UE4SS (the log shows "timed search"), the timed search stays. There, the search every 2 seconds after you enter a world or respawn stops when the HUD parts are all found. It ran for 30 seconds.
 - The perf lines in UE4SS.log show the full searches and what started them, the new widgets that UE4SS reported with their time and how many the mod kept, and the time RuneMap needs after a menu.
 
-## 1.4 (01-10-2026)
+## [1.4] - 2026-10-01
 
 1.4 is the first release since 1.2. It also holds everything in 1.3, which was not released on its own. The changes of 1.4 itself are in how the mod is built, and in one settings file.
 
-### New
+### Added
 
 - One settings file, `runeui.txt`, next to the game, with named values you can read and edit. It holds the three layout profiles, the profile in use, the map settings and the zoom, and the keys. The six files of older versions are read once when `runeui.txt` is missing, so no layout is lost. They are not deleted.
 - Five keys can be changed in the `[keys]` part of `runeui.txt`: F9, F8, F7, ] and [.
@@ -74,9 +102,9 @@ All changes to Rune UI, newest first.
 - `npm test` runs every check: the Lua check, the picture check, the player README check, and the tests without the game. GitHub runs it on every push.
 - The player README inside the zip is made from this repository's README, so the two cannot drift apart.
 
-## 1.3 (released as part of 1.4)
+## [1.3] - released as part of 1.4
 
-### New
+### Added
 
 - A new F9 editor in the look of the game's bag panel. A small map of the screen shows where each part is, and the selected part is gold. The list groups the parts by the area of the screen. A gold diamond marks a part that you moved, resized or faded. X and Y show next to the size and the opacity.
 - On the screen, gold corners and a dark tag with the name, X and Y mark the selected part. They replace the pale gold box and the blink.
@@ -96,11 +124,11 @@ All changes to Rune UI, newest first.
 - F8, the map settings, uses the new panel.
 - The overeating icon is in the middle of its ring.
 
-## 1.2 (30-09-2026)
+## [1.2] - 2026-09-30
 
 1.2 is the first release since 1.0.1. It also holds everything in 1.1, which was not released on its own.
 
-### New
+### Added
 
 - Wide screens. On 21:9 and wider screens, every part of the HUD stays in its place. The level badge and the line under the bars stay with the bars. RuneMap stays in the top right corner. The food, water and rest rings, the tool bar and the compass stay in the middle.
 - The HUD scale of the game. When you change the HUD scale in the game's settings, every part keeps its place.
@@ -130,9 +158,9 @@ All changes to Rune UI, newest first.
 
 A layout that you made on a wide screen with an older version can move a little once. Correct it in F9.
 
-## 1.1 (released as part of 1.2)
+## [1.1] - released as part of 1.2
 
-### New
+### Added
 
 - F8 opens the settings of RuneMap, in a panel under the map. Each change shows on the map.
   - Faces north: the map stops turning with the camera, and north stays at the top.
@@ -148,7 +176,7 @@ A layout that you made on a wide screen with an older version can move a little 
 - The key list of F9 shows F8. F8 in F9 opens the map settings, and F9 in F8 opens the editor.
 - While F8 is open, RuneMap shows, also when it is hidden in F9.
 
-## 1.0.1 (28-09-2026)
+## [1.0.1] - 2026-09-28
 
 - Fixed heavy stutter, worst on older UE4SS builds.
 - Fixed crashes after using the F9 editor for a while.
@@ -156,7 +184,7 @@ A layout that you made on a wide screen with an older version can move a little 
 - RuneMap now draws every second frame, for about 10 FPS more.
 - If UE4SS.log says "timer: old UE4SS", update UE4SS to the latest experimental build.
 
-## 1.0 (28-09-2026)
+## [1.0] - 2026-09-28
 
 The first release.
 

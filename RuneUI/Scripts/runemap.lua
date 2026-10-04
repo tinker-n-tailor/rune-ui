@@ -67,22 +67,33 @@ end
 -- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
 -- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
 -- in main.lua's settings file: Store is its [map] section, Save writes the file (Attach, called once at start).
+-- Immersive: what stays while the immersive mode is on: "Nothing", "Map" or "Compass" (settings.lua STAY; main.lua
+-- reads it for the map's fade and for the compass). Nothing at first: the
+-- immersive mode hid the map since 1.2, and a player could not get it back ("map can't be activated in immersive
+-- mode", 03-10-2026). A lighter look of the map for that mode was tried and dropped: two looks of one map.
 -- neutral creatures start hidden: they take room on the map (29-09-2026)
 local SETTING_START = { Map = true, North = false, Mark = true, Smooth = false, Neutral = false, Ore = true, Herbs = true,
-    Essence = true, Trees = true }
+    Essence = true, Trees = true, Immersive = "Nothing" }
 M.Set = {}
 for k, v in pairs(SETTING_START) do M.Set[k] = v end
 M.Store, M.Save = {}, function() end
-function M.Attach(store, save)
+-- stay: settings.lua, for the number in the file and the name here of the Immersive setting (an old on is Map)
+local Stay = { StayFrom = function() return "Nothing" end, StayTo = function() return 0 end }
+function M.Attach(store, save, stay)
     M.Store, M.Save = store, save
+    Stay = stay or Stay
     for k in pairs(SETTING_START) do
-        if store[k] ~= nil then M.Set[k] = (tonumber(store[k]) == 1) end
+        if store[k] ~= nil then
+            if k == "Immersive" then M.Set[k] = Stay.StayFrom(store[k]) else M.Set[k] = (tonumber(store[k]) == 1) end
+        end
     end
     local z = tonumber(store.zoom)
     M.Zoom = z and math.max(ZOOM_MIN, math.min(ZOOM_MAX, z)) or 2   -- a hand-edited file stays in range
 end
 local function SaveSettings()
-    for k in pairs(SETTING_START) do M.Store[k] = M.Set[k] and 1 or 0 end
+    for k in pairs(SETTING_START) do
+        if k == "Immersive" then M.Store[k] = Stay.StayTo(M.Set[k]) else M.Store[k] = M.Set[k] and 1 or 0 end
+    end
     M.Save()
 end
 -- Backspace in F8, from a key handler: only a flag; Tick does the rest
@@ -466,7 +477,7 @@ local function DropParts()
     M.NorthSlot, M.NorthImg, M.RingOut, M.RingIn, M.Retainer = nil, nil, nil, nil, nil
     M.Applied, M.LastNorth, M.Op = nil, nil, nil
     M.TerrainAt = nil   -- a new map notes its own count (SetUpAgain)
-    M.CreatureWay = nil -- and tries the first way to find creatures again: one failure must not hold for the world
+    if M.Near then M.Near.Forget() end -- and tries the first way to find creatures again: one failure must not hold for the world
 end
 
 -- the F8 settings onto the live map: when one changed, and once after each build
@@ -505,6 +516,10 @@ end
 -- The F9 opacity. The whole map through its user widget, which leaves the editor's blinking (render opacity)
 -- alone; the gold rings by their own colour, since outlines ignore the widget's opacity (LEARNINGS, 28-09-2026).
 -- The immersive mode's fade comes in here too (ctx.Fade), for the same reason.
+-- In the play test of 03-10-2026 the rings followed the opacity keys at once, with no change of visibility after
+-- SetBrush. The tool bar's edges were not drawn again after SetBrush alone (see toolbar.lua). The reason for the
+-- difference is not known. A probe wrote a red outline to the rings' brush and called SetBrush, with no change of
+-- opacity: the screen kept the old colour for seconds (probe 1, 03-10-2026).
 local function ApplyOpacity(ctx)
     local op = (ctx.ById("runemap").Opacity or 1) * ctx.Fade()
     if op == M.Op then return end
@@ -622,79 +637,10 @@ local CREATURE_SIZE = 8       -- used only when the icon has no default size to 
 -- of the default size, which looked far too big; 0.6 was right at an icon scale of 0.54 (27-09-2026), so our icons
 -- keep that size when the scale changes (the resources use the same)
 local CREATURE_SHARE = 0.6 * 0.54 / ICON_SCALE
--- ponytail: neutral by the creature's class name; switch to the game's own flag if one is found
-local NEUTRAL = { "Deer", "Stag", "Rabbit", "Hare", "Chicken", "Sheep", "Cow", "Goat", "Frog", "Bird", "Fish", "Magpie", "Kebbit",
-    "Critter", "Ambient", "Passive", "Squirrel" }
 local Creatures = {}   -- full name -> { Icon, Shown }
 
-local function IsNeutral(kind)
-    for _, n in ipairs(NEUTRAL) do if string.find(kind, n, 1, true) then return true end end
-    return false
-end
-
-local function Dead(A)
-    local ok, v = pcall(function() return A:IsDead() end)
-    if ok and type(v) == "boolean" then return v end
-    local ok2, v2 = pcall(function() return A.bIsDead end)
-    return ok2 and v2 == true
-end
-
--- The creatures near the player (playtest, 29-09-2026: look only around the player). The walk through every object
--- the game holds (FindAllOf) took up to 30 ms (28-09-2026). The game's overlap query gives only the pawns within
--- CREATURE_RADIUS of the player. If UE4SS cannot make that call, the game's own list of creatures, then the walk.
--- The first way that works stays. Herbs and ore could be found the same way later.
-local CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map (playtest, 29-09-2026)
--- An out parameter from UE4SS 3.0.1: it fills the table passed in with the actors, 1 to n (log of 29-09-2026).
--- An element may come as the object or as a holder of it (e:get()).
-local function OutActors(out)
-    local list = {}
-    for _, e in ipairs(out) do
-        if pcall(function() return e:GetFullName() end) then list[#list + 1] = e
-        else
-            local ok, o = pcall(function() return e:get() end)
-            if ok and o then list[#list + 1] = o end
-        end
-    end
-    return list
-end
-local CREATURE_WAYS = {
-    { "the overlap query", function(cls)
-        local out = {}
-        -- true when anything overlaps; then an empty table means UE4SS gave the list some other way
-        local hit = Obj("/Script/Engine.Default__KismetSystemLibrary"):SphereOverlapActors(M.Pawn,
-            M.Pawn:K2_GetActorLocation(), CREATURE_RADIUS, { 2 }, cls, {}, out)   -- 2: the pawn object type
-        local list = OutActors(out)
-        if hit == true and #list == 0 then error("an overlap, but no actors in the table") end
-        return list
-    end },
-    { "the game's list", function(cls)
-        local out = {}
-        Obj("/Script/Engine.Default__GameplayStatics"):GetAllActorsOfClass(M.Pawn, cls, out)
-        return OutActors(out)
-    end },
-    { "the walk", function() return FindAllOf("DominionAICharacter") or {} end },
-}
-local function NearCreatures(ctx)
-    local cls = Obj("/Script/Dominion.DominionAICharacter")
-    for i = M.CreatureWay or 1, #CREATURE_WAYS do
-        local way = CREATURE_WAYS[i]
-        local ok, list = pcall(function()
-            if i < 3 and not (cls and cls:IsValid()) then error("no creature class") end
-            return way[2](cls)
-        end)
-        if ok then
-            if M.WayLogged ~= i then M.WayLogged = i ctx.Log("runemap: creatures found by " .. way[1]) end
-            M.CreatureWay = i
-            return list
-        end
-        ctx.Log("runemap: creatures by " .. way[1] .. " failed: " .. tostring(list))
-        M.CreatureWay = i + 1
-    end
-    return {}
-end
-
 local function ScanCreatures(ctx)
-    if not (M.EnemyTex and M.NeutralTex) then return end
+    if not (M.EnemyTex and M.NeutralTex and M.Near) then return end
     local cls = Obj(ICON_CLASS)
     if not (cls and cls:IsValid()) then Once(ctx, "iconclass", "runemap: no map icon class, no creatures") return end
     -- the editor's switch (they show at every zoom: wanted at the farthest one too, 27-09-2026). Hidden while
@@ -702,22 +648,20 @@ local function ScanCreatures(ctx)
     -- the world, which reads like a radar (28-09-2026).
     local show = ctx.ById("creatures").Visible ~= false and M.Shown == true
     local seen, added = {}, 0
-    for _, A in pairs(NearCreatures(ctx)) do
+    for _, e in ipairs(M.Near.Creatures(ctx, M.Pawn)) do
         pcall(function()
-            local n = A:GetFullName()
-            if not string.find(n, ":PersistentLevel.", 1, true) or string.find(n, "Default__", 1, true) then return end
+            local A, n = e.A, e.Name
             seen[n] = true
             local c = Creatures[n]
             if c and not c.Icon:IsValid() then Creatures[n], c = nil, nil end   -- its icon is gone: add a new one
             if not c then
                 if added >= 8 then return end   -- a few per scan, so a crowd does not stall one frame
                 added = added + 1
-                local kind = A:GetClass():GetFName():ToString()
                 local T = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
                 local icon = A:AddComponentByClass(cls, false, T, false)
                 -- no icon when the creature is being removed (log, 28-09-2026): try again on the next scan
                 if not (icon and icon:IsValid()) then return end
-                local neutral = IsNeutral(kind)
+                local neutral = e.Group == "Calm"
                 local okT, errT = pcall(function() icon:SetIconTexture(neutral and M.NeutralTex or M.EnemyTex) end)
                 if not okT then Once(ctx, "icontex", "runemap: creature icon picture failed: " .. tostring(errT)) end
                 -- The plugin's own size unit is unknown: its default drew them far too big, 8 drew nothing
@@ -732,7 +676,7 @@ local function ScanCreatures(ctx)
                 c = { Icon = icon, Shown = nil, Neutral = neutral }
                 Creatures[n] = c
             end
-            local want = show and not Dead(A) and (M.Set.Neutral or not c.Neutral)   -- F8: enemies only
+            local want = show and not e.Dead and (M.Set.Neutral or not c.Neutral)   -- F8: enemies only
             if want ~= c.Shown and c.Icon:IsValid() then
                 c.Shown = want
                 pcall(function() c.Icon:SetIconVisible(want) end)
@@ -772,7 +716,7 @@ function M.Forget(sameWorld)
     DropParts()
     if sameWorld then DropCreatureIcons() else Creatures = {} end
     if M.Res then pcall(sameWorld and M.Res.Drop or M.Res.Forget) end
-    M.CreatureWay, M.WayLogged = nil, nil   -- a way that failed while a world loaded gets a new try
+    if M.Near then M.Near.Forget() end   -- a way that failed while a world loaded gets a new try
 end
 
 -- Build only once the world is up: the HUD bars exist and the player has a body. Before that (main menu,
@@ -859,7 +803,7 @@ function M.Tick(ctx)
     ApplyOpacity(ctx)
     if M.SetUpAt and os.clock() > M.SetUpAt then M.SetUpAt = nil SetUpAgain(ctx) end
     if M.Visible and os.clock() > (M.NextCreatures or 0) then
-        -- every 2 s, around the player (NearCreatures); the plugin moves the icons itself
+        -- every 2 s, around the player (nearby.lua); the plugin moves the icons itself
         M.NextCreatures = os.clock() + 2.0
         if ctx.ById("creatures").Visible == false then
             -- off: no icons and no search at all (the search ran with Creatures off too, 29-09-2026)
@@ -933,7 +877,7 @@ function M.Tick(ctx)
     M.NeedleImg:SetRenderTransformAngle(deg)   -- the picture points up: out, when on top
 end
 
--- for resources.lua (main.lua sets M.Res): the helpers it shares with the creatures
-M.H = { Obj = Obj, OutActors = OutActors, IconClass = ICON_CLASS, Share = CREATURE_SHARE }
+-- for resources.lua (main.lua sets M.Res and M.Near): the helpers it shares with the creatures
+M.H = { Obj = Obj, IconClass = ICON_CLASS, Share = CREATURE_SHARE }
 
 return M

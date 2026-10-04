@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
 -- F9 opens the editor, F8 the map settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.6"
+local VERSION = "1.7"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
@@ -41,6 +41,7 @@ local function Failed(P) P.Fails, P.RetryAt = (P.Fails or 0) + 1, os.clock() + 1
 
 -- The world watch (near the main loop) fills these; they are declared here because the editor panel reads them too.
 local LastController = nil   -- the local player controller's name; "" while a world is loading
+local LocalPlayer = nil         -- the local player object lives as long as the game; the quest tracker reads its controller
 local SettleUntil = 0        -- no decorating or building until the new world has settled (os.clock)
 
 -- Our widgets from an earlier round, still inside a game widget: take them out before adding new ones. Only
@@ -58,7 +59,7 @@ end
 -- the meaning of Center, Size, A, Full, Inside and Follows are in layout.lua. Positions are in HUD units, as on a
 -- 16:9 screen (1920x1080 units at any resolution).
 -- Center, Size: measured 27-09-2026 from screenshots and slots. A: from the slots (the HUD log of 29-09-2026).
--- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "clock") or a plain switch (IsSwitch).
+-- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "clock", "questtracker") or a plain switch (IsSwitch).
 -- PathEnds/UseParent: for shared classes, keep only widgets whose path matches, then climb N parents.
 -- Child: move only this named child of the widget's root, not the whole widget.
 local Elements = {
@@ -83,8 +84,10 @@ local Elements = {
       Follows="survival", A={0,1}, Center={X=328, Y=958}, Size={X=50, Y=50} },
     { Id="toolbar",  Name="Tool bar",                       Classes={"WBP_Inventory_QuickAccesBar_C"},
       A={0,0}, Center={X=330, Y=110}, Size={X=545, Y=62} },
+    -- Redraw: the strip with the letters is in a box that the game draws once and then only on request (probe K2,
+    -- 04-10-2026). Drawn while the compass was unseen, it stayed empty: the marks showed, the strip did not.
     { Id="compass",  Name="Compass",                        Classes={"WBP_HUD_Compass_C"},
-      Full=true, A={0.5,0}, Center={X=960, Y=86}, Size={X=600, Y=120} },
+      Full=true, A={0.5,0}, Center={X=960, Y=86}, Size={X=600, Y=120}, Redraw="CompassRetainerBox" },
     -- no element for the MiniMap addon's map any more: RuneMap replaces it, and the big map (M) and RuneMap's
     -- own map are of the same class, so hiding that element hid them too (27-09-2026)
     { Id="runemap",  Name="Minimap (RuneMap)",                      Custom="map",
@@ -102,8 +105,9 @@ local Elements = {
     { Id="aim",      Name="Crosshair and lock-on",          Custom="aim",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     -- our own icon, right of the tool bar: the time of day while immersive mode is on (clock.lua; sketch of 01-10-2026)
-    { Id="clock",    Name="Day and night icon",            Custom="clock",
-      A={0.5,1}, Center={X=1286, Y=1035}, Size={X=40, Y=40} },
+    -- Off (playtest, 03-10-2026: the sun and moon icon goes; the code stays for a later look). Its part is off below too.
+    -- { Id="clock",    Name="Day and night icon",            Custom="clock",
+    --   A={0.5,1}, Center={X=1286, Y=1035}, Size={X=40, Y=40} },
     { Id="daynight", Name="Day and night dial",          Classes={"WBP_HUD_DayAndNight_C"},
       NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
     { Id="buffs",    Name="Buffs and debuffs",                         Classes={"WBP_HUD_EffectsDisplayLists_C"},
@@ -114,6 +118,10 @@ local Elements = {
       Inside="notify", A={0.5,0}, Center={X=960, Y=130}, Size={X=120, Y=95} },
     -- no widget of its own: shown, the XP is under the bars (xp.lua); hidden, the game's circle is back
     { Id="runexp",   Name="Rune XP (XP under the bars)",    Custom="runexp",
+      A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
+    -- no widget of its own: shown, a level up shows under the bars in Rune XP's row and the game's banner is unseen
+    -- (xp.lua); hidden, the game's banner is back. On at first. Off too while "Rune XP" is hidden.
+    { Id="slimlevel", Name="Slim level up (under the bars)", Custom="slimlevel",
       A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
     { Id="xpfloat",  Name="XP numbers",                    Classes={"WBP_FloatingExperienceContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=860, Y=551}, Size={X=110, Y=40} },
@@ -161,6 +169,13 @@ local Elements = {
     -- Size: cooldowns.lua's box of six tiles.
     { Id="cooldowns", Name="Spell cooldowns",               Custom="cooldowns",
       A={0,0.5}, Center={X=70, Y=540}, Size={X=60, Y=400} },
+    -- our own text under the minimap, at the top right (questtracker.lua): the main quest and the tracked one. Size:
+    -- its box. Centre: its right edge on the minimap's right edge (1904), its top 12 units under the minimap's box.
+    { Id="questtracker", Name="Quest tracker",              Custom="questtracker",
+      A={1,0}, Center={X=1754, Y=307}, Size={X=300, Y=110} },
+    -- no widget of its own: shown, the tracker also lists the next steps of a quest with a clean list (off at first)
+    { Id="questnext", Name="Quest tracker: next steps",     Custom="questnext",
+      A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     { Id="wheel",    Name="Tool wheel hint",                Classes={"WBP_DomInputIconWidget_C"},
       PathEnds={"WBP_Inventory_MainPanel_C_%d+%.WidgetTree_%d+%.RadialKBM$"}, UseParent=3,
       A={0,0}, Center={X=638, Y=120}, Size={X=30, Y=60} },
@@ -192,6 +207,7 @@ local Defaults = {
     ammo={X=250, Y=420},   -- right of the food and water rings, above the tool bar
     prompts={X=0, Y=-10}, armor={X=0, Y=-10}, itembrk={X=0, Y=-10}, menuico={X=0, Y=-40},
     legend={Visible=false}, wheel={Visible=false}, baricons={Visible=false}, immersive={Visible=false, Wait=8},
+    questnext={Visible=false},
 }
 
 -- The position math lives in layout.lua (tested without the game); these are its names, used all over this file.
@@ -329,8 +345,9 @@ local Immersive = nil -- the HUD fading when idle, from immersive.lua; loaded th
 local MenuButtons = nil -- the menu buttons in rings, from menubuttons.lua; loaded there too
 local Aim = nil       -- the gold aim marks and lock-on diamond, from aim.lua; loaded there too
 local Cooldowns = nil -- the spell cooldown tiles, from cooldowns.lua; loaded there too (its ctx is Cooldowns.Ctx)
+local QuestTracker = nil -- the main and tracked quest under the minimap, from questtracker.lua; loaded there too
 local Letters = nil   -- white letters with a shadow, from letters.lua; loaded there too (ctx Letters.Ctx)
-local Clock = nil     -- the time of day icon, from clock.lua; loaded there too
+local Clock = nil     -- the time of day icon, from clock.lua; off since 03-10-2026 (its load lines are comments)
 local Ammo = nil      -- the ammo counter in a ring, from ammo.lua; loaded there too (ctx Ammo.Ctx)
 local Toolbar = nil   -- the tool bar as tiles, from toolbar.lua; loaded there too (ctx Toolbar.Ctx)
 
@@ -543,6 +560,7 @@ local function FindAll(editing, buffsNew)
             if E.Custom == "avatar" and Avatar and Avatar.W and Avatar.W:IsValid() then AddInstance(E, Avatar.W) end
             if E.Custom == "map" and RuneMap and RuneMap.W and RuneMap.W:IsValid() then AddInstance(E, RuneMap.W) end
             if E.Custom == "cooldowns" and Cooldowns and Cooldowns.W and Cooldowns.W:IsValid() then AddInstance(E, Cooldowns.W) end
+            if E.Custom == "questtracker" and QuestTracker and QuestTracker.W and QuestTracker.W:IsValid() then AddInstance(E, QuestTracker.W) end
             if E.Custom == "clock" and Clock and Clock.W and Clock.W:IsValid() then AddInstance(E, Clock.W) end
         elseif searched then
             E.Instances, E.Keys = {}, {}
@@ -749,6 +767,18 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
     elseif RestoreAllRequested or next(Touched) ~= nil then
         RestoreOpacity(W, k, RestoreAllRequested)   -- leave the game's own fading alone when the element is shown
     end
+    -- the part drawn on request (E.Redraw) is asked to draw again at every opacity the element has while it is seen:
+    -- when it comes back, and at each step of a fade
+    if E.Redraw then
+        pcall(function()
+            local op = W:GetRenderOpacity()
+            if op > 0 and op ~= L.Drawn then
+                local R = W[E.Redraw]
+                if R and R:IsValid() then R:RequestRender() end
+            end
+            L.Drawn = op
+        end)
+    end
 end
 
 -- The bag and the gamepad (1.6; play test and probes, 03-10-2026). The game's tool bar is the top row of the bag's
@@ -850,6 +880,16 @@ local function FindPoppins()
     return Poppins
 end
 
+-- Poppins Medium, the heavier of the game's two weights: the quest tracker writes in it, because Regular is hard to
+-- read when the tracker is scaled down (in game, 04-10-2026). Found once; without it, the font above.
+local PoppinsMedium = nil
+local function FindPoppinsMedium()
+    if PoppinsMedium and PoppinsMedium:IsValid() then return PoppinsMedium end
+    local F = StaticFindObject("/Game/UI/Fonts/Poppins-Medium_Font.Poppins-Medium_Font")
+    if F and F:IsValid() then PoppinsMedium = F return F end
+    return FindPoppins()
+end
+
 -- kind: the class the object must be, for the typed calls it goes into. After a game patch another kind of object
 -- can sit at a known path; the wrong kind can crash.
 local function Asset(path, kind)
@@ -913,10 +953,15 @@ local function MapKeys()
     return { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { KEY.zoomout, KEY.zoomin }, "Zoom" },
         { { "Backspace" }, "Reset" }, { { KEY.editor }, "Layout" }, { { KEY.map }, "Save, close" } }
 end
-local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "Zoom", "Drawing" }
--- the lines that are a plain On / Off, and the setting in runemap.lua each one flips
+local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "In immersive mode",
+    "Zoom", "Drawing" }
+-- the lines that are a plain On / Off, and the setting in runemap.lua each one flips. "In immersive mode" steps
+-- through Nothing, Map and Compass (Settings.STAY), Creatures through three values: MapValue and MapChange have them.
 local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
     Essence = "Essence", ["Rare trees"] = "Trees" }
+-- the lines with more than two values: the list shows "< value >", so a player sees that Left and Right give more
+-- than what is shown (Ivan, 04-10-2026: nobody knew that "In immersive mode" has Compass too)
+local MAP_CHOICE = { Creatures = true, ["In immersive mode"] = true, Zoom = true }
 
 -- The F8 lines: the value of each, and a hint for the selected one
 local function MapValue(i)
@@ -928,6 +973,7 @@ local function MapValue(i)
     end
     if row == "Zoom" then return RuneMap and string.format("%d%%", math.floor(200 / RuneMap.ZoomLevel() + 0.5)) or "-" end
     if row == "Drawing" then return S.Smooth and "Smooth" or "Faster" end
+    if row == "In immersive mode" then return S.Immersive or "Nothing" end
     return S[MAP_SWITCH[row]] and "On" or "Off"
 end
 local MAP_HINTS = {
@@ -940,12 +986,17 @@ local MAP_HINTS = {
     Herbs = { On = "Wild herbs near you. A picked herb goes off the map.", Off = "No herbs on the map." },
     Essence = { On = "Rune essence near you.", Off = "No rune essence on the map." },
     ["Rare trees"] = { On = "Dead trees, yew, magic trees and anima bark near you.", Off = "No rare trees on the map." },
+    ["In immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
+        Map = "The map stays while the immersive mode is on, and the quest tracker with it. The compass is away." },   -- Compass: MapHint
     Drawing = { Smooth = "The map draws every frame. Switching might decrease performance.",
         Faster = "The map draws every second frame. A bit choppy when you turn." },
 }
 local function MapHint(i, v)
     local row = MAP_ROWS[i]
     if row == "Zoom" then return "Closer or farther. The " .. KEY.zoomout .. " and " .. KEY.zoomin .. " keys do the same at any time." end
+    if row == "In immersive mode" and v == "Compass" then
+        return "The compass stays while the immersive mode is on, with its gold line and the marks of the map. The map is away. A compass that you hid in " .. KEY.editor .. " stays hidden."
+    end
     if row == "RuneMap" and v == "On" then return "The map is on. To only hide it, use Delete in " .. KEY.editor .. "." end
     return MAP_HINTS[row] and MAP_HINTS[row][v] or ""
 end
@@ -1015,7 +1066,12 @@ local function MapView()
     for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
     local v = { Mode = "map", Title = "RUNE MAP", SubA = "Layout on", SubB = KEY.editor, Keys = MapKeys(), Warn = Problems(),
         Name = MAP_ROWS[MapSel] .. ":  " .. vals[MapSel], Hint = MapHint(MapSel, vals[MapSel]), Rows = {} }
-    for r = 1, #MAP_ROWS do v.Rows[r] = { Text = MAP_ROWS[r], Note = vals[r], Sel = r == MapSel } end
+    -- the panel has Editor.ROWS lines: a longer list moves with the selected row, as the F9 list does (11 rows since
+    -- "In immersive mode"; the last row was not drawn: review of 04-10-2026)
+    local first = math.max(1, math.min(MapSel - math.floor(Editor.ROWS / 2), #MAP_ROWS - Editor.ROWS + 1))
+    for r = first, math.min(#MAP_ROWS, first + Editor.ROWS - 1) do
+        v.Rows[#v.Rows + 1] = { Text = MAP_ROWS[r], Note = MAP_CHOICE[MAP_ROWS[r]] and ("< " .. vals[r] .. " >") or vals[r], Sel = r == MapSel }
+    end
     return v
 end
 
@@ -1160,7 +1216,10 @@ Survival = LoadPart("survival")
 -- the buffs' step runs before the map's, as it always did.
 local Util = { Log = Log, ById = ById, Uniq = Uniq, G = G, ClearOurs = ClearOurs, ClassName = ClassName,
     FindClass = FindClass, Asset = Asset, SetColor = SetColor,
-    MayTry = MayTry, Failed = Failed, CachedTex = CachedTex, Survival = Survival }
+    MayTry = MayTry, Failed = Failed, CachedTex = CachedTex, Survival = Survival,
+    GoldLine = LoadPart("goldline"),   -- the line under the bars, the XP bar and the quest tracker's top (goldline.lua)
+    Chain = LoadPart("chain"),   -- the chain of delayed calls that paints about every frame (xp.lua, compass.lua)
+    Near = LoadPart("nearby") }   -- which creatures, ore, herbs, essence and rare trees are near (the map and the compass)
 Avatar = LoadPart("avatar")
 if Avatar then Avatar.Init(Util) AddPart("avatar", Avatar, Util) end
 Bars = LoadPart("bars")
@@ -1169,13 +1228,18 @@ Buffs = LoadPart("buffs")
 if Buffs then Buffs.Init(Util) AddPart("buffs", Buffs, Util) end
 RuneMap = LoadPart("runemap")
 if RuneMap then
-    RuneMap.Attach(Settings.Section(Cfg, "map"), SaveCfg)   -- the F8 settings and the zoom live in the settings file
+    RuneMap.Attach(Settings.Section(Cfg, "map"), SaveCfg, Settings)   -- the F8 settings and the zoom live in the settings file
+    RuneMap.Near = Util.Near
     RuneMap.Res = LoadPart("resources")   -- ore, herbs, essence and rare trees on the map
 end
 -- Editing: the map shows while F9 or F8 is open, even when it is hidden
 local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end,
     -- the immersive mode's share: the map fades itself, its gold rings too (runemap.lua ApplyOpacity)
-    Fade = function() return Immersive and Immersive.Factor(ById("runemap")) or 1 end }
+    -- with the map setting "In immersive mode" at Map, the map stays
+    Fade = function()
+        if RuneMap and RuneMap.Set.Immersive == "Map" then return 1 end
+        return Immersive and Immersive.Factor(ById("runemap")) or 1
+    end }
 AddPart("runemap", RuneMap, MapCtx)
 local SurvivalCtx = { Log = Log, ById = ById }
 AddPart("survival", Survival, SurvivalCtx)
@@ -1184,12 +1248,17 @@ Immersive = LoadPart("immersive")
 local ImmersiveCtx = { Log = Log, On = function() return ById("immersive").Visible end,
     Editing = MapCtx.Editing, Bars = function() return Bars and Bars.Blades.Bars or {} end,
     Trim = function() return Bars and Bars.Trim.W end,
-    BuffCount = function() return Buffs and Buffs.Items end,
     Rings = function() return Survival and Survival.Rings and Survival.Rings() or {} end,
     Drinks = function() return Buffs and Buffs.Drinks.Deco or {} end,
     Wait = function() return ById("immersive").Wait or 8 end,
+    BuffEntries = function() return Buffs and Buffs.Entries() or {} end,
+    BuffLevel = function(d, level) if Buffs then Buffs.SetLevel(d, level) end end,
     TextsUnder = function(W) return Survival and Survival.TextsUnder(W) or {} end,
-    ChatCount = function() return MenuButtons and MenuButtons.Chat end }
+    ChatCount = function() return MenuButtons and MenuButtons.Chat end,
+    MapStays = function() return RuneMap ~= nil and RuneMap.Set.Immersive == "Map" end,
+    CompassStays = function() return RuneMap ~= nil and RuneMap.Set.Immersive == "Compass" end,
+    -- the quest and step on show: a change brings the quest tracker back
+    QuestSig = function() return QuestTracker and QuestTracker.Sig end }
 if Survival then MenuButtons = LoadPart("menubuttons") end   -- it draws with survival.lua's ring
 -- the survival ring and its turn, a text in the game's font, the chat widget
 local MenuCtx = { Log = Log, ById = ById, Find = Survival and Survival.Find, Ring = Survival and Survival.Ring,
@@ -1203,8 +1272,12 @@ AddPart("menu buttons", MenuButtons, MenuCtx)
 do   -- Rune XP: the XP under the bars (xp.lua)
     local Xp = Survival and LoadPart("xp")   -- it finds the game's parts with survival.lua's Find
     AddPart("rune xp", Xp, { Log = Log, ById = ById, G = G, ClearOurs = ClearOurs, Asset = Asset, Font = FindPoppins,
-        Find = Survival and Survival.Find,
+        Find = Survival and Survival.Find, GoldLine = Util.GoldLine, Chain = Util.Chain,
+        -- the slim level up (xp.lua): its switch, the level up element shown, and the editor closed (the editor writes the
+        -- banner's opacity, which is the signal that it is on show)
+        Slim = function() return ById("slimlevel").Visible and ById("levelup").Visible and not EditMode end,
         MayTry = MayTry, Failed = Failed, Trim = function() return Bars and Bars.Trim.W end,
+        Soon = ExecuteInGameThreadWithDelay,   -- one call on the game thread, a few ms from now; nil in an old UE4SS
         On = function() return ById("runexp").Visible end })
 end
 Aim = LoadPart("aim")
@@ -1230,10 +1303,11 @@ if Ammo then
         Text = MenuCtx.Text }
     AddPart("ammo", Ammo, Ammo.Ctx)
 end
-Clock = LoadPart("clock")
-local ClockCtx = { Log = Log, ById = ById, On = function() return ById("immersive").Visible end,
-    Editing = function() return EditMode end, ReadClock = function() return RuneMap.ReadClock(MapCtx) end }
-AddPart("clock", Clock, ClockCtx)
+-- the time of day icon is off (03-10-2026); Clock stays nil, and every use of it checks for that
+-- Clock = LoadPart("clock")
+-- local ClockCtx = { Log = Log, ById = ById, On = function() return ById("immersive").Visible end,
+--     Editing = function() return EditMode end, ReadClock = function() return RuneMap.ReadClock(MapCtx) end }
+-- AddPart("clock", Clock, ClockCtx)
 Letters = LoadPart("letters")
 if Letters then Letters.Ctx = { Log = Log, Find = FindClass } AddPart("letters", Letters, Letters.Ctx) end
 Toolbar = LoadPart("toolbar")
@@ -1246,6 +1320,53 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
     P = LoadPart("quests")
     if P then
         AddPart("quests", P, { Log = Log, Find = FindClass, Font = FindPoppins, Collect = Letters and Letters.Collect })
+    end
+    -- the local controller, as its link from the local player (ControllerName); nil while there is none
+    local function Controller()
+        local ok, pc = pcall(function()
+            local c = LocalPlayer and LocalPlayer:IsValid() and LocalPlayer.PlayerController
+            if c and c:IsValid() and c:IsLocalController() then return c end
+        end)
+        return ok and pc or nil
+    end
+    QuestTracker = LoadPart("questtracker")
+    if QuestTracker and Util.GoldLine then
+        AddPart("quest tracker", QuestTracker, { Log = Log, ById = ById, Asset = Asset, GoldLine = Util.GoldLine,
+            Text = function(tree, name, size, color, s)
+                return MakeText(tree, name, size, color, s, FindPoppinsMedium())
+            end,
+            -- F9 only, as the cooldowns: with the map settings (F8) open the made-up sample would show too
+            Editing = function() return EditMode end,
+            On = function() return ById("questtracker").Visible end,
+            ShowNext = function() return ById("questnext").Visible end,
+            -- the game's quest and unlock notice is on show: its entry, made once in a world, is collapsed (1) at rest
+            -- and not collapsed (3) while a notice plays (probe Q1, 04-10-2026)
+            Popup = function()
+                for _, W in ipairs((FindClass("WBP_QuestAndUnlocks_Item_C"))) do
+                    local ok, shown = pcall(function() return W:GetVisibility() ~= 1 end)
+                    if ok and shown then return true end
+                end
+                return false
+            end,
+            Controller = Controller })
+    end
+    P = LoadPart("compass")   -- the gold style of the compass, and the map's marks on it (compass.lua)
+    if P and Util.GoldLine then
+        AddPart("compass", P, { Log = Log, ById = ById, G = G, Asset = Asset, CachedTex = CachedTex, GoldLine = Util.GoldLine,
+            Controller = Controller, Near = Util.Near, Chain = Util.Chain,
+            Soon = ExecuteInGameThreadWithDelay,   -- one call on the game thread, a few ms from now; nil in an old UE4SS
+            -- the game's compass on the screen: shown in the editor's list, the game's HUD up, and not faded out (by the
+            -- immersive mode or by the editor's opacity); nil when not
+            Compass = function()
+                local E = ById("compass")
+                local W, V = E.Instances[1], ById("vitals").Instances[1]
+                if not (E.Visible and W and W:IsValid() and V and V:IsValid()) then return nil end
+                local ok, seen = pcall(function() return V:IsVisible() and W:IsVisible() and W:GetRenderOpacity() > 0 end)
+                return ok and seen and W or nil
+            end,
+            -- what is on the map screen: RuneMap is drawn (its own switch, the HUD, the immersive mode's fade)
+            MapShown = function() return RuneMap ~= nil and RuneMap.Visible == true end,
+            Set = function() return RuneMap and RuneMap.Set or {} end })
     end
     P = LoadPart("bednames")
     if P then
@@ -1286,7 +1407,6 @@ local function ForgetWorld(sameWorld)
     Settle = { Last = -1, Same = 0, Done = false }
     Log(sameWorld and "player restart: old handles dropped" or "new world: old handles dropped")
 end
-local LocalPlayer = nil   -- the local player object lives as long as the game
 local function SearchController()
     -- the local player's controller only: in co-op a friend's controller joining or leaving must not look
     -- like a new world; one unreadable controller is skipped, not taken as a change
@@ -1592,6 +1712,10 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
         Row("immersive", function() return I.Visible end, function(v) I.Visible = v == true SaveRequested = true end)
         local X = ById("runexp")
         Row("rune_xp", function() return X.Visible end, function(v) X.Visible = v == true SaveRequested = true end)
+        local SL = ById("slimlevel")
+        Row("slim_level_up", function() return SL.Visible end, function(v) SL.Visible = v == true SaveRequested = true end)
+        local N = ById("questnext")
+        Row("quest_next", function() return N.Visible end, function(v) N.Visible = v == true SaveRequested = true end)
         Row("immersive_wait", function() return I.Wait or 8 end,
             function(v) I.Wait = math.floor(Settings.Num(v, 3, 30, 8) + 0.5) SaveRequested = true end)
         if RuneMap then
@@ -1599,6 +1723,8 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
             for _, k in ipairs({ "Map", "North", "Mark", "Ore", "Herbs", "Essence", "Trees" }) do
                 Row("map_" .. k, function() return S[k] end, function(v) S[k] = v == true RuneMap.Dirty = true end)
             end
+            Row("map_immersive", function() return S.Immersive end,
+                function(v) S.Immersive = Settings.StayFrom(v) RuneMap.Dirty = true end)
             Row("map_creatures", function() return (not C.Visible) and "Off" or (S.Neutral and "All" or "Enemies only") end,
                 function(v) C.Visible, S.Neutral = v ~= "Off", v == "All" RuneMap.Dirty = true SaveRequested = true end)
             Row("map_drawing", function() return S.Smooth and "Smooth" or "Faster" end,
@@ -1644,13 +1770,18 @@ local function MapPick(d)
     if MapSel < 1 then MapSel = #MAP_ROWS end
     if MapSel > #MAP_ROWS then MapSel = 1 end
 end
--- left and right: the zoom row zooms, Creatures steps through All, Enemies only and Off, every other row switches
+-- left and right: the zoom row zooms, Creatures steps through All, Enemies only and Off, In immersive mode through
+-- Nothing, Map and Compass, every other row switches
 local function MapChange(d)
     if not RuneMap then return end
     local S = RuneMap.Set
     local row = MAP_ROWS[MapSel]
     if row == "Zoom" then RuneMap.ZoomBy(d > 0 and 1 / 1.25 or 1.25)
     elseif row == "Drawing" then S.Smooth = not S.Smooth
+    elseif row == "In immersive mode" then
+        local st = 1   -- the place of the value in Settings.STAY
+        for i, name in ipairs(Settings.STAY) do if name == S.Immersive then st = i end end
+        S.Immersive = Settings.STAY[(st - 1 + (d > 0 and 1 or -1)) % #Settings.STAY + 1]
     elseif row == "Creatures" then
         local C = ById("creatures")
         local st = (not C.Visible) and 3 or (S.Neutral and 1 or 2)

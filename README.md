@@ -14,7 +14,7 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 
 <table>
 <tr>
-<td width="33%" valign="top"><img src="docs/editor.jpg" alt="The Rune UI editor open in the game, with one part selected"><br><b>Edit your HUD in the game</b><br>Press F9. Move, resize, fade or hide 29 parts of the HUD with the keyboard. The mod saves your layout.</td>
+<td width="33%" valign="top"><img src="docs/editor.jpg" alt="The Rune UI editor open in the game, with one part selected"><br><b>Edit your HUD in the game</b><br>Press F9. Move, resize, fade or hide 30 parts of the HUD with the keyboard. The mod saves your layout.</td>
 <td width="33%" valign="top"><img src="docs/runemap.jpg" alt="RuneMap with red enemy diamonds around the player"><br><b>RuneMap</b><br>A round minimap that turns with the camera or faces north. Its gold ring is also a clock. Red diamonds are enemies, green diamonds are animals.</td>
 <td width="33%" valign="top"><img src="docs/rings.jpg" alt="Food and water rings turned orange because they are low"><br><b>Food, water and rest</b><br>Three rings in the style of the map. When a value gets low, they turn orange and red, like the game's own.</td>
 </tr>
@@ -79,14 +79,21 @@ Press F8 in the game for the settings of RuneMap. The panel opens under the map.
 | Faces north | Off: the map turns with the camera. On: north stays at the top. |
 | North mark | On: a mark on the gold ring shows where north is. |
 | Creatures | On: diamonds for the creatures near you. |
+| In immersive mode | What stays while the immersive mode is on. Nothing: the immersive mode hides the map and the compass. Map: the map stays, and the quest tracker with it. Compass: the game's compass stays, and the map is away. The compass always has a gold line, and it shows the marks of the map. Use the left and right arrows to change it. A compass that you hid in the editor stays hidden, also with Compass. |
 | Zoom | the same zoom as the [ and ] keys |
 | Drawing | Faster: the map draws every second frame. Smooth: every frame. Switching might decrease performance. |
 
 Beside the bars, the mod shows your level in the game's green diamond. To show your own picture there, put an `avatar.png` in the `RuneUI` folder.
 
-"Creatures on the minimap", "Icons beside the bars" and "Rune XP (XP under the bars)" only switch a thing on or off. "Creatures on the minimap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
+"Creatures on the minimap", "Icons beside the bars", "Rune XP (XP under the bars)", "Slim level up (under the bars)" and "Quest tracker: next steps" only switch a thing on or off. "Creatures on the minimap" is the same switch as "Creatures" in F8. Delete and Insert work on them. The arrows, + / - and , / . do nothing.
 
 "Rune XP" shows the XP that you get under the bars. The gold line under the bars becomes the XP bar: it gets thick, and a bright fill moves from its left end to your progress in the level. Under the line you see the icon of the skill, its name and the XP. Then all of it fades, and the plain line is back. The XP moves and sizes with the bars. The name of the skill is in English in every language of the game. When two skills get XP in the same instant, Rune XP shows them one after the other. Hide "Rune XP" to get the XP circle of the game back.
+
+"Slim level up" is on at first. When you reach a new level, the game's big banner in the middle of the screen does not show. In its place, the row of Rune XP shows the level up for as long as the game's notice is on screen. The row is bigger than an XP notice. It grows in with a short pop that slows softly into its rest, while it fades in. When the notice ends, it fades out at the same size. The gold line is bright and full. Under it you see the icon of the skill, its name in white capitals, and "Level N" in gold at the right end. The sparks of the banner do not show. The sound stays as the game makes it. A level up wins over an XP notice in the row, and the XP goes on after it. Hide "Slim level up" to get the game's banner back. It is also off while "Rune XP" is hidden.
+
+The "Quest tracker" shows the quest that you do under the minimap, at the top right. It has no background. A thin gold line is on top, and the letters have the shadow of the HUD. The main quest comes first: a small label, the name of the quest in gold, and the step in white. Below it is the quest that you track in the journal, with the label "Tracked". A finished quest never shows. While the game shows its own quest or unlock notice under the map, the tracker goes away. It comes back after the notice. With no open quest, the tracker shows nothing. When the game has no text for a step, only the name of the quest shows. In the immersive mode the tracker goes with the map. While the map stays (the map setting "In immersive mode"), the tracker stays too. When the map is hidden, the tracker fades, and it comes back for a moment when a quest or a step changes. Move, size and hide it in the editor, like any other part.
+
+"Quest tracker: next steps" is a switch, and it is off at first. When it is on, a quest also shows up to three steps after the current one, dimmed. It does this only for a quest whose list of steps is in a clear order. The mod does not trust a list when a step key has a dot or a letter in its number, when a text holds a count like 0/3, when a text starts with "[", or when two steps have the same text. Such a quest shows only its current step. The same switch is "Show next steps" on the page in Mod Menu.
 
 With a gamepad, the menu shortcuts (chat, map, spell book, building, bag) show the buttons of the gamepad. While the bag is open and a gamepad is in use, the tool bar sits at its own place in the bag, because a gamepad goes from slot to slot by their places on the screen. The tool bar goes back to your place when you close the bag, or when you use the mouse or the keyboard.
 
@@ -94,7 +101,7 @@ When you hide RuneMap, the mod takes the map off the screen. The game then does 
 
 "Arrow and rune count" moves only the rune or arrow count of the staff and the bow. The crosshair stays in the middle. At first, the count is to the right of the food and water rings. The count shows as a dark disk with a gold rim. The game's rune or arrow icon fills the disk, and the number is right of it. A rune icon has the colour of its rune: red for fire, blue for water, white for air, brown for earth. The name of the ammo is left of the disk. For runes, the name shows for 4 seconds after you change the ammo. For arrows, the name stays, because all arrows have the same icon.
 
-Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedragonwilds/mods/548). To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, the Rune XP switch, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode, Rune XP and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
+Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedragonwilds/mods/548). To open the page, press Esc, then MODS, then Rune UI. The page has the five keys that you can change, the immersive mode and its wait, the Rune XP and slim level up switches, the quest tracker's "Show next steps" switch, and the settings of RuneMap without the zoom. It also has the layout profile and a button that opens the editor. A key that you change works after you start the game again. A change that you make in F8 or F9 shows on the page when you open the menu again. So do the immersive mode, Rune XP, the slim level up, the next steps and the creatures of a profile that you change to on the page. Rune UI does not need Mod Menu.
 
 ## Gallery
 
@@ -117,15 +124,29 @@ Rune UI has a page in the mod [Mod Menu](https://www.nexusmods.com/runescapedrag
 
 `Scripts/runemap.lua` builds a round minimap in the top right corner. It uses the game's own minimap widget, with its own map view on the player. The map turns with the camera. When "Faces north" is on, the map does not turn. A gold ring around the map is also a clock: the middle of the night is at the top, and noon is at the bottom. The ring keeps the game's own share of night, about a fifth of the day. A gold arrow between the two gold rings shows the time of day. A bigger gold arrow with an N shows where north is. It moves along the ring when the camera turns.
 
+The immersive mode hides the map and the compass. The map setting "In immersive mode" picks what stays for direction: Nothing, the map (with the quest tracker), or the game's compass. The compass choice shows the game's own compass, with the gold line and the marks of the map (see Compass below): the editor's hide still wins, so a compass that you hid in the editor stays hidden. The old setting was On or Off. A saved On reads as Map, and a saved Off reads as Nothing. A lighter look of the map for that mode was tried on 04-10-2026 and dropped: the game gives a mod no soft round mask, and two looks of one map are hard to explain.
+
 The map shows no fog, because it has no record of the places that you visited. It shows the terrain around you as it is.
 
 The game's minimap widget is heavy to draw, at every zoom. So by default, the mod draws the map every second frame. This takes away about half of the cost, but the map moves a little less smoothly when the camera turns. To draw the map every frame, set "Drawing" to Smooth in F8.
 
-Creatures show as small diamonds: red for enemies, green for neutral animals. Every 2 s, the mod asks the game for the creatures within 300 m of you, also behind hills and walls. The diamonds are not shown on the big map (M). To hide them, set "Creatures" to Off in F8. Then the mod does not look for creatures at all. A list of animal names in `runemap.lua` decides which creatures are neutral.
+Creatures show as small diamonds: red for enemies, green for neutral animals. Every 2 s, the mod asks the game for the creatures within 100 m of you, also behind hills and walls. The diamonds are not shown on the big map (M). To hide them, set "Creatures" to Off in F8. Then the mod does not look for creatures at all. A list of animal names in `nearby.lua` decides which creatures are neutral.
 
 The game's map plugin puts the terrain on the map again each time the big map (M) opens. The mod takes the extra copies off RuneMap after each visit, because the map draws every copy.
 
 The mod reads the time from the material of the game's day and night dial: `Fill Amount` is the part of the day that is gone, and `Night Start` is where the night begins. An error in the map does not stop the rest of the mod. The log shows when the map is ready, or the step that failed, with the prefix `runemap`.
+
+### Compass
+
+`Scripts/compass.lua` gives the game's compass the gold style of the mod. This is always on while the compass shows, and it has no switch. A gold line sits on the white line of the strip, and the game's middle mark is gold. The letters stay white, because they are part of the strip's picture. A compass that you hid in the editor shows none of this.
+
+While the compass shows and the map does not, the compass also shows the marks of the map. These are the groups that you switched on in F8: creatures, ore, herbs, rune essence and rare trees. A red diamond is an enemy, and a green diamond is a neutral animal. "Creatures" has the same three values as on the map. The marks use the pictures of the map, and they add no setting. You see them in the immersive mode with "In immersive mode" at Compass. You also see them when you turn RuneMap off in F8.
+
+A mark sits at the bearing of its thing, at the scale of the game's own marks: 5.33 units for one degree. A mark more than 300 units from the middle is not shown, and it fades out over the last 40 units. A far thing is smaller and dimmer. At 60 m, a mark has 0.6 of its size and half of its opacity. The compass shows 40 marks at most.
+
+`Scripts/nearby.lua` finds the things near you and decides what each one is. The icons of RuneMap and the marks of the compass both use it, so the two always agree. It searches for creatures within 100 m every 2 s. It searches for ore, herbs, rune essence and rare trees within 60 m every 10 s.
+
+The main loop of the mod runs about 16 times a second. That is too few for a smooth turn. While marks are wanted and a thing is near, a chain of delayed calls on the game thread (`Scripts/chain.lua`, shared with Rune XP) moves them about every frame. The chain ends when no mark is wanted or no thing is near. It also runs while every thing is behind you, so that a mark comes in at the edge with no delay when you turn. A chain that stalls for a second is replaced, and the old one does nothing. The mod writes a widget only when its value changed. Each picture sits in a hidden image of the compass, because the engine frees a picture that only Lua holds.
 
 ### Food, water and rest
 
@@ -137,11 +158,15 @@ Each bar is a plain box: a dark track behind the fill. The health bar is on top 
 
 ### Buffs
 
+In the immersive mode a debuff in the buff row shows for the whole time that it lasts. A good buff shows when it arrives, stays for the wait of the immersive mode, and fades. A new buff does not bring the other good buffs back. The bars bring all of them back. The game does not mark a buff as good or bad. `buffs.lua` holds the names of the good ones (Cosiness, Sheltered, Well Rested and Prayer), read from the data object of each entry. Every other name, an unknown name and an unreadable entry count as a debuff. The row itself never fades. A good buff arrives when its name was not on at the last look of the mod: a new buff, an entry that the game uses for another buff, or a buff that was over and is on again (the game keeps the entry of Sheltered and changes its fill from 0 to 1). `buffs.lua` counts the arrivals of each entry. `immersive.lua` keeps the wait and the fade of each good entry in its step, and gives the level to `buffs.lua` (`SetLevel`) only when it changes. `PlaceBuff` is the one place that sets the opacity and the width of an entry. A good buff that has faded, like a buff that is over, is 1 unit wide, and its icon, bar and shadow are unseen too, so the row closes and no thin line stays. The drink, food and potion rings fade on their own.
+
 Each buff is its icon with a thin bar under it, so it looks like a small copy of the bars above it. The bar shows the time that is left, in the buff's colour from the game, for example green for poison. A buff without a timer has no bar. The icon has a dark shadow, so you can read it over bright grass.
 
 The game can keep a buff in its list after the buff ended, for example the poison after you died from it. Its bar is then empty. The mod hides a buff with an empty bar and closes the row. When the bar fills again, the buff is back.
 
 The drink, food and potion buffs sit right of the food, water and rest rings. The game's line between them is hidden. Each one is a small ring, level with the food rings: blue for a drink, green for a food, gold for a potion. The ring shows the time that is left; the number of seconds is hidden. Move, resize or hide them together with "Buff rings (drink, food, potion)" in the editor. In the immersive mode, each of these rings shows when its buff starts, fades, and comes back when the buff runs low.
+
+The game can leave the icon of a buff in the buff row after the buff ends. The mod reads the number on the bar of each buff: the game writes 0 there when the buff is over, also on the hidden bar of a buff without a timer. The mod then hides the icon and closes the row.
 
 ### Aim, cooldowns and prompts
 
@@ -153,7 +178,11 @@ The drink, food and potion buffs sit right of the food, water and rest rings. Th
 
 `Scripts/letters.lua` puts a shadow on the letters of the pick-up prompt, the build panel and the repair mode. It keeps the words of the build and repair panels white, and it removes the faint dark shape behind the title of the build panel. The key letters, the red "inventory full" line and the cost rows keep the game's colours.
 
-`Scripts/xp.lua` is Rune XP. It reads the XP notice that the game shows (the icon, the text, and the progress from the material of the ring), and it draws the row and the fill in the bars widget. It makes the circles of the game unseen by the size of their grid, because the game animates their opacity. `tools/test-xp.js` tests the motion of the fill and the fade without the game.
+`Scripts/xp.lua` is Rune XP. It reads the XP notice that the game shows (the icon, the text, and the progress from the material of the ring), and it draws the row and the fill in the bars widget. It makes the circles of the game unseen by the size of their grid, because the game animates their opacity.
+
+The slim level up is in the same file. The game keeps one `WBP_LevelUpNotification_C` per world in its notification queue, and it shows it by the render opacity of that widget: 0 when idle, up to 1 for about 3 seconds. The mod reads that opacity: above zero means the notice is on show. Then it reads the level text and the skill icon (`T_Icon_Tag_Skill_<skill>`), which keep the last level up while idle, and it shows them in the XP row. The mod never writes the opacity of that widget. `main.lua` writes it only for a hidden element and while the editor is open, and the slim level up is off in both. The mod hides the banner by the render scale 0 of its parts (the overlays, the three text backgrounds, the game's own key hint, the level text and the icon), and it writes them again every half second in case the game scales them back. The two spark effects of the banner draw inside a part at scale 0, and inside a box at opacity 0. So the mod collapses them, and it makes them visible again when it puts the parts back. The sound is not touched, and the mod calls no function of the game's widget. The mod puts the parts back when the switch goes off, when Rune XP goes off, and on a restart of the player. The size and the opacity of the row are functions of time (`Grow` and `LevelFade` in `xp.lua`), written at every step of the mod. The pop is a cubic ease-out from 1.9 to 1.6 in 0.3 s. The level up fades in over 0.22 s. The row keeps the size 1.6 while it fades out. The mod steps about 16 times a second, which is too slow for a change of size. So while a level up comes in and while it fades out, a chain of delayed calls on the game thread (`Fast` in `xp.lua`) also paints it about every frame, and the chain ends by itself.
+
+`Scripts/questtracker.lua` is the quest tracker. It reads the quest component of the local player controller (the property `BP_Components_QuestProgress`). It reads properties only and calls no function of the component. `Quests` holds the state (0 not started, 1 open, 2 finished; read from one save) and the current step key of each quest. `TrackedSecondaryQuest` is the quest tracked in the journal. The quest's data holds its name, `bIsMainQuest`, `bHideInQuestList` and `ObjectiveTexts`, a map of step key to step text in the order held. The mod reads the game once a second, and it writes new text only when a quest, a state or a step changes. The tracker is its own widget on the viewport, as the cooldowns are. `Scripts/goldline.lua` draws the pointed gold line for the bars, the XP bar and the tracker.
 
 `Scripts/pickups.lua` gives the list of picked-up items the same look. The dark band and the gold lines of each row are hidden. The texts are in the HUD font, with the shadow of the letters. The count is gold. The row of a new item has no sparks. The game tints "NEW MATERIAL !" near black for about two seconds. The mod changes the colour of that animation once, so the words are light from the start. The list is the element "Picked-up items" in the editor.
 
@@ -165,7 +194,7 @@ The drink, food and potion buffs sit right of the food, water and rest rings. Th
 
 The death screen is the element "Death screen" in the editor: move it or make it smaller there. You cannot hide it. Only the words and the bars change their size and place: the blur and the dark background still fill the screen.
 
-`Scripts/clock.lua` shows the time of day right of the tool bar while the immersive mode is on. It reads the time from the game's day and night dial, as RuneMap does. Each of its four pictures sits in its own Image widget. The engine frees a picture that only Lua holds, and Lua then crashes the game when it touches it.
+`Scripts/clock.lua` is off: `main.lua` does not load it, and its element is not in the editor list. The lines that load it are comments in `main.lua`. When it is on, it shows the time of day right of the tool bar while the immersive mode is on. It reads the time from the game's day and night dial, as RuneMap does. Each of its four pictures sits in its own Image widget. The engine frees a picture that only Lua holds, and Lua then crashes the game when it touches it.
 
 `Scripts/ammo.lua` puts the disk of the ammo counter in the game's ammo box. It copies the game's count, icon and name into its own widgets. The mod takes the game's own name, count and icon out of the box, because the game shows them again on a weapon switch and they pushed the disk down. The game still writes them, and the mod reads them.
 
@@ -206,34 +235,12 @@ With Mod Menu, the mod also writes `ue4ss/Mods/RuneUI/config.txt`. That file is 
 
 The mod does not use the network and does not start other programs.
 
-## For developers
-
-The pictures are in `RuneUI/Art`: the day band, the time arrow, the north arrow, the diamonds, the creature diamonds, the survival rings, the bar tracks, the staff's target mark, the four time of day icons, and the editor's corners and box line. `tools/make-runemap-art.js` draws them. Run `node tools/make-runemap-art.js` again after you change a colour or a size in it. The band is drawn for the game's night start of 0.795. If the game changes that value, the log says so.
-
-CurseForge does not accept `.png` files in a Dragonwilds mod. So the tool also writes all the pictures into `RuneUI/Scripts/art.lua` as base64 text. When the game starts, the mod writes them back into `RuneUI/Art`. `RuneUI/Art/readme.txt` keeps the `Art` folder in the zip. `node tools/check-art.js` checks that the mod writes the pictures back byte for byte.
-
-`node tools/make-zip.js` builds the release zip, `RuneUI-<version>.zip`, in the repo root. The same zip goes to CurseForge and Nexus Mods. It adds `LICENSE` as `LICENSE.txt` and leaves out the `.png` files. It stops if the zip would hold a file type that CurseForge does not accept. `RuneUI/README.txt` is the short README for players inside the zip. `tools/make-readme-txt.js` makes it from the Install and Keys parts of this README and the list of files that the mod writes. Run `node tools/make-readme-txt.js` after you change them here.
-
-`tools/live-link` holds the live link, a small development mod that changes code while the game runs. Copy `RuneUIProbe` into the game's `Mods` folder and put an empty `enabled.txt` in it. Rename that file to `enabled.txt.off` to switch the link off. Each second it reads `Mods/RuneUIProbe/live.lua`, and it runs the file once when its text changes. Lines in `UE4SS.log` start with `[Probe]`. `probe-example.lua` shows a safe check of widgets. `shot.lua` takes a game screenshot with the HUD. `crop.ps1` cuts a part of a screenshot and enlarges it. Players do not get the live link: `tools/make-zip.js` packs only `RuneUI`.
-
-`node tools/read-dump.js <file.dmp>` reads a UE4SS crash dump: the exception, the module, and the module addresses on the stack.
-
-`node tools/check-lua.js` checks the Lua files without the game: the syntax, that every global name is a Lua or UE4SS one, and that no top-level local name is declared twice. It also counts the top-level locals of each file. Lua allows 200, and a file with more does not load.
-
-`node tools/test-aim.js`, `test-immersive.js`, `test-cooldowns.js`, `test-find.js`, `test-letters.js` and `test-clock.js` run parts of the Lua against fake widgets, without the game. `test-layout.js` drives the position math on a 16:9 screen, a 21:9 screen and with the game's HUD scale. `test-settings.js` covers `runeui.txt` and the reading of the old files. `test-modmenu.js` covers the page in Mod Menu with made-up shared variables, and reads `modmenu.txt`. `node tools/run-tests.js` runs all the `tools/test-*.js` files.
-
-Each part of the mod is one file in `RuneUI/Scripts` with a `Tick(ctx)` or a `Scan(ctx)` and a `Forget(sameWorld)`. `main.lua` keeps them in one list (`AddPart`): the step calls each `Tick` in that order, each widget scan calls `Scan`, and a new world calls `Forget`. A new part is one file and one `AddPart` line.
-
-Run `npm install` once. Then `npm test` runs all the checks: the Lua check, the picture check, the check that `RuneUI/README.txt` matches this README, and the tests without the game. GitHub runs `npm test` on every push.
-
-The pictures of this README are in `docs`.
-
 ## Thanks
 
 To Eravex for [Move it Move it](https://www.nexusmods.com/runescapedragonwilds/mods/208), and to Mathayus for [Mini Map](https://www.curseforge.com/runescape-dragonwilds/ue4ss-mods/mini-map). Their mods got me started, and gave me the idea to build a HUD I could move and shape myself.
 
 ## Licence
 
-The code of Rune UI is under the MIT licence. See `LICENSE`.
+Rune UI is free to use, and its code is open to read. You may not upload it again, publish a changed version, or use parts of it in another mod without the permission of the author. Versions 1.0 to 1.6 stay under the MIT licence. See `LICENSE`.
 
 Created using intellectual property belonging to Jagex Limited under the terms of Jagex's Fan Content Policy. This content is not endorsed by or affiliated with Jagex.

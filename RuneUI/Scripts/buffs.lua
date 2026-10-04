@@ -34,8 +34,7 @@ local function BuffsChanged()
     end
     -- the drink, food and potion buffs beside the food rings sit in lists of their own (probe, 01-10-2026): a
     -- new drink is found at once, not at the next 10 s search (playtest: "it should be transformed instantly")
-    -- counted on their own: BuffItems is also the immersive mode's "a new buff came" for the buff row, and eating
-    -- or drinking must not bring that row back
+    -- counted on their own: BuffItems is the count of the buff row, and eating or drinking must not change it
     local m = 0
     pcall(function()
         local E = ById("survival")
@@ -103,7 +102,7 @@ end
 -- the game's thin bar close under it, and no title: it sits under the bars and looks like one of them. As rings (1.2
 -- to 1.4) the buffs looked like the food, water and rest rings and the drink, food and potion buffs (playtest,
 -- 02-10-2026). The game fills the bar, gives it the buff's colour, and hides it for a buff without a timer, so the
--- mod only places it. (The hidden bar holds a test pink, which the rings showed: probe 13, 02-10-2026.)
+-- mod only places it (and reads its number: BuffFill). (The hidden bar holds a test pink, which the rings showed: probe 13, 02-10-2026.)
 -- The icon stands bare on the world, and on grass by day it was hard to read: a dark copy of it sits behind it, as
 -- the letters' shadow (letters.lua). Sizes and shadow picked live in the game, 02-10-2026.
 local BUFF_BOX = { W = 46, H = 50 }     -- one entry of the row
@@ -112,7 +111,7 @@ local BUFF_BAR = { W = 26, H = 4 }      -- as wide as the icon's art
 local BUFF_LIFT, BUFF_BAR_UP = -4, -6   -- the icon and the bar, both moved up: a small gap between the two
 local BuffPics = {}   -- the icon pictures already named in the log, once each
 local BUFF_SHADE, BUFF_SHADE_OFF = { R = 0, G = 0, B = 0, A = 0.85 }, 1.5
-local BuffDeco = {}   -- entry full name -> { W, Box, Icon, Bar, Shade, Pic, Over }
+local BuffDeco = {}   -- entry full name -> { W, Box, Icon, Bar, Shade, Pic, Over, Positive, Closed }
 local NO_PAD = { Left = 0, Top = 0, Right = 0, Bottom = 0 }
 
 -- The shadow takes the icon's picture. An entry is reused for another buff, so the picture is read every time. The
@@ -127,15 +126,15 @@ local function ShadeBuff(d)
     if pic == d.Pic then return end
     d.Shade:SetRenderOpacity(0.0)   -- a set that fails must not leave the last buff's shadow under this icon
     d.Shade:SetBrushFromTexture(tex, false)
-    d.Shade:SetRenderOpacity(1.0)
+    d.Shade:SetRenderOpacity(d.Closed and 0.0 or 1.0)   -- PlaceBuff decides while the entry is closed
     d.Pic = pic
     if not BuffPics[pic] then BuffPics[pic] = true Log("buff icon: " .. pic) end
 end
 
--- The share of time left, from the bar's material; nil for a buff without a timer (the game hides its bar)
+-- The share of time left, from the bar's material. A buff without a timer has its bar hidden, and the game still
+-- writes the number: 1 while the buff is on, 0 when it is over (Encumbered and Sheltered, watched in game,
+-- 03-10-2026). So the hidden bar is read too: the weight icon stayed after a death with an empty bag (1.6).
 local function BuffFill(bar)
-    local v = bar:GetVisibility()
-    if v == 1 or v == 2 then return nil end
     local mid = bar.Brush.ResourceObject
     if not (mid and mid:IsValid()) then return nil end
     local f
@@ -147,21 +146,87 @@ local function BuffFill(bar)
 end
 
 -- The game keeps a buff that is over in its list: the poison's entry stayed, its bar shown and empty, long after the
--- poison ended (probes 29 to 32, 02-10-2026; as a ring in 1.4 too). A shown, empty bar means the buff is over: the
--- entry goes unseen and 1 unit wide, so the row closes. It stays shown for the game, which fills the bar again when
+-- poison ended (probes 29 to 32, 02-10-2026; as a ring in 1.4 too). An empty bar means the buff is over, also the
+-- hidden bar of a buff without a timer (BuffFill): the entry goes unseen and 1 unit wide, so the row closes. It stays shown for the game, which fills the bar again when
 -- the buff comes back; then the entry is back. An entry is reused for another buff, so the bar is read every time.
 -- One read is enough: with two, the old poison showed for a second each time the game built its list again.
 -- The game can show the entry again while the buff is still over (playtest, 02-10-2026: the old poison squeezed into
 -- its 1 unit, a thin mark between two buffs), so an entry that is over is made unseen on every look.
-local function HideOver(d)
+--
+--
+-- The immersive mode (1.7): a debuff is a warning and shows the whole time it lasts. A good buff shows when IT
+-- arrives, stays for the wait, and fades; it comes back with the bars. immersive.lua keeps the time and the fade and
+-- tells each good entry its level (SetLevel). The game does not mark a buff as good or bad (probe, 04-10-2026), so
+-- the mod holds the names of the good ones. Everything else counts as a debuff, also an effect the mod does not know
+-- and an entry whose data cannot be read: one icon too many is better than a missed warning.
+-- A good buff arrives when its name was not on at the last look: a new buff, an entry the game reuses for another
+-- buff, or a buff that comes back after it was over (the game keeps Sheltered's entry and flips its fill from 0 to 1,
+-- with no change of the count). A buff that stays on, or an entry built again for it, does not arrive again.
+local POSITIVE = { STATUS_EFFECT_Cosiness = true, STATUS_EFFECT_Sheltered = true, STATUS_EFFECT_WellRested = true,
+    STATUS_EFFECT_Prayer = true }
+local OverPics = {}
+local Present, Next = {}, {}   -- the names of the buffs that are on: at the last full look, and in this one
+local ClosedLogged = false
+
+-- The name of the buff in the entry, or nil. An entry is reused for another buff, so the name is read every look. A
+-- call on an object that wraps null crashes the game and pcall does not catch it: IsValid comes first.
+local function BuffName(d)
+    local ok, name = pcall(function()
+        local data = d.W.StatusEffectData
+        if data and data:IsValid() then return data:GetFName():ToString() end
+    end)
+    return ok and name or nil
+end
+
+-- Whether every widget of the entry is still there. The game can free an entry between two looks, and a call on a
+-- freed object crashes the game: whatever writes outside the look checks this first.
+local function Alive(d)
+    return d.W:IsValid() and (not d.Icon or (d.Box:IsValid() and d.Icon:IsValid() and d.Bar:IsValid() and d.Shade:IsValid()))
+end
+
+-- The one place that decides how an entry shows, from what the look found (Over, Positive) and the level that
+-- immersive.lua gave (Share, 1 when none). An entry that is over, or a good buff that is gone, is closed: 1 unit
+-- wide, and its icon, bar and shadow unseen as well, as the game can show the entry again by its own animation
+-- and the icon would stand in the 1 unit as a thin line (clipping is off). What is decided is written once; the
+-- flag comes after the call, so a call that fails is tried again. A closed entry is also read every look.
+local function PlaceBuff(d)
+    local closed = d.Over or (d.Positive and (d.Share or 1) <= 0)
+    if closed ~= (d.Closed or false) then
+        d.Box:SetWidthOverride(closed and 1 or BUFF_BOX.W)
+        local part = closed and 0.0 or 1.0
+        d.Icon:SetRenderOpacity(part)
+        d.Bar:SetRenderOpacity(part)
+        d.Shade:SetRenderOpacity((not closed and d.Pic) and 1.0 or 0.0)
+        d.Closed = closed
+    end
+    local o = d.Over and 0.0 or (d.Positive and (d.Share or 1) or 1.0)
+    if o ~= d.Op then
+        d.W:SetRenderOpacity(o)
+        d.Op = o
+    end
+    if closed and d.W:GetRenderOpacity() > 0 then
+        if not ClosedLogged then ClosedLogged = true Log("buff entry shown again by the game while closed") end
+        d.W:SetRenderOpacity(0.0)
+    end
+end
+
+-- the look, twice a second: what the entry holds now, then where it stands
+local function LookAtBuff(d)
     local f = BuffFill(d.Bar)
     local over = f ~= nil and f <= 0.0005
     if over ~= (d.Over or false) then
         d.Over = over
-        d.Box:SetWidthOverride(over and 1 or BUFF_BOX.W)
-        if not over then d.W:SetRenderOpacity(1.0) end
+        -- once per picture: a buff that the game never fills would stay unseen, and this line names it
+        if over and d.Pic and not OverPics[d.Pic] then OverPics[d.Pic] = true Log("buff over, icon unseen: " .. d.Pic) end
     end
-    if over and d.W:GetRenderOpacity() > 0 then d.W:SetRenderOpacity(0.0) end
+    local name = BuffName(d)
+    d.Positive = POSITIVE[name] == true
+    d.Name = name
+    if name and not over then
+        if d.Positive and not Present[name] then d.Arrivals = (d.Arrivals or 0) + 1 end
+        Next[name] = true
+    end
+    PlaceBuff(d)
 end
 
 local function DecorateBuff(E)
@@ -187,7 +252,9 @@ local function DecorateBuff(E)
         if not (icon and bar and title) then error("icon, bar or title not found") end
         box:SetWidthOverride(BUFF_BOX.W)
         box:SetHeightOverride(BUFF_BOX.H)
-        E:SetRenderOpacity(1.0)   -- an entry that HideOver left unseen in an earlier round
+        E:SetRenderOpacity(1.0)   -- an entry that LookAtBuff left unseen in an earlier round, with its parts
+        icon:SetRenderOpacity(1.0)
+        bar:SetRenderOpacity(1.0)
         -- the list can give the entry less height than its box (after leaving a house, 29-09-2026): nothing cuts it
         pcall(function() E:SetClipping(0) box:SetClipping(0) ov:SetClipping(0) end)
         title:SetRenderOpacity(0.0)   -- alive for the game, just unseen
@@ -213,7 +280,7 @@ local function DecorateBuff(E)
         local d = BuffDeco[k]
         d.Box, d.Icon, d.Bar, d.Shade = box, icon, bar, shade
         pcall(ShadeBuff, d)
-        pcall(HideOver, d)   -- at once: after a respawn the poison that ended must not show until the next look
+        pcall(LookAtBuff, d)   -- at once: after a respawn the poison that ended must not show until the next look
     end)
     if not ok then Log("buff under the bars failed: " .. tostring(err)) end
 end
@@ -328,18 +395,31 @@ local function FindBuffEntries()
     end
 end
 
--- An entry the game built again is placed again on the next scan
+-- An entry the game built again is placed again on the next scan. A buff that is on keeps its name for one more look
+-- after its entry is gone, so the entry built again for it does not arrive.
 local function UpdateBuffs()
+    Next = {}
     for k, d in pairs(BuffDeco) do
-        if not (d.W and d.W:IsValid()) or (d.Icon and not (d.Icon:IsValid() and d.Bar:IsValid() and d.Shade:IsValid())) then
+        if not Alive(d) then
+            if d.Name and not d.Over then Next[d.Name] = true end
             BuffDeco[k] = nil
         elseif d.Icon then
             pcall(ShadeBuff, d)
-            pcall(HideOver, d)
+            pcall(LookAtBuff, d)
         end
     end
+    Present = Next
 end
 
+-- Read by immersive.lua: the entries, to give each good one its level
+function M.Entries() return BuffDeco end
+
+-- The level of a good buff (immersive.lua, at each step in which it changes); a debuff does not take one
+function M.SetLevel(d, level)
+    if not (d.Icon and Alive(d)) then return end
+    d.Share = level
+    pcall(PlaceBuff, d)
+end
 
 -- once per widget scan (main.lua)
 function M.Scan() EnsureBuffRow() FindBuffEntries() end
@@ -353,12 +433,13 @@ end
 -- a new world or a player restart: every handle into the old HUD is dropped
 function M.Forget(sameWorld)
     BuffItems = nil
+    Present, Next = {}, {}
     BuffDeco, RingArt, Drinks.Deco, Drinks.Lists, Drinks.ListsKey, Drinks.Items = {}, {}, {}, {}, nil, nil
     if not sameWorld then BuffRowDone = {} end   -- the old world's lists are gone; a restart keeps the row
     M.Items = nil
 end
 
--- read by main.lua: the count changed since the last call, the count, and the drink rings (the immersive mode)
+-- read by main.lua: the count changed since the last call, the count, and the drink rings
 function M.Changed() local c = BuffsChanged() M.Items = BuffItems return c end
 M.Drinks = Drinks
 

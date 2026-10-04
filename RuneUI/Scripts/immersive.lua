@@ -1,7 +1,8 @@
 -- Immersive mode (1.2, the idea of 29-09-2026): with nothing going on, the HUD fades away, and each part comes
--- back when it matters. The bars while health or stamina is not full, and a while after; the buffs with them,
--- and when a new buff comes; a food, water or rest ring when it runs low or fills; the menu buttons when a chat
--- message comes. The compass, the wheel and RuneMap stay away (M opens the big map). The tool bar never fades:
+-- back when it matters. The bars while health is not full, and a while after; the good buffs with them,
+-- and each one when it comes (a debuff never fades); a food, water or rest ring when it runs low or fills; the menu buttons when a chat
+-- message comes; the quest tracker when a quest or its step changes. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting "In immersive mode" keeps
+-- one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens the big map). The tool bar never fades:
 -- what matters can sit on it (playtest, 29-09-2026); nor do prompts, notifications, the area effects and warnings.
 -- Off at first; its line in F9 turns it on, and + / - there set how long a part stays (main.lua keeps the number).
 -- main.lua multiplies an element's opacity by Factor(E). The bars widget also holds the food rings and the area
@@ -17,21 +18,25 @@ local SHOW_AT_START = 8   -- a new world shows the whole HUD this long first (ma
 local function Hold(ctx) return ctx.Wait() end
 
 -- the group each element follows; an element not listed never fades. "none": always away.
+-- The buff row is not in it: its good buffs fade one by one (StepBuffs) and a debuff never fades.
 -- "Menu icons" (menuico) is not in it: that widget is the game's full-screen menu, not the icons in the corner
 -- (widget dump, 29-09-2026)
-local GROUP = { avatar = "bars", weapon = "bars", buffs = "buffs", compass = "none", wheel = "none", runemap = "none",
-    menubtn = "menu" }
+local GROUP = { avatar = "bars", weapon = "bars", compass = "compass", wheel = "none", runemap = "none",
+    menubtn = "menu", questtracker = "quest" }
 
 M.ErrorLogged = false   -- main.lua logs one failed step
-local Level = { bars = 1, buffs = 1, menu = 1, none = 1 }
+local Level = { bars = 1, menu = 1, quest = 1, compass = 1, none = 1 }
 local Until = {}
 local RingLevel, RingUntil, RingLast = {}, {}, {}
 local Applied = {}   -- the last opacity written to the rows and the rings, so a full HUD costs no calls
 local Texts = {}     -- by bar: { W = bar widget, List = its text widgets }
-local NextRead, LastTime, LastBuffs, LastChat = 0, nil, nil, nil
+local NextRead, LastTime, LastChat, LastQuest = 0, nil, nil, nil
 -- the drink rings, by entry name: the game keeps spare drink entries and reuses them, so each one fades on its own
 -- (one watched entry left the shown one unseen, in game 01-10-2026)
 local DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
+-- the good buffs, by entry: the time it shows until, the arrival it has seen, its own level, and the level last given
+local function ByEntry() return setmetatable({}, { __mode = "k" }) end
+local BuffUntil, BuffSeen, BuffLevel, BuffApplied = ByEntry(), ByEntry(), ByEntry(), ByEntry()
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
 
@@ -42,11 +47,12 @@ end
 
 -- Leaving the world: drop the handles into it, and show everything for a moment in the new one
 function M.Forget()
-    Texts, Applied, RingLevel, RingUntil, RingLast, LastBuffs, LastChat = {}, {}, {}, {}, {}, nil, nil
+    Texts, Applied, RingLevel, RingUntil, RingLast, LastChat, LastQuest = {}, {}, {}, {}, {}, nil, nil
     DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
+    BuffUntil, BuffSeen, BuffLevel, BuffApplied = ByEntry(), ByEntry(), ByEntry(), ByEntry()
     for g in pairs(Level) do Level[g] = 1 end
     local t = os.clock() + SHOW_AT_START
-    Until = { bars = t, buffs = t, menu = t }
+    Until = { bars = t, buffs = t, menu = t, quest = t }
     for i = 1, 3 do RingUntil[i] = t end
 end
 M.Forget()
@@ -74,28 +80,16 @@ local function Read(ctx, now)
         local cur, max = string.match(health, "(%d+)%s*/%s*(%d+)")
         if cur and tonumber(cur) < tonumber(max) then Until.bars = now + Hold(ctx) end
     end
-    -- the stamina bar shows no number; its fill is a number on the fill's material (read in game, 29-09-2026):
-    -- "Fill from Avaliable" drops while you run or swing and refills to 1 minus "Blocked from avaliable" (the part
-    -- that hunger or rest takes away). A swing costs stamina, so this also brings the bars back in a fight.
-    local okS, notFull = pcall(function()
-        if not (bars[1] and bars[1]:IsValid()) then return false end
-        local fill, blocked
-        bars[1].ProgressBarImage.Brush.ResourceObject.ScalarParameterValues:ForEach(function(_, e)
-            local p = e:get()
-            local n = p.ParameterInfo.Name:ToString()
-            if n == "Fill from Avaliable" then fill = p.ParameterValue elseif n == "Blocked from avaliable" then blocked = p.ParameterValue end
-        end)
-        return fill and fill < 1 - (blocked or 0) - 0.005
-    end)
-    if not okS then Once(ctx, "stamina", "immersive: stamina not read: " .. tostring(notFull)) end
-    if okS and notFull then Until.bars = now + Hold(ctx) end
+    -- Stamina does not bring the bars back (04-10-2026): a run uses it too, and the bars are for a fight. The game
+    -- still plays its sound and its flash when the stamina is gone.
     -- the menu buttons: a new chat message brings them back
     local chat = ctx.ChatCount()
     if chat and LastChat and chat > LastChat then Until.menu = now + Hold(ctx) end
     LastChat = chat
-    local n = ctx.BuffCount()
-    if n and LastBuffs and n > LastBuffs then Until.buffs = now + Hold(ctx) end
-    LastBuffs = n
+    -- the quest tracker: a new step (or quest) brings it back for a moment. The first read only sets the mark.
+    local quest = ctx.QuestSig()
+    if quest and LastQuest and quest ~= LastQuest then Until.quest = now + Hold(ctx) end
+    LastQuest = quest
     for i, b in pairs(ctx.Rings()) do
         local v = b.Value
         if v and (v < LOW or (RingLast[i] and v > RingLast[i] + 0.001)) then RingUntil[i] = now + Hold(ctx) end
@@ -134,15 +128,44 @@ local function FadeRow(bars, i, level)
     Put("bars", row, level)
 end
 
+-- The good buffs, each on its own (1.7): an entry shows for the wait after its buff arrives (buffs.lua counts the
+-- arrivals) and at the start of a world, and fades after. The bars bring all of them back: a fight brings its
+-- effects. A debuff has no level here. An entry seen for the first time takes its target at once: one built again
+-- for a buff that is on must not fade in front of the player. The call goes out only when the level changed.
+local function StepBuffs(ctx, on, now, dt)
+    for _, d in pairs(ctx.BuffEntries()) do
+        if d.Positive then
+            local arrivals = d.Arrivals or 0
+            if arrivals ~= (BuffSeen[d] or 0) then
+                BuffSeen[d] = arrivals
+                BuffUntil[d] = now + Hold(ctx)
+            end
+            local target = (not on or now < (BuffUntil[d] or 0) or now < Until.buffs) and 1 or 0
+            local level = BuffLevel[d] and Ease(BuffLevel[d], target, dt) or target
+            BuffLevel[d] = level
+            local shown = math.max(level, Level.bars)
+            if BuffApplied[d] ~= shown then
+                BuffApplied[d] = shown
+                ctx.BuffLevel(d, shown)
+            end
+        end
+    end
+end
+
 function M.Tick(ctx)
     local now = os.clock()
     local dt = math.min(0.5, now - (LastTime or now))   -- a long wait (a world loading) is not a jump
     LastTime = now
     local on = ctx.On() and not ctx.Editing()
     if on and now > NextRead then NextRead = now + 0.25 Read(ctx, now) end
+    -- the quest tracker sits under the map and goes with it: while the map stays (its setting "In immersive mode"),
+    -- the tracker stays too (playtest, 04-10-2026: a tracker that shows only at a new step is never seen)
+    if on and ctx.MapStays() then Until.quest = now + 1 end
+    -- the map setting "In immersive mode" at Compass: the game's compass stays, the map and the tracker do not. A
+    -- compass hidden in F9 stays hidden: main.lua's hide comes after this share.
+    if on and ctx.CompassStays() then Until.compass = now + 1 end
     for g in pairs(Level) do Level[g] = Ease(Level[g], Target(g, on, now), dt) end
-    -- the buffs also come with the bars: a fight brings its effects
-    Level.buffs = math.max(Level.buffs, Level.bars)
+    StepBuffs(ctx, on, now, dt)
 
     -- the bars' rows and the trim line: every step while faded, so a row the game makes again is faded too
     local bars = ctx.Bars()

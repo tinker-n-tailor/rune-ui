@@ -225,7 +225,10 @@ function M.Tick(ctx)
     end
     for i, t in ipairs(M.Tiles) do Show(t, items[i]) end
     -- the gold edge is an outline, which ignores the opacity main.lua sets (F9 dimming, the opacity keys): it takes
-    -- that opacity by its own colour, as runemap.lua ApplyOpacity does
+    -- that opacity by its own colour, as runemap.lua ApplyOpacity does.
+    -- In the play test of 03-10-2026 the edge followed the opacity keys at once, with no change of visibility after
+    -- SetBrush. The tool bar's edges were not drawn again after SetBrush alone (see toolbar.lua). The reason for
+    -- the difference is not known.
     local op = M.W:GetRenderOpacity()
     if op ~= M.Op then
         M.Op = op

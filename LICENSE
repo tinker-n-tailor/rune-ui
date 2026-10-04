@@ -1,21 +1,47 @@
-MIT License
+Rune UI Licence
 
-Copyright (c) 2026 tinker-n-tailor
+Copyright (c) 2026 tinker-n-tailor. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Rune UI is free to use. Its code is open to read. It is not free to
+share, to change and publish, or to upload again.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You may:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+- download, install and use Rune UI to play the game, at no cost;
+- read the code to learn how it works;
+- change your own copy for your own use;
+- send a fix or an idea to the author. When you send a fix, you let the
+  author use it in Rune UI.
+
+You may not, without the written permission of the author:
+
+- upload Rune UI, or a changed version of it, to any site or service;
+- put Rune UI, or a part of it (code or pictures), into another mod, a
+  mod pack or any other work;
+- sell Rune UI, or ask for money for it or for access to it.
+
+To ask for permission, or to send a fix, write to the author on the page
+of the mod. The author is Filchie on CurseForge and TinkernTailor on
+Nexus Mods:
+
+- CurseForge: https://www.curseforge.com/runescape-dragonwilds/ue4ss-mods/rune-ui
+- Nexus Mods: https://www.nexusmods.com/runescapedragonwilds/mods/646
+
+These two pages are the only places where the author publishes the mod
+for download. The author also keeps the code on GitHub, where you may
+read it. A copy of the code there gives you no right beyond this licence.
+
+Versions 1.0 to 1.6 of Rune UI were released under the MIT licence. The
+MIT licence still applies to those versions. This licence applies from
+version 1.7.
+
+Rune UI is a mod made by a fan for RuneScape: Dragonwilds. The game and
+its pictures, names and other content belong to Jagex Limited. This
+licence covers only the work of the author of Rune UI.
+
+RUNE UI IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH RUNE UI OR THE USE OR OTHER DEALINGS IN RUNE UI.
