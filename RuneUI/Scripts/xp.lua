@@ -27,12 +27,16 @@ local TURN = 1.5      -- seconds one skill shows while the game shows more than 
 local GOLD = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 }   -- the pick-up count's gold
 local WHITE = { R = 1, G = 1, B = 1, A = 1 }
 -- A level up is bigger than an XP notice (in game, 04-10-2026: at the XP row's size nobody saw it). The line and the
--- row grow from their left end, and the line under the fill is bright. One soft motion (M.Grow, M.LevelFade): it
+-- row grow from their left end, and the line under the fill is bright. One soft motion (M.SizeNow, M.LevelFade): it
 -- grows in from BIG + POP to BIG with an ease-out curve (fast at first, slow into its rest) while it fades in. The pop
 -- is short, and the row keeps its size while it fades out: letters that change size slowly snap from pixel to pixel
 -- and look jagged (live preview with Ivan, 04-10-2026).
+-- A level up mostly comes over an XP notice that is on show, and an XP notice mostly takes the row back after it.
+-- There the size never jumps: it goes from the size it has to the new one in RESIZE seconds, soft at both ends, and
+-- the line under the fill gets bright and dim with it (in game, 04-10-2026: it got bigger and went back too sharply).
 local BIG, POP, POP_TIME = 1.6, 0.3, 0.3
 local FADE_IN = 0.22                 -- seconds for a level up to come in
+local RESIZE = 0.4                   -- seconds for a row on show to change size
 
 ---------------------------------------------------------------- the state, without the game (tools/test-xp.js)
 
@@ -98,12 +102,44 @@ function M.LevelIcon(texture) return string.find(texture or "", "^T_Icon_Tag_Ski
 local function Clamp01(x) return math.max(0, math.min(1, x)) end
 local function Smooth(x) x = Clamp01(x) return x * x * (3 - 2 * x) end   -- soft at both ends
 
--- The size of the row so many seconds into a level up: a pop from BIG + POP down to BIG that is fast at first and
--- has no visible stop (a cubic ease-out). nil (no level up): 1.
-function M.Grow(seconds)
-    if not seconds then return 1 end
-    return BIG + POP * (1 - Clamp01(seconds / POP_TIME)) ^ 3
+-- The size of the row: it goes from S.SizeFrom to S.SizeTo, from S.SizeAt. The pop (S.SizePop) is fast at first and
+-- has no visible stop (a cubic ease-out); a row on show changes size soft at both ends. No move yet: the plain size, 1.
+local function SizeTime(S) return S.SizePop and POP_TIME or RESIZE end
+function M.SizeNow(S, now)
+    if not S.SizeTo then return 1 end
+    local x = Clamp01((now - S.SizeAt) / SizeTime(S))
+    local done = S.SizePop and 1 - (1 - x) ^ 3 or Smooth(x)
+    return S.SizeFrom + (S.SizeTo - S.SizeFrom) * done
 end
+
+-- A new size to go to: a pop from the size given, or softly from the size the row has now.
+local function Aim(S, to, now, pop)
+    if (S.SizeTo or 1) == to then return end
+    S.SizeFrom, S.SizePop = pop or M.SizeNow(S, now), pop ~= nil
+    S.SizeTo, S.SizeAt = to, now
+end
+
+-- A level up takes the row. From unseen it pops in from above the big size; a row on show grows to it.
+function M.LevelIn(S, now)
+    if S.LevelAt then return end
+    S.LevelAt, S.LevelFrom = now, S.Alpha
+    Aim(S, BIG, now, S.Alpha == 0 and BIG + POP or nil)
+end
+
+-- An XP notice takes the row, also from a level up that is not over: back to the plain size.
+function M.LevelOut(S, now)
+    S.LevelAt, S.LevelFrom, S.LevelEnd = nil, nil, nil
+    Aim(S, 1, now)
+end
+
+-- The row is unseen: the next notice starts at the plain size.
+function M.LevelGone(S)
+    S.LevelAt, S.LevelFrom, S.LevelEnd = nil, nil, nil
+    S.SizeFrom, S.SizeTo, S.SizeAt, S.SizePop = nil, nil, nil, nil
+end
+
+-- How bright the line under the fill is at a size: TRACK at the plain size, full at the big one.
+function M.Bright(size) return TRACK + (1 - TRACK) * Clamp01((size - 1) / (BIG - 1)) end
 
 -- The most opacity a level up may have so many seconds in: from what the row had when it took over (from, 0 when
 -- it was unseen) to 1 in FADE_IN seconds, soft at both ends. An XP notice does not use it: it keeps IN.
@@ -112,9 +148,9 @@ function M.LevelFade(seconds, from)
     return from + (1 - from) * Smooth(seconds / FADE_IN)
 end
 
--- A level up is moving while it changes size: the pop at its start, and its fade (S.LevelEnd is set).
+-- The row is moving while it changes size, and while a level up fades out (S.LevelEnd is set).
 function M.Moving(S, now)
-    return S.LevelAt ~= nil and (now - S.LevelAt < POP_TIME or S.LevelEnd ~= nil)
+    return (S.SizeTo ~= nil and now - S.SizeAt < SizeTime(S)) or (S.LevelAt ~= nil and S.LevelEnd ~= nil)
 end
 
 -- Who has the row: a level up wins over an XP notice, and the XP row goes on after it. Returns "level", "xp" or nil.
@@ -298,7 +334,7 @@ local function Read(q, now)
         W.Gain:SetText(FText((string.gsub(txt, "^%+%s+", "+"))))
         W.Level:SetText(FText(""))
     end
-    S.LevelAt, S.LevelFrom, S.LevelEnd = nil, nil, nil   -- an XP notice has the row: a level up before it is over
+    M.LevelOut(S, now)   -- an XP notice has the row: a level up before it is over
     M.Take(S, tname, pct)
 end
 
@@ -406,7 +442,7 @@ local function BaseLine(ctx)
     return W.Base
 end
 
--- The line and the row at size k (see M.Grow)
+-- The line and the row at size k (see M.SizeNow)
 local function Size(k)
     if k == W.Scale then return false end
     W.Scale = k
@@ -422,7 +458,7 @@ local function Draw(ctx, fade, fill)
         local a = S.Alpha
         W.Row:SetRenderOpacity(a)
         W.Fill:SetRenderOpacity(a)
-        W.Track:SetRenderOpacity((S.LevelAt and 1 or TRACK) * a)
+        W.Track:SetRenderOpacity(M.Bright(W.Scale) * a)
         local base = BaseLine(ctx)
         if base then base:SetRenderOpacity(1.0 - a) end
     end
@@ -474,7 +510,7 @@ local function Look(ctx, on, now)
     -- fade after it. An XP notice that is on show ends them (Read): the game's XP box is always there, so "the level
     -- up is over" must not end them, or the row snaps to the plain size while it can still be seen.
     if owner == "level" then
-        if not S.LevelAt then S.LevelAt, S.LevelFrom = now, S.Alpha end
+        M.LevelIn(S, now)
         ShowLevel(level)
     elseif owner == "xp" then Read(q, now)
     else M.Rest(S) end
@@ -498,13 +534,14 @@ local function Paint(ctx, now)
         end
     end
     local fade = S.Alpha ~= before
-    if S.Alpha == 0 and S.Want == 0 then S.LevelAt, S.LevelFrom, S.LevelEnd = nil, nil, nil end   -- faded out: the next notice starts at the plain size
-    local sized = Size(M.Grow(S.LevelAt and now - S.LevelAt))
+    if S.Alpha == 0 and S.Want == 0 then M.LevelGone(S) end   -- faded out
+    local sized = Size(M.SizeNow(S, now))
     Draw(ctx, fade or sized, fill)
 end
 
 -- A level up changes size, and at the 16 steps a second of the mod that is not smooth (in game, 04-10-2026). While
--- it comes in and while it goes out, it is also painted about every frame, by a chain of delayed calls (chain.lua).
+-- the size changes and while a level up goes out, it is also painted about every frame, by a chain of delayed calls
+-- (chain.lua).
 local FAST = 8   -- ms between two calls of the chain
 local Chain = {}
 local function Step(ctx, t) Paint(ctx, t) end

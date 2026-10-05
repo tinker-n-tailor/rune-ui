@@ -5,7 +5,7 @@ local M = {}
 M.FILE = "runeui.txt"
 local HEADER = "# Rune UI settings. The mod writes this file. Delete a line to get its default back.\n"
 -- sections in the file's order; any other section is kept and written after these
-local ORDER = { "general", "layout 1", "layout 2", "layout 3", "map", "keys" }
+local ORDER = { "general", "layout 1", "layout 2", "layout 3", "map", "camera", "keys" }
 -- the fields of a layout row in the order of the old files, so a row reads like the line it replaced
 local FIELDS = { "x", "y", "scale", "visible", "opacity", "edgex", "edgey", "wait" }
 

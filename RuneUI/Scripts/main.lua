@@ -1,10 +1,21 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
--- F9 opens the editor, F8 the map settings. A timer applies the layout; gold corners mark the selected element.
+-- F9 opens the editor, F8 the map settings, F6 the camera settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.7"
+local VERSION = "1.9"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
+
+-- The mod's own folder, for its pictures and files. By the full path UE4SS loaded this file from, when a file
+-- opens through it: the short path counts from the folder the game was started in, and on a player's machine
+-- the pictures did not load through it (report of 03-10-2026). The short path stays as the fallback.
+RUNEUI_DIR = "ue4ss/Mods/RuneUI/"
+do
+    local ok, dir = pcall(function() return string.match(debug.getinfo(1, "S").source, "^@(.*[/\\])[Ss]cripts[/\\]main%.lua$") end)
+    local f = ok and dir and io.open(dir .. "Scripts/main.lua", "r")
+    if f then f:close() RUNEUI_DIR = dir end
+    Log("mod folder: " .. RUNEUI_DIR)
+end
 
 -- Every part lives in its own file: an error in one is logged and the rest of the mod still runs. UE4SS finds
 -- them by module name; the path is the fallback.
@@ -17,7 +28,7 @@ end
 local function LoadPart(name)
     local ok, m = pcall(require, name)
     if not ok then
-        local ok2, m2 = pcall(dofile, "ue4ss/Mods/RuneUI/Scripts/" .. name .. ".lua")
+        local ok2, m2 = pcall(dofile, RUNEUI_DIR .. "Scripts/" .. name .. ".lua")
         if ok2 then ok, m = true, m2 else m = tostring(m) .. " | " .. tostring(m2) end
     end
     if ok and type(m) == "table" then Log(name .. " file loaded") return m end
@@ -59,7 +70,7 @@ end
 -- the meaning of Center, Size, A, Full, Inside and Follows are in layout.lua. Positions are in HUD units, as on a
 -- 16:9 screen (1920x1080 units at any resolution).
 -- Center, Size: measured 27-09-2026 from screenshots and slots. A: from the slots (the HUD log of 29-09-2026).
--- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "clock", "questtracker") or a plain switch (IsSwitch).
+-- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "clock", "questtracker", "party") or a plain switch (IsSwitch).
 -- PathEnds/UseParent: for shared classes, keep only widgets whose path matches, then climb N parents.
 -- Child: move only this named child of the widget's root, not the whole widget.
 local Elements = {
@@ -111,7 +122,7 @@ local Elements = {
     { Id="daynight", Name="Day and night dial",          Classes={"WBP_HUD_DayAndNight_C"},
       NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
     { Id="buffs",    Name="Buffs and debuffs",                         Classes={"WBP_HUD_EffectsDisplayLists_C"},
-      Full=true, A={0,1}, Center={X=151, Y=871}, Size={X=200, Y=85} },
+      Full=true, A={0,1}, Center={X=151, Y=871}, Size={X=200, Y=85}, Sample="Buffs and debuffs" },
     { Id="notify",   Name="All notices (group)",                 Classes={"WBP_HUD_Notifications_C"},
       Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=400, Y=200} },
     { Id="xp",       Name="XP circle",                      Classes={"WBP_Notifications_ExperienceProgressContainer_C"},
@@ -121,15 +132,33 @@ local Elements = {
       A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
     -- no widget of its own: shown, a level up shows under the bars in Rune XP's row and the game's banner is unseen
     -- (xp.lua); hidden, the game's banner is back. On at first. Off too while "Rune XP" is hidden.
+    -- Sample: a text that the editor draws inside the mark of an element that shows nothing while F9 is open
     { Id="slimlevel", Name="Slim level up (under the bars)", Custom="slimlevel",
-      A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
+      A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18}, Sample="Level up" },
+    -- no widget of its own: shown, the damage numbers over enemies have the mod's look and a critical hit pops (combattext.lua);
+    -- hidden, the game's numbers are back. On at first.
+    { Id="combattext", Name="Combat text (damage numbers)", Custom="combattext",
+      A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     { Id="xpfloat",  Name="XP numbers",                    Classes={"WBP_FloatingExperienceContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=860, Y=551}, Size={X=110, Y=40} },
-    { Id="levelup",  Name="Level up notice",                      Classes={"WBP_LevelUpNotification_C"},
+    -- Idle: its render opacity when no notice shows, 0 (README, the slim level up). The slim row reads any opacity above 0.02 as a notice.
+    { Id="levelup",  Name="Level up notice",                      Classes={"WBP_LevelUpNotification_C"}, Idle=0,
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=300}, Size={X=500, Y=150} },
     { Id="area",     Name="New area notice",                      Classes={"WBP_AreaUnlockNotification_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=250}, Size={X=700, Y=160} },
-    { Id="banner",   Name="Title banner",                   Classes={"WBP_TitleBannerWidget_C"},
+    -- The other banners of the same queue (probe N1, 05-10-2026): they come at the place of the level up notice, one
+    -- at a time, so one row moves them all.
+    { Id="banners",  Name="Other big notices",                    Classes={"WBP_NewSkillNotification_C", "WBP_MilestoneMaterialNotification_C",
+        "WBP_ArenaNotification_C", "WBP_LevelUpVendorNotification_C", "WBP_FishCaughtNotification_C",
+        "WBP_FinalBoss_DefeatedNotification_C", "WBP_FinalBoss_ExtractionPointUnlockNotification_C"},
+      Inside="notify", A={0.5,0.5}, Center={X=960, Y=390}, Size={X=520, Y=200} },
+    -- Two more queues of the notices widget (1.8). The warning: 70 above the middle in a box of 775 x 152 (the game's
+    -- files). The tip: its centre and size come from a screenshot of the shown tip, not from the slot.
+    { Id="upkeep",   Name="Hunger, thirst and rest warning",      Classes={"WBP_PlayerUpkeepNotification_C"},
+      Inside="notify", A={0.5,0.5}, Center={X=960, Y=470}, Size={X=775, Y=152} },
+    { Id="tips",     Name="Tutorial tips",                        Classes={"WBP_TutorialNotifications_C"},
+      Inside="notify", A={0,0.6}, Center={X=405, Y=600}, Size={X=700, Y=150} },
+    { Id="banner",   Name="Title banner",                  Classes={"WBP_TitleBannerWidget_C"},
       A={0.5,0.5}, Center={X=960, Y=300}, Size={X=600, Y=120} },
     { Id="saving",   Name="Saving icon",                    Classes={"WBP_SavingSpinner_C"},
       A={1,0}, Center={X=1738, Y=156}, Size={X=64, Y=64} },
@@ -156,6 +185,10 @@ local Elements = {
       A={0,0}, Center={X=960, Y=540}, Size={X=200, Y=60} },
     { Id="itembrk",  Name="Broken item warning",            Classes={"WBP_Notification_ItemBreak_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=580}, Size={X=100, Y=30} },
+    -- The notice for where you are and how you are (Cosy at home, Sheltered): in the game's notice box it is tied to the
+    -- middle of the screen, 135 units up (the game's widget tree, 05-10-2026). Its band is 775 by 57 units in the game's files.
+    { Id="status",   Name="Status notices (cosy, sheltered)", Classes={"WBP_EnvAndPlayerStatus_C"},
+      Inside="notify", A={0.5,0.5}, Center={X=960, Y=405}, Size={X=775, Y=57} },
     { Id="menuico",  Name="Menu icons",                     Classes={"WBP_HUD_CompositeVariableMenu_C"},
       Full=true, A={1,1}, Center={X=1668, Y=975}, Size={X=380, Y=95} },
     -- Parts: hiding it hides only the prompts, not the menu buttons that live inside it (see ApplyOne)
@@ -166,9 +199,14 @@ local Elements = {
     { Id="menubtn",  Name="Menu shortcuts",                 Classes={"WBP_InputLegend_World_C"},
       Child="HorizontalBox_436", Deep=true, Inside="legend", A={1,1}, Center={X=1659, Y=953}, Size={X=395, Y=123} },
     -- our own tiles, one per recovering spell (cooldowns.lua; design sketch C, 29-09-2026): left, middle height.
-    -- Size: cooldowns.lua's box of six tiles.
-    { Id="cooldowns", Name="Spell cooldowns",               Custom="cooldowns",
+    -- Size: cooldowns.lua's box of six tiles. Turn: the box swaps width and height while the next switch is on.
+    { Id="cooldowns", Name="Spell cooldowns",               Custom="cooldowns", Turn="cdhoriz",
       A={0,0.5}, Center={X=70, Y=540}, Size={X=60, Y=400} },
+    -- no widget of its own: shown, the cooldown tiles are in a row, the newest at the right end (cooldowns.lua; off at
+    -- first). It sits in the same list group as the tiles.
+    { Id="cdhoriz",  Name="Spell cooldowns: horizontal",   Custom="cdhoriz",
+      Hint="Ins and Del turn it on and off. To move or resize the tiles, select Spell cooldowns.",
+      A={0,0.5}, Center={X=70, Y=540}, Size={X=40, Y=40} },
     -- our own text under the minimap, at the top right (questtracker.lua): the main quest and the tracked one. Size:
     -- its box. Centre: its right edge on the minimap's right edge (1904), its top 12 units under the minimap's box.
     { Id="questtracker", Name="Quest tracker",              Custom="questtracker",
@@ -176,6 +214,11 @@ local Elements = {
     -- no widget of its own: shown, the tracker also lists the next steps of a quest with a clean list (off at first)
     { Id="questnext", Name="Quest tracker: next steps",     Custom="questnext",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
+    -- our own rows for the other players of a co-op world, top left under the bars (party.lua): the name and a health
+    -- bar for each. Size: its box of five rows. Centre: its left edge at 42 units, its top at 146, under the bars and
+    -- clear of the row of Rune XP (a level up grows that row to about 145).
+    { Id="party",    Name="Party panel (friends' health)",  Custom="party",
+      A={0,0}, Center={X=154.5, Y=301}, Size={X=225, Y=310} },
     { Id="wheel",    Name="Tool wheel hint",                Classes={"WBP_DomInputIconWidget_C"},
       PathEnds={"WBP_Inventory_MainPanel_C_%d+%.WidgetTree_%d+%.RadialKBM$"}, UseParent=3,
       A={0,0}, Center={X=638, Y=120}, Size={X=30, Y=60} },
@@ -205,9 +248,13 @@ local Defaults = {
     area={Y=40, Scale=0.85},
     saving={X=130, Y=750, Scale=0.8},
     ammo={X=250, Y=420},   -- right of the food and water rings, above the tool bar
-    prompts={X=0, Y=-10}, armor={X=0, Y=-10}, itembrk={X=0, Y=-10}, menuico={X=0, Y=-40},
+    prompts={X=0, Y=-10}, armor={X=0, Y=-10}, itembrk={X=0, Y=-10}, status={X=0, Y=-20}, menuico={X=0, Y=-40},
+    -- as "notify", so they start where 1.7 drew them
+    banners={Y=-20}, upkeep={Y=-20}, tips={Y=-20},
     legend={Visible=false}, wheel={Visible=false}, baricons={Visible=false}, immersive={Visible=false, Wait=8},
-    questnext={Visible=false},
+    -- 140 under the middle, clear of the party panel; a saved layout keeps its own place
+    cooldowns={Y=140},
+    questnext={Visible=false}, cdhoriz={Visible=false},
 }
 
 -- The position math lives in layout.lua (tested without the game); these are its names, used all over this file.
@@ -259,7 +306,7 @@ pcall(function()
 end)
 
 -- One file, runeui.txt, next to the game (1.4): the three layout profiles, the profile in use, the map settings and
--- the zoom, and the keys. Named values, so a player can read and edit it, and a new
+-- the zoom, the camera settings (1.8), and the keys. Named values, so a player can read and edit it, and a new
 -- version never breaks an old file. The files of 1.3 and before are read once, when runeui.txt is missing, and are
 -- left in place. settings.lua reads and writes the file (tested without the game).
 local Settings = LoadPart("settings")
@@ -346,10 +393,14 @@ local MenuButtons = nil -- the menu buttons in rings, from menubuttons.lua; load
 local Aim = nil       -- the gold aim marks and lock-on diamond, from aim.lua; loaded there too
 local Cooldowns = nil -- the spell cooldown tiles, from cooldowns.lua; loaded there too (its ctx is Cooldowns.Ctx)
 local QuestTracker = nil -- the main and tracked quest under the minimap, from questtracker.lua; loaded there too
+local Party = nil     -- the health of the other players, from party.lua; loaded there too
 local Letters = nil   -- white letters with a shadow, from letters.lua; loaded there too (ctx Letters.Ctx)
 local Clock = nil     -- the time of day icon, from clock.lua; off since 03-10-2026 (its load lines are comments)
 local Ammo = nil      -- the ammo counter in a ring, from ammo.lua; loaded there too (ctx Ammo.Ctx)
 local Toolbar = nil   -- the tool bar as tiles, from toolbar.lua; loaded there too (ctx Toolbar.Ctx)
+-- the immersive camera's settings, rules and F6 panel, from camerarules.lua; loaded there too. camera.lua and
+-- crosshair.lua use it. Its Open is the F6 panel, as MapMode is F8.
+local Camera = nil
 
 local function ClassName(obj)
     local ok, n = pcall(function() return obj:GetClass():GetFName():ToString() end)
@@ -390,7 +441,19 @@ end
 -- the parts again after a kept widget, as a new widget has no tree and no parent yet. Seen, Kept, Time, Max: for
 -- the perf line; the reports run outside the step, so its times do not count them.
 -- Fresh: a widget was kept since the last scan, so the step scans soon (TickBody).
-local Reports = { On = false, Wanted = {}, Dropped = {}, Walk = "start", Retry = 0, Fresh = false, Quick = 0, Seen = 0, Kept = 0, Time = 0, Max = 0 }
+-- Quiet: the classes wanted with FindQuiet.
+local Reports = { On = false, Wanted = {}, Quiet = {}, Dropped = {}, Walk = "start", Retry = 0, Fresh = false, Quick = 0, Seen = 0, Kept = 0, Time = 0, Max = 0 }
+-- Arrivals: for a class that a part asks about with TakeArrivals, the widgets reported since it last asked. The 2 s
+-- scan came too late for the map name: a map made new markers, and the player name showed beside the arrow until the
+-- scan (playtest, 05-10-2026). Only handles are kept, nothing is read here. ForgetWorld empties them. A list that
+-- nobody takes does not grow past ARRIVALS_MAX.
+local Arrivals = {}
+local ARRIVALS_MAX = 2000
+local function TakeArrivals(className)
+    local list = Arrivals[className]
+    Arrivals[className] = {}
+    if list and #list > 0 then return list end
+end
 -- It returns nothing: a report that returns true is taken out, and in this UE4SS that can free the Lua thread all
 -- hooks of the mod run on (UE4SS issue 1345). The mod's own widgets come through here too, from inside the step.
 local function NewWidget(W)
@@ -400,10 +463,13 @@ local function NewWidget(W)
     if ok and a then
         local c = ClassNames[a]
         if not c then c = ClassName(W) ClassNames[a] = c end
+        local taken = Arrivals[c]
+        if taken and #taken < ARRIVALS_MAX then taken[#taken + 1] = W end
         if Reports.Wanted[c] then
             local t = Found[c]
             if t then t[#t + 1] = W else Found[c] = { W } end
-            Reports.Kept, Reports.Retry, Reports.Fresh = Reports.Kept + 1, 3, true
+            Reports.Kept = Reports.Kept + 1
+            if not Reports.Quiet[c] then Reports.Retry, Reports.Fresh = 3, true end
         else
             Reports.Dropped[c] = true
         end
@@ -432,7 +498,7 @@ local function FindClass(className, pathEnds, useParent)
         if Reports.Dropped[className] and not Reports.Walk then Reports.Walk = "new class" end
     end
     local ck = className .. "|" .. (useParent or 0) .. "|" .. (pathEnds and table.concat(pathEnds, "|") or "")
-    local hit = FindCache[ck]
+    local hit = not Reports.Quiet[className] and FindCache[ck]
     if hit then
         for i = #hit.W, 1, -1 do
             local ok, v = pcall(Valid, hit.W[i])
@@ -462,8 +528,15 @@ local function FindClass(className, pathEnds, useParent)
             end
         end)
     end
-    FindCache[ck] = { W = out, K = keys }
+    if not Reports.Quiet[className] then FindCache[ck] = { W = out, K = keys } end
     return out, keys
+end
+-- A class wanted quietly: the enemy bar, which the game makes for each creature, all the time. Its new widgets are kept,
+-- but they bring no early scan and no matching of the parts again, and its answer is not cached, so the next regular
+-- scan has them. For a part that dresses a widget once and does not mind a second or two (enemybars.lua).
+local function FindQuiet(className)
+    Reports.Quiet[className] = true
+    return FindClass(className)
 end
 
 -- A found widget and its full name, which keys the opacity and clipping memory. k: the name when already read.
@@ -561,6 +634,7 @@ local function FindAll(editing, buffsNew)
             if E.Custom == "map" and RuneMap and RuneMap.W and RuneMap.W:IsValid() then AddInstance(E, RuneMap.W) end
             if E.Custom == "cooldowns" and Cooldowns and Cooldowns.W and Cooldowns.W:IsValid() then AddInstance(E, Cooldowns.W) end
             if E.Custom == "questtracker" and QuestTracker and QuestTracker.W and QuestTracker.W:IsValid() then AddInstance(E, QuestTracker.W) end
+            if E.Custom == "party" and Party and Party.W and Party.W:IsValid() then AddInstance(E, Party.W) end
             if E.Custom == "clock" and Clock and Clock.W and Clock.W:IsValid() then AddInstance(E, Clock.W) end
         elseif searched then
             E.Instances, E.Keys = {}, {}
@@ -607,10 +681,15 @@ local MapMode = false    -- F8: RuneMap's own settings, in the same panel as the
 local MapSel = 1         -- the selected line of the map settings
 local Selected = 1
 local Step = 10
--- Keyed by the widget's full name: every rescan gives new Lua handles for the same widgets
-local OrigOpacity = {}   -- opacity the game had before we touched a widget
-local Touched = {}
-local RestoreAllRequested = false
+-- Keyed by the widget's full name: every rescan gives new Lua handles for the same widgets.
+-- Written: the opacity the editor or the immersive mode last wrote to a widget (nil: the widget is the game's).
+-- OrigOpacity: the game's opacity of it before our first write, kept for the world (the RC's rule). The game fades its
+-- notices by its own animation of this opacity, so a value read later may be from the middle of a fade: the picked-up
+-- items stayed pale when it was read again at every write (playtest, 05-10-2026). The one notice whose fade ends at the value
+-- we write, the level up notice, has Idle in its element, and that comes back instead (RestoreOpacity).
+local OrigOpacity = {}
+local Written = {}
+local SAME = 0.002   -- an opacity reads back as a 32-bit number
 
 -- k: the widget's full name, read once per scan (FindAll)
 local function SetOpacity(W, k, value)
@@ -619,14 +698,18 @@ local function SetOpacity(W, k, value)
         OrigOpacity[k] = ok and o or 1.0
     end
     W:SetRenderOpacity(value)
-    Touched[k] = true
+    Written[k] = value
 end
 
-local function RestoreOpacity(W, k, force)
-    if Touched[k] or force then
-        W:SetRenderOpacity(OrigOpacity[k] or 1.0)
-        Touched[k] = nil
-    end
+-- Back to the game's opacity, but only a widget that still holds what we wrote: when the game has written since, its
+-- own value stands (a notice that is still fading). idle: the element's own word for what the game leaves it at when
+-- nothing shows (E.Idle). The first opacity read of the notice can be a point of its fade, or the designer's sample that
+-- sits at 1 in a fresh world, so the level up notice does not use it.
+local function RestoreOpacity(W, k, idle)
+    local w = Written[k]
+    if w == nil then return end
+    Written[k] = nil
+    if math.abs(W:GetRenderOpacity() - w) <= SAME then W:SetRenderOpacity(idle or OrigOpacity[k]) end
 end
 
 -- The F9 opacity (1.1). A user widget gets it as its colour, which multiplies with the render opacity: the
@@ -764,8 +847,8 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force)
         W:SetRenderOpacity(fade)   -- the dial looked faded; keep it fully solid
     elseif fade * imm < 1.0 then
         SetOpacity(W, k, fade * imm)
-    elseif RestoreAllRequested or next(Touched) ~= nil then
-        RestoreOpacity(W, k, RestoreAllRequested)   -- leave the game's own fading alone when the element is shown
+    elseif next(Written) ~= nil then
+        RestoreOpacity(W, k, E.Idle)   -- leave the game's own fading alone when the element is shown
     end
     -- the part drawn on request (E.Redraw) is asked to draw again at every opacity the element has while it is seen:
     -- when it comes back, and at each step of a fade
@@ -833,12 +916,12 @@ local function ApplyAll(force)
         Bag.Open = okBag and open or false   -- the bag is open and a gamepad is in use
     end
     for i, E in ipairs(Elements) do
-        local sel = EditMode and i == Selected
+        -- with the group "notify" picked, the notices inside it are solid, not dimmed: its preview shows them all
+        local sel = EditMode and (i == Selected or (E.Inside == "notify" and Elements[Selected].Id == "notify"))
         local lx, ly, ls = LocalTransform(E)
         if Bag.Open and E.Id == "toolbar" and not EditMode then lx, ly, ls = 0, 0, 1 end   -- the editor shows the saved place
         for n, W in ipairs(E.Instances) do ApplyOne(W, E.Keys[n], lx, ly, ls, E, sel, force) end
     end
-    RestoreAllRequested = false
 end
 
 ---------------------------------------------------------------- the editor panel (editor.lua draws it)
@@ -913,7 +996,11 @@ local function CachedTex(cache, key, outer, file)
     local tex = cache[key]
     if tex and tex:IsValid() then return tex end
     tex = StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary"):ImportFileAsTexture2D(outer, file)
-    if not (tex and tex:IsValid()) then error("picture not loaded: " .. file) end
+    if not (tex and tex:IsValid()) then
+        local f = io.open(file, "rb")   -- for the log: the file is not there, or the engine did not take it
+        if f then f:close() end
+        error((f and "picture not loaded: " or "picture missing: ") .. file)
+    end
     cache[key] = tex
     return tex
 end
@@ -941,7 +1028,7 @@ local function Changed(E)
         or E.Opacity < 1
 end
 
--- The keys each panel lists (the design sketch). KEY: the names of the five keys a player can change, as bound
+-- The keys each panel lists (the design sketch). KEY: the names of the six keys a player can change, as bound
 -- (KeyCode, at the keys below, writes them at load). So the lists are made when a panel is filled, not at load.
 local KEY = {}
 local function EditKeys()
@@ -953,12 +1040,12 @@ local function MapKeys()
     return { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { KEY.zoomout, KEY.zoomin }, "Zoom" },
         { { "Backspace" }, "Reset" }, { { KEY.editor }, "Layout" }, { { KEY.map }, "Save, close" } }
 end
-local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Creatures", "Ore", "Herbs", "Essence", "Rare trees", "In immersive mode",
-    "Zoom", "Drawing" }
+local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Player name", "Creatures", "Ore", "Herbs", "Essence", "Rare trees",
+    "In immersive mode", "Zoom", "Drawing" }
 -- the lines that are a plain On / Off, and the setting in runemap.lua each one flips. "In immersive mode" steps
 -- through Nothing, Map and Compass (Settings.STAY), Creatures through three values: MapValue and MapChange have them.
-local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", Ore = "Ore", Herbs = "Herbs",
-    Essence = "Essence", ["Rare trees"] = "Trees" }
+local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", ["Player name"] = "Name", Ore = "Ore",
+    Herbs = "Herbs", Essence = "Essence", ["Rare trees"] = "Trees" }
 -- the lines with more than two values: the list shows "< value >", so a player sees that Left and Right give more
 -- than what is shown (Ivan, 04-10-2026: nobody knew that "In immersive mode" has Compass too)
 local MAP_CHOICE = { Creatures = true, ["In immersive mode"] = true, Zoom = true }
@@ -980,6 +1067,7 @@ local MAP_HINTS = {
     RuneMap = { Off = "The map is off. The mod does not build it at all." },   -- On names the editor's key: MapHint
     ["Faces north"] = { On = "North stays at the top of the map.", Off = "The map turns with the camera." },
     ["North mark"] = { On = "The mark on the gold ring shows where north is.", Off = "No north mark on the ring." },
+    ["Player name"] = { On = "Your player name shows beside your arrow on the map.", Off = "Your player name does not show on the map. The names of other players stay." },
     Creatures = { All = "Red diamonds for enemies, green for neutral animals.", ["Enemies only"] = "Only enemies. Neutral animals are not shown.",
         Off = "No creature diamonds on the map." },
     Ore = { On = "Ore rocks near you. Empty rocks hide until they grow back.", Off = "No ore on the map." },
@@ -987,7 +1075,7 @@ local MAP_HINTS = {
     Essence = { On = "Rune essence near you.", Off = "No rune essence on the map." },
     ["Rare trees"] = { On = "Dead trees, yew, magic trees and anima bark near you.", Off = "No rare trees on the map." },
     ["In immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
-        Map = "The map stays while the immersive mode is on, and the quest tracker with it. The compass is away." },   -- Compass: MapHint
+        Map = "The map and the quest tracker stay in the immersive mode. The compass is away." },   -- Compass: MapHint
     Drawing = { Smooth = "The map draws every frame. Switching might decrease performance.",
         Faster = "The map draws every second frame. A bit choppy when you turn." },
 }
@@ -995,7 +1083,7 @@ local function MapHint(i, v)
     local row = MAP_ROWS[i]
     if row == "Zoom" then return "Closer or farther. The " .. KEY.zoomout .. " and " .. KEY.zoomin .. " keys do the same at any time." end
     if row == "In immersive mode" and v == "Compass" then
-        return "The compass stays while the immersive mode is on, with its gold line and the marks of the map. The map is away. A compass that you hid in " .. KEY.editor .. " stays hidden."
+        return "Only the compass stays, with the map marks. The map is away."
     end
     if row == "RuneMap" and v == "On" then return "The map is on. To only hide it, use Delete in " .. KEY.editor .. "." end
     return MAP_HINTS[row] and MAP_HINTS[row][v] or ""
@@ -1012,6 +1100,12 @@ local function Problems()
     return "Failed: " .. table.concat(out, ", ") .. ". See UE4SS.log in Win64."
 end
 
+-- the second line of the panel's head: the camera settings' key, where the camera settings exist
+local function CameraLink(v)
+    if KEY.camera then v.SubC, v.SubD = "Camera settings on", KEY.camera end
+    return v
+end
+
 local function EditView()
     local E = Elements[Selected]
     local v = { Mode = "edit", Title = "RUNE UI", SubA = "Map settings on", SubB = KEY.map, Profile = Prof.N,
@@ -1020,24 +1114,25 @@ local function EditView()
     local sx, sy = math.floor(cx + 0.5), math.floor(cy + 0.5)   -- on a 1920 x 1080 screen
     if E.Wait then   -- the immersive line: + and - set the wait
         v.Facts = { { "State", E.Visible and "On" or "Off" }, { "Waits", E.Wait .. " s" } }
-        v.Hint = "+ and - change how long the HUD waits before it fades. Ins and Del turn it on and off."
+        v.Hint = "+ and - set the wait before the HUD fades. Ins and Del turn it on and off."
     elseif IsSwitch(E) then
         v.Facts = { { "State", E.Visible and "On" or "Off" } }
-        v.Hint = "Ins and Del turn it on and off."
+        v.Hint = E.Hint or "Ins and Del turn it on and off."
     else
         v.Facts = { { "X", tostring(sx) }, { "Y", tostring(sy) }, { "Size", math.floor(E.Scale * 100 + 0.5) .. "%" },
             { "Opacity", math.floor(E.Opacity * 100 + 0.5) .. "%" }, { "Step", tostring(Step) } }
         if not E.Visible then v.Hint = "Hidden. Ins shows it again."
         elseif #E.Instances == 0 then v.Hint = "Not on the screen right now. It still moves." end
         local x, y, w, h = ScreenBox(E)
-        v.Mark = { X = x, Y = y, W = w, H = h, Name = E.Name, XY = "X " .. sx .. "   Y " .. sy }
+        v.Mark = { X = x, Y = y, W = w, H = h, Name = E.Name, XY = "X " .. sx .. "   Y " .. sy, Sample = E.Visible and E.Sample or nil }
     end
     -- the screen map: every element with a place, in 1920 x 1080 units
     for i, El in ipairs(Elements) do
         if not IsSwitch(El) and #v.Map < Editor.BOXES then
             local x, y, s = Spot(El)
-            local w, h = El.Size.X * s, El.Size.Y * s
-            v.Map[#v.Map + 1] = { X = x - w / 2, Y = y - h / 2, W = w, H = h,
+            local bw, bh = Layout.Box(El)
+            local w, h = bw * s, bh * s
+            v.Map[#v.Map + 1] = { X = x - El.Size.X * s / 2, Y = y - h / 2, W = w, H = h,
                 Sel = i == Selected, Hidden = not El.Visible, Name = El.Name }
         end
     end
@@ -1058,7 +1153,7 @@ local function EditView()
     for n = first, math.min(#lines, first + Editor.ROWS - 1) do v.Rows[#v.Rows + 1] = lines[n] end
     -- a group title on the last line has its rows cut off below: "CENTER" with nothing under it (01-10-2026)
     if v.Rows[#v.Rows].Head then v.Rows[#v.Rows] = nil end
-    return v
+    return CameraLink(v)
 end
 
 local function MapView()
@@ -1072,7 +1167,7 @@ local function MapView()
     for r = first, math.min(#MAP_ROWS, first + Editor.ROWS - 1) do
         v.Rows[#v.Rows + 1] = { Text = MAP_ROWS[r], Note = MAP_CHOICE[MAP_ROWS[r]] and ("< " .. vals[r] .. " >") or vals[r], Sel = r == MapSel }
     end
-    return v
+    return CameraLink(v)
 end
 
 -- F9: the panel stays on its side of the screen and moves to the other only when it would cover the selected
@@ -1090,7 +1185,7 @@ local function PanelAt(v)
         if y + h > Hud.VH - 10 then y = math.max(10, cy - half - 12 - h) end
         return { X = math.floor(x + 0.5), Y = math.floor(y + 0.5) }
     end
-    local y = math.floor(math.max(10, (Hud.VH - h) / 2))
+    local y = math.max(10, math.min(30, Hud.VH - 10 - h))   -- the top stays at 30: the panel changes height from part to part, so a centred one moved up and down
     local function X(left) return left and 30 or math.floor(Hud.VW - 30 - w) end
     local function Covers(left)
         local m, x = v.Mark, X(left)
@@ -1108,10 +1203,11 @@ end
 -- 50 ms: each text is logged once, and 10 texts at most in a world, as a text may change from step to step.
 local Panel = { State = "", View = nil, Logged = {}, Lines = 0 }
 local function UpdateOverlay(now)
-    local open = EditMode or MapMode
+    local cam = Camera ~= nil and Camera.Open   -- F6: the camera settings, in the same panel
+    local open = EditMode or MapMode or cam
     if not Editor then return end
     if open and not Editor.Ready() and MayTry(Editor) and os.clock() > SettleUntil and LastController ~= "" then
-        local ok, err = Editor.Build({ Log = Log, Gen = function() return Gen end, Font = FindPoppins(), Asset = Asset,
+        local ok, err = Editor.Build({ Log = Log, Gen = function() return Gen end, Font = FindPoppins(), FontMedium = FindPoppinsMedium(), Asset = Asset,
             ProfileKey = KEY.profile })
         if ok then Log("panel ready") Editor.Fails, Panel.State = 0, "" else Failed(Editor) Log("panel failed: " .. tostring(err)) end
     end
@@ -1123,7 +1219,9 @@ local function UpdateOverlay(now)
         end
         -- a new view only when something it shows changed: the numbers of every element, the step, the screen
         local state
-        if MapMode then
+        if cam then
+            state = Camera.State(ById("immersive").Visible) .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
+        elseif MapMode then
             local vals = {}
             for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
             state = "map|" .. MapSel .. "|" .. table.concat(vals, "|") .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
@@ -1139,7 +1237,13 @@ local function UpdateOverlay(now)
         -- on the first open), not no panel
         if not Editor.Shown then Editor.Open(true) Editor.Shown = true end
         if state ~= Panel.State then
-            local v = MapMode and MapView() or EditView()
+            local v
+            if cam then
+                v = Camera.View(KEY, ById("immersive").Visible, Problems())
+                v.SubC, v.SubD = "Map settings on", KEY.map
+            else
+                v = MapMode and MapView() or EditView()
+            end
             Editor.Update(v)
             Panel.State, Panel.View = state, v
         end
@@ -1192,7 +1296,7 @@ local function WriteArt()
     if not art then return end
     local written = 0
     for name, text in pairs(art) do
-        local file = "ue4ss/Mods/RuneUI/Art/" .. name
+        local file = RUNEUI_DIR .. "Art/" .. name
         local data = Unbase64(text)
         local f = io.open(file, "rb")
         local old = f and f:read("*a")
@@ -1232,6 +1336,8 @@ if RuneMap then
     RuneMap.Near = Util.Near
     RuneMap.Res = LoadPart("resources")   -- ore, herbs, essence and rare trees on the map
 end
+Camera = LoadPart("camerarules")
+if Camera then Camera.Attach(Settings.Section(Cfg, "camera"), SaveCfg) end
 -- Editing: the map shows while F9 or F8 is open, even when it is hidden
 local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end,
     -- the immersive mode's share: the map fades itself, its gold rings too (runemap.lua ApplyOpacity)
@@ -1258,7 +1364,9 @@ local ImmersiveCtx = { Log = Log, On = function() return ById("immersive").Visib
     MapStays = function() return RuneMap ~= nil and RuneMap.Set.Immersive == "Map" end,
     CompassStays = function() return RuneMap ~= nil and RuneMap.Set.Immersive == "Compass" end,
     -- the quest and step on show: a change brings the quest tracker back
-    QuestSig = function() return QuestTracker and QuestTracker.Sig end }
+    QuestSig = function() return QuestTracker and QuestTracker.Sig end,
+    -- how many times a friend's health went down: a new one brings the party panel back
+    PartyHits = function() return Party and Party.Hits end }
 if Survival then MenuButtons = LoadPart("menubuttons") end   -- it draws with survival.lua's ring
 -- the survival ring and its turn, a text in the game's font, the chat widget
 local MenuCtx = { Log = Log, ById = ById, Find = Survival and Survival.Find, Ring = Survival and Survival.Ring,
@@ -1290,6 +1398,7 @@ if Cooldowns then
     Cooldowns.Ctx = { Log = Log, ById = ById, Find = Survival and Survival.Find,
         -- Editing: F9 only. With MapCtx.Editing the sample tiles also showed with the map settings (F8) open.
         On = function() return ById("cooldowns").Visible end, Editing = function() return EditMode end,
+        Horizontal = function() return ById("cdhoriz").Visible end,
         -- the spell wheel's slices only: the spell book has a second wheel of the same slices (probe, 29-09-2026).
         -- With their names, as FindClass gives them.
         Slices = function() return FindClass("WBP_SurvivalSorcery_RadialSlice_C", Cooldowns.Ctx.SlicePath) end,
@@ -1317,10 +1426,26 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
     if P then AddPart("pickups", P, { Log = Log, Find = FindClass, Font = FindPoppins }) end
     P = LoadPart("farmplot")
     if P then AddPart("farm plots", P, { Log = Log, Find = FindClass }) end
+    -- the enemy bars take the look of the player's bars; no switch, like the player's bars (enemybars.lua)
+    P = LoadPart("enemybars")
+    if P then AddPart("enemy bars", P, { Log = Log, Find = FindQuiet, MayTry = MayTry, Failed = Failed, Noise = Bars and Bars.OneColorNoise }) end
+    P = LoadPart("combattext")
+    if P then
+        AddPart("combat text", P, { Log = Log, Find = FindClass, MayTry = MayTry, Failed = Failed, Chain = Util.Chain,
+            Soon = ExecuteInGameThreadWithDelay,   -- nil in an old UE4SS: no pop, the look still works
+            On = function() return ById("combattext").Visible end })
+    end
     P = LoadPart("quests")
     if P then
         AddPart("quests", P, { Log = Log, Find = FindClass, Font = FindPoppins, Collect = Letters and Letters.Collect })
     end
+    -- the id of the selected row while F9 is open; nil with the editor closed or F8 open
+    local function SelectedId()
+        local E = EditMode and not MapMode and Elements[Selected]
+        return E and E.Id or nil
+    end
+    P = LoadPart("notices")
+    if P then AddPart("notices", P, { Log = Log, Find = FindClass, Selected = SelectedId }) end
     -- the local controller, as its link from the local player (ControllerName); nil while there is none
     local function Controller()
         local ok, pc = pcall(function()
@@ -1350,6 +1475,16 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
             end,
             Controller = Controller })
     end
+    Party = LoadPart("party")
+    if Party then
+        AddPart("party panel", Party, { Log = Log, ById = ById, Controller = Controller,
+            Text = function(tree, name, size, color, s)
+                return MakeText(tree, name, size, color, s, FindPoppinsMedium())
+            end,
+            On = function() return ById("party").Visible end,
+            -- the three made-up rows show in F9 while the element's row is selected, also when playing alone
+            Preview = function() return SelectedId() == "party" end })
+    end
     P = LoadPart("compass")   -- the gold style of the compass, and the map's marks on it (compass.lua)
     if P and Util.GoldLine then
         AddPart("compass", P, { Log = Log, ById = ById, G = G, Asset = Asset, CachedTex = CachedTex, GoldLine = Util.GoldLine,
@@ -1368,11 +1503,34 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
             MapShown = function() return RuneMap ~= nil and RuneMap.Visible == true end,
             Set = function() return RuneMap and RuneMap.Set or {} end })
     end
+    P = LoadPart("mapname")   -- the map setting "Player name": off hides your own player name beside your marker on the maps
+    if P then
+        AddPart("map name", P, { Log = Log, Find = FindQuiet, Arrived = TakeArrivals,
+            On = function() return not RuneMap or RuneMap.Set.Name ~= false end })
+    end
     P = LoadPart("bednames")
     if P then
         AddPart("bed names", P, { Log = Log, Hook = RegisterHook, Text = FText,
             Find = function(path) local o = Cls(path) if o ~= nil and o:IsValid() then return o:GetAddress() end end })
     end
+    -- the immersive camera and the crosshair setting (1.8): "immersive mode on" is its line in F9, the switch
+    local function ImmersiveOn() return ById("immersive").Visible end
+    P = Camera and LoadPart("camera")
+    if P then
+        AddPart("camera", P, { Log = Log, Rules = Camera, Controller = Controller, Immersive = ImmersiveOn,
+            -- the HUD reticle: a bow's aim or a staff's cast starts the ranged zoom (camera.lua Aiming)
+            Reticle = AimCtx.Reticle, Find = Survival and Survival.Find, MayTry = MayTry, Failed = Failed,
+            -- the game's camera values, kept where a restart of the mods does not lose them (camera.lua Keep)
+            Shared = function(name, v)
+                local ok, r = pcall(function()
+                    if v == nil then return ModRef:GetSharedVariable("RuneUI.Camera." .. name) end
+                    ModRef:SetSharedVariable("RuneUI.Camera." .. name, v)
+                end)
+                if ok then return r end
+            end })
+    end
+    P = Camera and Aim and Aim.Collect and LoadPart("crosshair")
+    if P then AddPart("crosshair", P, { Log = Log, Rules = Camera, Immersive = ImmersiveOn, Reticle = AimCtx.Reticle, Collect = Aim.Collect }) end
 end
 -- last of the parts that draw: the parts above may change what it fades, and ApplyAll reads its opacity after it
 -- (the Mod Menu part, added at the keys, comes after it and draws nothing)
@@ -1387,6 +1545,7 @@ Editor = LoadPart("editor")
 local function ForgetWorld(sameWorld)
     for _, E in ipairs(Elements) do E.Instances, E.Keys, E.PartsOp, E.PartsW, E.Last = {}, {}, {}, {}, {} end
     Found, FindCache, NextSearch = {}, {}, 0   -- the last widget search's handles; search again at once
+    for c in pairs(Arrivals) do Arrivals[c] = {} end   -- the reported widgets of the old world too
     Reports.Walk = sameWorld and "restart" or "new world"
     if Editor then Editor.Fails, Editor.RetryAt = 0, 0 end   -- new tries (see MayTry); the parts reset their own in Forget
     Bag.Tabs, Bag.Content, Bag.Input = nil, nil, nil
@@ -1396,7 +1555,7 @@ local function ForgetWorld(sameWorld)
         -- errors again if it fails again
         if Editor then Editor.Forget() Editor.Shown, Panel.State, Panel.Logged, Panel.Lines = false, "", {}, 0 end
         -- these remember widgets by full name; the old world's widgets are gone
-        OrigOpacity, Touched, Unclipped, ClassNames, IsUW = {}, {}, {}, {}, {}
+        OrigOpacity, Written, Unclipped, ClassNames, IsUW = {}, {}, {}, {}, {}
     end
     for _, P in ipairs(Parts) do
         pcall(P.M.Forget, sameWorld)
@@ -1606,6 +1765,7 @@ local function TickBody()
     if not okApply and not ApplyErrorLogged then ApplyErrorLogged = true Log("apply failed: " .. tostring(errApply)) end
 
     if SaveRequested then SaveRequested = false SaveLayout() end
+    if Camera then pcall(Camera.Commit) end   -- the camera settings are saved here, whatever camera.lua's step does
     if Prof.Wanted then Prof.Wanted = false pcall(Prof.Next) end
 
     UpdateOverlay(now)
@@ -1663,7 +1823,7 @@ end)
 -- Key binds run on UE4SS's own thread, beside the game thread's step: they only change numbers and flags, and
 -- make nothing new (no text, no tables), so they cannot start Lua's memory cleanup under the step (28-09-2026).
 -- The step logs the editor opening and closing.
--- Windows key codes by name. The five keys in KEY_DEFAULT can be changed in the [keys] section of runeui.txt (1.4);
+-- Windows key codes by name. The six keys in KEY_DEFAULT can be changed in the [keys] section of runeui.txt (1.4);
 -- the others are fixed, as the F9 panel lists them.
 local VK = { Backspace = 8, PgUp = 33, PgDn = 34, End = 35, Home = 36, Left = 37, Up = 38, Right = 39, Down = 40,
     Insert = 45, Delete = 46, Plus = 107, Minus = 109, Equals = 187, Dash = 189, Comma = 188, Period = 190,
@@ -1671,7 +1831,7 @@ local VK = { Backspace = 8, PgUp = 33, PgDn = 34, End = 35, Home = 36, Left = 37
 for i = 1, 12 do VK["F" .. i] = 111 + i end
 for i = 0, 9 do VK[tostring(i)] = 48 + i end
 for i = 0, 25 do VK[string.char(65 + i)] = 65 + i end
-local KEY_DEFAULT = { editor = "F9", map = "F8", profile = "F7", zoomin = "]", zoomout = "[" }
+local KEY_DEFAULT = { editor = "F9", map = "F8", profile = "F7", zoomin = "]", zoomout = "[", camera = "F6" }
 local function KeyCode(what)
     local keys = Settings.Section(Cfg, "keys")
     if keys[what] == nil then keys[what] = KEY_DEFAULT[what] end   -- written on the next save, so the player sees the line
@@ -1698,7 +1858,7 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
         Row("profile", function() return tostring(Prof.N) end,
             function(v) for _ = 1, 2 do if Prof.N ~= tonumber(v) then Prof.Next() end end end)
         local keys = Settings.Section(Cfg, "keys")
-        for _, what in ipairs({ "editor", "map", "profile", "zoomin", "zoomout" }) do
+        for _, what in ipairs({ "editor", "map", "camera", "profile", "zoomin", "zoomout" }) do
             Row("key_" .. what, function() return MM.KeyToMenu(keys[what]) or MM.KeyToMenu(KEY_DEFAULT[what]) end,
                 function(v)
                     local name = MM.KeyFromMenu(v)
@@ -1714,13 +1874,19 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
         Row("rune_xp", function() return X.Visible end, function(v) X.Visible = v == true SaveRequested = true end)
         local SL = ById("slimlevel")
         Row("slim_level_up", function() return SL.Visible end, function(v) SL.Visible = v == true SaveRequested = true end)
+        local CT = ById("combattext")
+        Row("combat_text", function() return CT.Visible end, function(v) CT.Visible = v == true SaveRequested = true end)
         local N = ById("questnext")
         Row("quest_next", function() return N.Visible end, function(v) N.Visible = v == true SaveRequested = true end)
+        local CH = ById("cdhoriz")
+        Row("horizontal_cooldowns", function() return CH.Visible end, function(v) CH.Visible = v == true SaveRequested = true end)
+        local PP = ById("party")
+        Row("party_panel", function() return PP.Visible end, function(v) PP.Visible = v == true SaveRequested = true end)
         Row("immersive_wait", function() return I.Wait or 8 end,
             function(v) I.Wait = math.floor(Settings.Num(v, 3, 30, 8) + 0.5) SaveRequested = true end)
         if RuneMap then
             local S = RuneMap.Set
-            for _, k in ipairs({ "Map", "North", "Mark", "Ore", "Herbs", "Essence", "Trees" }) do
+            for _, k in ipairs({ "Map", "North", "Mark", "Name", "Ore", "Herbs", "Essence", "Trees" }) do
                 Row("map_" .. k, function() return S[k] end, function(v) S[k] = v == true RuneMap.Dirty = true end)
             end
             Row("map_immersive", function() return S.Immersive end,
@@ -1729,6 +1895,11 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
                 function(v) C.Visible, S.Neutral = v ~= "Off", v == "All" RuneMap.Dirty = true SaveRequested = true end)
             Row("map_drawing", function() return S.Smooth and "Smooth" or "Faster" end,
                 function(v) S.Smooth = v == "Smooth" RuneMap.Dirty = true end)
+        end
+        if Camera then   -- the camera rows, one per row of the F6 panel (camerarules.lua ROWS)
+            for _, r in ipairs(Camera.ROWS) do
+                Row("camera_" .. r.Key, function() return Camera.MenuGet(r.Key) end, function(v) Camera.MenuSet(r.Key, v) end)
+            end
         end
         AddPart("mod menu", MM, { Log = Log, Rows = rows, ReadFile = ReadText,
             Read = function(name)
@@ -1745,26 +1916,35 @@ do   -- no name of its own: main.lua is near Lua's limit of 200 locals
             -- The step sorts the editor's list when it sees the editor open at its start. This opens it in the middle
             -- of a step, and the panel is filled at the end of the same step: with no list yet, the first fill
             -- failed and the panel stayed blank (playtest, 02-10-2026).
-            OpenEditor = function() MapMode = false EditMode = true pcall(SortOrder) end }, true)
+            OpenEditor = function() MapMode = false EditMode = true if Camera then Camera.Open = false end pcall(SortOrder) end }, true)
     end
 end
 
 RegisterKeyBind(KeyCode("editor"), function()
     MapMode = false   -- F9 inside F8: from the map settings into the editor
+    if Camera then Camera.Open = false end   -- and from the camera settings
     EditMode = not EditMode
     if not EditMode then
         SaveRequested = true
-        RestoreAllRequested = true
     end
 end)
 
 -- F8: RuneMap's own settings (1.1). F8 inside F9 goes from the editor to the map settings. Closing saves the
 -- layout, which holds the creatures switch; runemap.lua saves the other settings as they change.
 RegisterKeyBind(KeyCode("map"), function()
-    if EditMode then EditMode = false RestoreAllRequested = true end
+    if EditMode then EditMode = false end
+    if Camera then Camera.Open = false end
     MapMode = not MapMode
     SaveRequested = true
 end)
+-- F6: the camera settings (1.8), in the same panel; from F9 or F8 it goes there. camerarules.lua saves as they change.
+if Camera then
+    RegisterKeyBind(KeyCode("camera"), function()
+        if EditMode then EditMode = false SaveRequested = true end
+        if MapMode then MapMode = false SaveRequested = true end
+        Camera.Open = not Camera.Open
+    end)
+end
 local function MapPick(d)
     MapSel = MapSel + d
     if MapSel < 1 then MapSel = #MAP_ROWS end
@@ -1805,10 +1985,11 @@ end
 RegisterKeyBind(VK.PgUp, function() Sel(-1) end)
 RegisterKeyBind(VK.PgDn, function() Sel(1) end)
 
-RegisterKeyBind(VK.Up, function() if MapMode then MapPick(-1) else Move(0, -1) end end)
-RegisterKeyBind(VK.Down, function() if MapMode then MapPick(1) else Move(0, 1) end end)
-RegisterKeyBind(VK.Left, function() if MapMode then MapChange(-1) else Move(-1, 0) end end)
-RegisterKeyBind(VK.Right, function() if MapMode then MapChange(1) else Move(1, 0) end end)
+local function CamOpen() return Camera ~= nil and Camera.Open end
+RegisterKeyBind(VK.Up, function() if CamOpen() then Camera.Pick(-1) elseif MapMode then MapPick(-1) else Move(0, -1) end end)
+RegisterKeyBind(VK.Down, function() if CamOpen() then Camera.Pick(1) elseif MapMode then MapPick(1) else Move(0, 1) end end)
+RegisterKeyBind(VK.Left, function() if CamOpen() then Camera.Change(-1) elseif MapMode then MapChange(-1) else Move(-1, 0) end end)
+RegisterKeyBind(VK.Right, function() if CamOpen() then Camera.Change(1) elseif MapMode then MapChange(1) else Move(1, 0) end end)
 
 local Steps = { 1, 5, 10, 25, 50, 100 }
 local function ChangeStep(d)
@@ -1850,6 +2031,7 @@ RegisterKeyBind(VK.Delete, function() if EditMode and not Elements[Selected].NoH
 RegisterKeyBind(VK.Insert, function() if EditMode then Elements[Selected].Visible = true end end)
 local NoDefaults = {}
 RegisterKeyBind(VK.Backspace, function()
+    if CamOpen() then Camera.ResetWanted = true return end   -- every camera row back to its default
     if MapMode and RuneMap then RuneMap.Reset() ById("creatures").Visible = true return end
     if not EditMode then return end
     local E = Elements[Selected]
@@ -1860,4 +2042,4 @@ RegisterKeyBind(VK.Backspace, function()
     TargetFromSpot(E)
 end)
 
-Log("loaded, press " .. KEY.editor .. " in game for the layout, " .. KEY.map .. " for the map")
+Log("loaded, press " .. KEY.editor .. " in game for the layout, " .. KEY.map .. " for the map" .. (KEY.camera and (", " .. KEY.camera .. " for the camera") or ""))

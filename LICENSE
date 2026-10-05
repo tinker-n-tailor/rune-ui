@@ -2,38 +2,63 @@ Rune UI Licence
 
 Copyright (c) 2026 tinker-n-tailor. All rights reserved.
 
-Rune UI is free to use. Its code is open to read. It is not free to
-share, to change and publish, or to upload again.
+Rune UI is free to use. Its code is open to read. You may change it and
+send your change to the author. You may not share it or publish a changed
+version without the written permission of the author.
 
 You may:
 
 - download, install and use Rune UI to play the game, at no cost;
 - read the code to learn how it works;
 - change your own copy for your own use;
-- send a fix or an idea to the author. When you send a fix, you let the
-  author use it in Rune UI.
+- fork the code on GitHub, to send a change to the author, and keep the
+  fork until your pull request is closed.
 
 You may not, without the written permission of the author:
 
-- upload Rune UI, or a changed version of it, to any site or service;
+- upload Rune UI, or a changed version of it, to any site or service. The
+  one exception is a fork on GitHub that you keep only to send a pull
+  request;
 - put Rune UI, or a part of it (code or pictures), into another mod, a
   mod pack or any other work;
 - sell Rune UI, or ask for money for it or for access to it.
 
-To ask for permission, or to send a fix, write to the author on the page
-of the mod. The author is Filchie on CurseForge and TinkernTailor on
-Nexus Mods:
+To send a change:
+
+1. Fork the code on GitHub and make your change.
+2. Open a pull request. The author reads it and decides.
+3. If the author accepts, the change becomes a part of Rune UI.
+
+You keep the copyright of your part. You give the author a permanent and free
+right to use it, change it and publish it as a part of Rune UI. You cannot
+take this right back. The right holds under this licence and under any
+later licence that the author chooses for Rune UI.
+
+The author names you in the README. The commit lists you as co-author.
+
+A change that the author accepts into version 1.9 or later is under these
+rules.
+
+If you send a fix or an idea in another way, you give the author the same
+right.
+
+Your fork is only for the pull request. You must delete it when the pull
+request is closed. You may not share your fork, or a copy of it, as
+a mod or for others to download. You may not tell players to use it.
+
+To ask for permission, write to the author on the page of the mod. The
+author is Filchie on CurseForge and TinkernTailor on Nexus Mods:
 
 - CurseForge: https://www.curseforge.com/runescape-dragonwilds/ue4ss-mods/rune-ui
 - Nexus Mods: https://www.nexusmods.com/runescapedragonwilds/mods/646
 
 These two pages are the only places where the author publishes the mod
-for download. The author also keeps the code on GitHub, where you may
-read it. A copy of the code there gives you no right beyond this licence.
+for download. The author also keeps the code on GitHub. A copy of the code
+there gives you no right beyond this licence.
 
 Versions 1.0 to 1.6 of Rune UI were released under the MIT licence. The
-MIT licence still applies to those versions. This licence applies from
-version 1.7.
+MIT licence still applies to those versions. Version 1.7 stays under the
+earlier text of this licence. This text applies from version 1.9.
 
 Rune UI is a mod made by a fan for RuneScape: Dragonwilds. The game and
 its pictures, names and other content belong to Jagex Limited. This

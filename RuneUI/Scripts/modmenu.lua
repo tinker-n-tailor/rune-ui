@@ -8,7 +8,7 @@
 -- Pure Lua: main.lua gives the rows, the shared variables and the file through ctx, so tools/test-modmenu.js runs
 -- it without the game.
 local M = { Seen = {} }
-M.FILE = "ue4ss/Mods/RuneUI/config.txt"
+M.FILE = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "config.txt"
 local HEADER = "# Mod Menu's copy of some Rune UI settings. Rune UI writes this file. The real settings are in runeui.txt.\n"
 
 -- A key's name in runeui.txt (main.lua's VK) and Mod Menu's name for it: the engine's name in capitals with
@@ -30,7 +30,7 @@ function M.KeyFromMenu(name) return OURS[string.upper(tostring(name))] end
 -- same values gives the same text
 local function Value(v)
     if type(v) == "boolean" then return v and "true" or "false" end
-    if type(v) == "number" then return tostring(math.floor(v + 0.5)) end   -- the only number is the wait, whole seconds
+    if type(v) == "number" then return tostring(math.floor(v + 0.5)) end   -- every number is whole: the waits in seconds, the camera's distances in cm
     return tostring(v)
 end
 function M.Text(rows)

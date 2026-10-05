@@ -13,6 +13,7 @@ local LOST = 1   -- seconds without a call
 
 -- Start a chain if step should run and none is running. ctx.Soon(ms, fn) is the game thread's delayed call (nil in an old
 -- UE4SS: no chain). step(ctx, t) paints; a false result ends the chain. more(ctx, t) says whether to go on.
+-- True when a new chain started: its first call comes ms later, so a part that must not wait paints once itself.
 function C.Run(chain, ctx, ms, step, more)
     local now = os.clock()
     if not (ctx.Soon and more(ctx, now)) or (chain.Time and now - chain.Time < LOST) then return end
@@ -26,7 +27,8 @@ function C.Run(chain, ctx, ms, step, more)
         if not (ok and result ~= false and more(ctx, t) and pcall(ctx.Soon, ms, Go)) then chain.Time = nil end
     end
     chain.Time = now
-    if not pcall(ctx.Soon, ms, Go) then chain.Time = nil end
+    if not pcall(ctx.Soon, ms, Go) then chain.Time = nil return false end
+    return true
 end
 
 -- true when the chain called within the last "within" seconds: its painting is fresher than the main loop's

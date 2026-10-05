@@ -8,7 +8,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local PANEL_BG = "/Game/Art/UI/ShaderWork/MI_Menu_PanelBG_Shared.MI_Menu_PanelBG_Shared"   -- the bag's panel (probe)
 local WIDTH, PAD = 460, 28   -- 420 left four key boxes and a long name no room (playtest, 01-10-2026)
 local INNER = WIDTH - 2 * PAD
@@ -114,6 +114,11 @@ local function Build(ctx)
     U.Tag = canvas:AddChildToCanvas(tag)
     U.Tag:SetAutoSize(true)
     U.TagW = tag
+    -- a sample text inside the corners, for an element that shows nothing while the editor is open
+    U.Sample = Text(14, GOLD)
+    pcall(function() U.Sample:SetJustification(1) end)   -- centred in the box of the mark
+    U.SampleS = canvas:AddChildToCanvas(U.Sample)
+    U.SampleS:SetAutoSize(false)
 
     -- the panel: the bag's background, then the body
     local stack = W("Overlay")
@@ -164,9 +169,18 @@ local function Build(ctx)
     local head = W("HorizontalBox")
     U.Title = Text(17, TEXT, "RUNE UI", 180)
     AddH(head, U.Title, 12, true)
-    U.SubA, U.SubB = Text(12, MUTED), Text(12, GOLD)
-    AddH(head, U.SubA, 4) AddH(head, U.SubB)
-    AddV(body, head)
+    -- right of the title, two lines: the panel's own key, and the keys of the other two (F8, F9, F6). A fixed height, so the
+    -- panel is as tall with one line as with two, in every panel
+    local subs = W("VerticalBox")
+    local function SubLine(a, b)
+        local line = W("HorizontalBox")
+        AddH(line, a, 4) AddH(line, b)
+        AddV(subs, line):SetHorizontalAlignment(3)   -- the right edge
+    end
+    U.SubA, U.SubB, U.SubC, U.SubD = Text(12, MUTED), Text(12, GOLD), Text(12, MUTED), Text(12, GOLD)
+    SubLine(U.SubA, U.SubB) SubLine(U.SubC, U.SubD)
+    AddH(head, subs)
+    AddV(body, Sized(head, nil, 38))
     Divider(14, 14)
 
     -- the profiles (F9 only)
@@ -217,7 +231,9 @@ local function Build(ctx)
     AddV(body, U.Map, 0, 14)
 
     -- the selected element: its name, then X, Y, size, opacity and step
-    U.Name = Text(16, TEXT)
+    -- the name is a heading: smaller than before and in the heavier weight (Ivan, 05-10-2026); a long name ran past the edge at 16
+    U.Name = Text(14, TEXT)
+    if ctx.FontMedium then pcall(function() local fi = U.Name.Font fi.FontObject = ctx.FontMedium U.Name:SetFont(fi) end) end
     AddV(body, U.Name, 0, 6)
     local facts = W("HorizontalBox")
     U.Facts = {}
@@ -226,10 +242,13 @@ local function Build(ctx)
         AddH(facts, L, 4) AddH(facts, V, 11)
         U.Facts[i] = { L = L, V = V }
     end
-    AddV(body, facts)
+    -- a fixed height: a switch has no X, Y, size or opacity, so the line was gone and the panel got shorter (playtest, 05-10-2026)
+    AddV(body, Sized(facts, nil, 20))
     U.Hint = Text(12, MUTED)
     pcall(function() U.Hint:SetAutoWrapText(true) end)
-    AddV(body, U.Hint, 6)
+    -- two lines are always reserved: a hint of none, one or two lines changed the panel's height, and with it the place of
+    -- the panel on the screen and of the list in it (playtest, 05-10-2026: "the panel jumps up and down")
+    AddV(body, Sized(U.Hint, nil, 36), 6)
     -- a part that failed is named here, so a player learns it without the log (1.4)
     U.Warn = Text(12, WARN)
     pcall(function() U.Warn:SetAutoWrapText(true) end)
@@ -257,7 +276,8 @@ local function Build(ctx)
         local cell = W("Overlay")
         Fill(cell, B)
         local hs = cell:AddChildToOverlay(head) hs:SetVerticalAlignment(3) hs:SetPadding({ Left = 0, Top = 8, Right = 0, Bottom = 1 })
-        AddV(body, cell)
+        -- every line has the same height, a group title or a row: the panel does not change its height while the list scrolls
+        AddV(body, Sized(cell, nil, 30))
         U.Rows[i] = { B = B, T = T, Note = note, Diamond = ds, Head = head, Row = row }
     end
     Divider(10, 12)
@@ -298,6 +318,8 @@ function M.Update(v)
     U.Title:SetText(FText(v.Title))
     U.SubA:SetText(FText(v.SubA or ""))
     U.SubB:SetText(FText(v.SubB or ""))
+    U.SubC:SetText(FText(v.SubC or ""))
+    U.SubD:SetText(FText(v.SubD or ""))
     Show(U.Profile, edit)
     if edit then
         for i, s in ipairs(U.Slots) do
@@ -347,7 +369,9 @@ function M.Update(v)
         if p then f.L:SetText(FText(p[1])) f.V:SetText(FText(p[2])) end
     end
     U.Hint:SetText(FText(v.Hint or ""))
-    Show(U.Hint, (v.Hint or "") ~= "")
+    -- hidden, not collapsed: a collapsed child gives up the fixed height of its box, and the panel got 36 shorter on every
+    -- row without a hint (measured in the game, 05-10-2026: height 930 and 966, y 75 and 57)
+    U.Hint:SetVisibility((v.Hint or "") ~= "" and 3 or 2)
     U.Warn:SetText(FText(v.Warn or ""))
     Show(U.Warn, (v.Warn or "") ~= "")
     for i, r in ipairs(U.Rows) do
@@ -382,7 +406,13 @@ function M.Update(v)
     local m = v.Mark
     Show(U.MarkW, m ~= nil)
     Show(U.TagW, m ~= nil)
+    Show(U.Sample, m ~= nil and m.Sample ~= nil)
     if m then
+        if m.Sample then
+            U.Sample:SetText(FText(m.Sample))
+            U.SampleS:SetPosition({ X = m.X, Y = m.Y + math.max(0, (m.H - 20) / 2) })
+            U.SampleS:SetSize({ X = m.W, Y = 20 })
+        end
         local g = 8   -- the corners sit a little outside the element
         U.Mark:SetPosition({ X = m.X - g, Y = m.Y - g })
         U.Mark:SetSize({ X = m.W + 2 * g, Y = m.H + 2 * g })

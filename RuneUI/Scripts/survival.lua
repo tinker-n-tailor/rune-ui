@@ -7,7 +7,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING = 68        -- the game's radial bar is 68 units; the pictures cover exactly that
 local ICON = 68        -- twice the 34 that looked too small; the picture has wide empty edges (27-09-2026)
 local DIAMOND = 10

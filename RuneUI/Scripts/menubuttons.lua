@@ -9,7 +9,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING = 64      -- the button's box is 75 units; the game's grey circle fills about 64 of it
 local ICON = 62      -- the game's icon picture, with wide empty edges; 75 (the whole box) overlapped the rim (in game 29-09-2026)
 local GAME_PARTS = { BackgroundImage = true, EncumbranceBackgroundImage = true, EncumbranceRadialImage = true }

@@ -1,7 +1,8 @@
 -- Spell cooldowns (design sketch C, playtest 29-09-2026): while a spell recovers, a see-through square tile on the left
 -- of the screen with the spell's icon, a gold fill rising from the bottom and the seconds in the corner. It goes
 -- when the spell is ready. The newest tile is at the bottom; when one finishes, the ones below move up (playtest,
--- 30-09-2026). Never faded by the immersive mode. main.lua moves and sizes it as the F9 element "cooldowns".
+-- 30-09-2026). The switch "cdhoriz" lays the same tiles in a row instead: the newest at the right end, and the ones
+-- to its right move left; the left end of the box stays where it is. Never faded by the immersive mode. main.lua moves and sizes it as the F9 element "cooldowns".
 -- The data is the game's spell wheel, which counts on while it is closed (probe of 29-09-2026): 12 slices
 -- (WBP_SurvivalSorcery_RadialSlice_C), each with SliceIcon (the spell's texture), CooldownWidget (visibility 3 while
 -- the spell recovers), its TimerRing (material, FillBar rising 0 to 1) and CooldownText (the seconds).
@@ -15,6 +16,12 @@ local GAP = 8
 M.BOX_W, M.BOX_H = TILE, TILES * TILE + (TILES - 1) * GAP   -- the stack's fixed box: F9 scales around its middle
 local ICON = 36
 local RADIUS = 3
+
+-- the box of the stack, or of the row: the same numbers turned
+function M.BoxOf(horizontal)
+    if horizontal then return M.BOX_H, M.BOX_W end
+    return M.BOX_W, M.BOX_H
+end
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
@@ -84,6 +91,24 @@ local function Tile(ctx, tree, n)
     return { Box = box, Back = back, FillBox = fillBox, Icon = icon, Text = text }
 end
 
+-- The tiles in a column or in a row, and the box turned. The box keeps its left edge, and the point that F9 moves
+-- and sizes it about (render transform) stays where the column has its middle: half a tile from the left edge. So
+-- flipping the switch never moves the left end of the box, at any move or size, and the column is as it was.
+-- M.Horizontal is set first, so a failed call is not tried again on every step.
+local function Lay(ctx, horizontal)
+    M.Horizontal = horizontal
+    local w, h = M.BoxOf(horizontal)
+    M.W:SetWidthOverride(w)
+    M.W:SetHeightOverride(h)
+    M.W:SetRenderTransformPivot({ X = TILE / 2 / w, Y = 0.5 })
+    for i, t in ipairs(M.Tiles) do
+        local at = (i - 1) * (TILE + GAP)
+        t.Slot:SetPosition({ X = horizontal and at or 0, Y = horizontal and 0 or at })
+    end
+    local E = ctx.ById("cooldowns")
+    M.Slot:SetPosition({ X = E.Center.X - M.BOX_W / 2, Y = E.Center.Y - h / 2 - 540 })
+end
+
 local function Build(ctx)
     M.Builds = (M.Builds or 0) + 1   -- a new name on every build (see runemap.lua)
     local uw = New("UserWidget", FindFirstOf("GameInstance"), "RuneUICooldowns" .. M.Builds)
@@ -92,27 +117,24 @@ local function Build(ctx)
     local canvas = New("CanvasPanel", tree, "RU_CdCanvas")
     tree.RootWidget = canvas
     local size = New("SizeBox", tree, "RU_CdSize")
-    size:SetWidthOverride(M.BOX_W)
-    size:SetHeightOverride(M.BOX_H)
-    local stack = New("VerticalBox", tree, "RU_CdStack")
+    local stack = New("CanvasPanel", tree, "RU_CdStack")
     size:SetContent(stack)
     local tiles = {}
     for i = 1, TILES do
         local t = Tile(ctx, tree, "RU_Cd" .. M.Builds .. "_" .. i)
-        local s = stack:AddChildToVerticalBox(t.Box)
-        s:SetPadding({ Left = 0, Top = 0, Right = 0, Bottom = i < TILES and GAP or 0 })
+        t.Slot = stack:AddChildToCanvas(t.Box)
+        t.Slot:SetAutoSize(true)
         tiles[i] = t
     end
-    local E = ctx.ById("cooldowns")
     local slot = canvas:AddChildToCanvas(size)
     slot:SetAutoSize(true)
     -- tied to the middle of the left edge, so it stays there on a wide screen; the spot is measured on a 16:9
     -- screen, 1920 x 1080 units
     slot:SetAnchors({ Minimum = { X = 0, Y = 0.5 }, Maximum = { X = 0, Y = 0.5 } })
-    slot:SetPosition({ X = E.Center.X - M.BOX_W / 2, Y = E.Center.Y - M.BOX_H / 2 - 540 })
     uw:AddToViewport(39)
     uw:SetVisibility(1)
-    M.W, M.UW, M.Tiles, M.Visible = size, uw, tiles, false
+    M.W, M.UW, M.Tiles, M.Slot, M.Visible = size, uw, tiles, slot, false
+    Lay(ctx, ctx.Horizontal())
     ctx.Log("cooldowns ready")
 end
 
@@ -198,7 +220,7 @@ end
 function M.Forget(sameWorld)
     -- as RuneMap: off the screen only in the same world; after a world change the engine has taken it away
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
-    M.W, M.UW, M.Tiles, M.Visible, M.Op = nil, nil, nil, false, nil
+    M.W, M.UW, M.Tiles, M.Slot, M.Visible, M.Op = nil, nil, nil, nil, false, nil
     M.Parts, M.Keys, M.Fails, Logged = {}, {}, 0, {}
 end
 M.Forget(false)
@@ -215,6 +237,7 @@ function M.Tick(ctx)
         if not ok then M.Fails = M.Fails + 1 ctx.Log("cooldowns failed: " .. tostring(err)) end
         return
     end
+    if ctx.Horizontal() ~= M.Horizontal then Lay(ctx, ctx.Horizontal()) end   -- the switch changed (F9, Mod Menu, F7)
     local items = {}
     local editing = ctx.Editing()
     if ctx.On() or editing then

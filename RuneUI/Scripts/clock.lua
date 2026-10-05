@@ -6,7 +6,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 M.SIZE = 40              -- the pictures' box in units: a sun of radius 9 with its rays and glow
 local DAWN_END = 0.08    -- the sketch's phases of the game's day: 0 is dawn, night from the dial's night start
 local DUSK_BEFORE = 0.08 -- dusk: this share of the day before night
@@ -41,7 +41,11 @@ local function Build(ctx)
     local imgs = {}
     for _, p in ipairs({ "dawn", "day", "dusk", "night" }) do
         local tex = KRL:ImportFileAsTexture2D(tree, ART_DIR .. "clock_" .. p .. ".png")
-        if not (tex and tex:IsValid()) then error("picture clock_" .. p .. ".png not loaded") end
+        if not (tex and tex:IsValid()) then
+            local f = io.open(ART_DIR .. "clock_" .. p .. ".png", "rb")   -- for the log: no file, or the engine did not take it
+            if f then f:close() end
+            error((f and "picture not loaded: " or "picture missing: ") .. ART_DIR .. "clock_" .. p .. ".png")
+        end
         local img = New("Image", tree, "RU_Clock_" .. p)
         img:SetBrushFromTexture(tex, false)
         img:SetVisibility(1)

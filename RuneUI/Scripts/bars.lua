@@ -49,7 +49,7 @@ end
 -- outer pieces fit the frame's padding and stay empty, so the track sits right behind the fill. There is one picture for each
 -- padding from 8 to 12. Widgets hold every picture, so the engine keeps them (a texture only Lua holds is
 -- thrown away).
-local BLADE_FILE = "ue4ss/Mods/RuneUI/Art/bar_blade_%d.png"
+local BLADE_FILE = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/bar_blade_"   -- then the padding and ".png"
 local BLADE_W, BLADE_CORE = 80, 16   -- keep as in tools/make-runemap-art.js
 -- The game's gold stamina fill times this shows green: red down to 0.35 and blue to 0.6 on screen, in the
 -- linear values the engine takes.
@@ -70,7 +70,7 @@ local function DressBar(B, W)
     local pad = math.floor(p.Bottom + 0.5)
     if pad < 8 or pad > 12 then error(B.Class .. ": no picture for a padding of " .. pad) end
     local h = pad * 2 + BLADE_CORE
-    local file = string.format(BLADE_FILE, pad)
+    local file = BLADE_FILE .. pad .. ".png"
     frame:SetBrushFromTexture(CachedTex(Blades.Tex, file, W, file))
     local b = frame.Background
     b.DrawAs = 1   -- box: nine pieces
@@ -104,6 +104,7 @@ end
 -- setting is a power: the game's is 5, a lower one shows more, and 1.5 was his pick. The bubbles stay the game's.
 -- The colours live on the fill's parent material, so the main colour is read there.
 local ONE_COLOR_NOISE = 1.5
+M.OneColorNoise = ONE_COLOR_NOISE   -- enemybars.lua gives the enemy bars the same texture
 local OneColor = {}   -- by bar: the full name of the fill last given the look; the game may give a bar a new fill
 local function OneColorFill(mat)
     local main

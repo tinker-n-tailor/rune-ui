@@ -8,7 +8,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 -- the orb's box is 32 units; the sketch's diamond is about 14 (playtest, 29-09-2026: the orb's own size is "way too big")
 local DIAMOND_SCALE = 0.45
 -- the game's orb sits right of and below the middle of the staff's target mark; this puts the diamond in it
@@ -54,6 +54,7 @@ local function Collect(W, out, depth)
         pcall(function() Collect(W:GetContent(), out, depth + 1) end)
     end
 end
+M.Collect = Collect   -- crosshair.lua hides the same marks
 
 -- the value of a vector parameter in a material's own list (a constant instance keeps its values there)
 local function VectorParam(mat, name)

@@ -12,7 +12,7 @@
 
 local M = {}
 
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING, ICON, ICON_BOW, COUNT = 30, 42, 26, 11   -- units; the sketch at 1440p: a disk of 40. Icon 17, count 13 before the playtest;
 -- the rune pictures have wide empty edges: at 24 the flame sat small in the disk ("icon should fill whole circle").
 -- The arrow's has none: at 42 it ran over the rim (a screenshot, 01-10-2026).
@@ -36,7 +36,11 @@ M.Parts = {}
 -- the widgets hold every picture: one held only by Lua gets freed by the engine and crashes the game later
 local function LoadArt(tree, name)
     local tex = Obj("/Script/Engine.Default__KismetRenderingLibrary"):ImportFileAsTexture2D(tree, ART_DIR .. name)
-    if not (tex and tex:IsValid()) then error("picture not loaded: " .. name) end
+    if not (tex and tex:IsValid()) then
+        local f = io.open(ART_DIR .. name, "rb")   -- for the log: the file is not there, or the engine did not take it
+        if f then f:close() end
+        error((f and "picture not loaded: " or "picture missing: ") .. ART_DIR .. name)
+    end
     return tex
 end
 

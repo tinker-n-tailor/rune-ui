@@ -1,7 +1,7 @@
 -- Immersive mode (1.2, the idea of 29-09-2026): with nothing going on, the HUD fades away, and each part comes
 -- back when it matters. The bars while health is not full, and a while after; the good buffs with them,
 -- and each one when it comes (a debuff never fades); a food, water or rest ring when it runs low or fills; the menu buttons when a chat
--- message comes; the quest tracker when a quest or its step changes. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting "In immersive mode" keeps
+-- message comes; the quest tracker when a quest or its step changes; the party panel when a friend's health goes down. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting "In immersive mode" keeps
 -- one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens the big map). The tool bar never fades:
 -- what matters can sit on it (playtest, 29-09-2026); nor do prompts, notifications, the area effects and warnings.
 -- Off at first; its line in F9 turns it on, and + / - there set how long a part stays (main.lua keeps the number).
@@ -22,15 +22,15 @@ local function Hold(ctx) return ctx.Wait() end
 -- "Menu icons" (menuico) is not in it: that widget is the game's full-screen menu, not the icons in the corner
 -- (widget dump, 29-09-2026)
 local GROUP = { avatar = "bars", weapon = "bars", compass = "compass", wheel = "none", runemap = "none",
-    menubtn = "menu", questtracker = "quest" }
+    menubtn = "menu", questtracker = "quest", party = "party" }
 
 M.ErrorLogged = false   -- main.lua logs one failed step
-local Level = { bars = 1, menu = 1, quest = 1, compass = 1, none = 1 }
+local Level = { bars = 1, menu = 1, quest = 1, party = 1, compass = 1, none = 1 }
 local Until = {}
 local RingLevel, RingUntil, RingLast = {}, {}, {}
 local Applied = {}   -- the last opacity written to the rows and the rings, so a full HUD costs no calls
 local Texts = {}     -- by bar: { W = bar widget, List = its text widgets }
-local NextRead, LastTime, LastChat, LastQuest = 0, nil, nil, nil
+local NextRead, LastTime, LastChat, LastQuest, LastHits = 0, nil, nil, nil, nil
 -- the drink rings, by entry name: the game keeps spare drink entries and reuses them, so each one fades on its own
 -- (one watched entry left the shown one unseen, in game 01-10-2026)
 local DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
@@ -47,12 +47,12 @@ end
 
 -- Leaving the world: drop the handles into it, and show everything for a moment in the new one
 function M.Forget()
-    Texts, Applied, RingLevel, RingUntil, RingLast, LastChat, LastQuest = {}, {}, {}, {}, {}, nil, nil
+    Texts, Applied, RingLevel, RingUntil, RingLast, LastChat, LastQuest, LastHits = {}, {}, {}, {}, {}, nil, nil, nil
     DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
     BuffUntil, BuffSeen, BuffLevel, BuffApplied = ByEntry(), ByEntry(), ByEntry(), ByEntry()
     for g in pairs(Level) do Level[g] = 1 end
     local t = os.clock() + SHOW_AT_START
-    Until = { bars = t, buffs = t, menu = t, quest = t }
+    Until = { bars = t, buffs = t, menu = t, quest = t, party = t }
     for i = 1, 3 do RingUntil[i] = t end
 end
 M.Forget()
@@ -90,6 +90,10 @@ local function Read(ctx, now)
     local quest = ctx.QuestSig()
     if quest and LastQuest and quest ~= LastQuest then Until.quest = now + Hold(ctx) end
     LastQuest = quest
+    -- the party panel: a friend whose health went down brings it back for a moment
+    local hits = ctx.PartyHits()
+    if hits and LastHits and hits > LastHits then Until.party = now + Hold(ctx) end
+    LastHits = hits
     for i, b in pairs(ctx.Rings()) do
         local v = b.Value
         if v and (v < LOW or (RingLast[i] and v > RingLast[i] + 0.001)) then RingUntil[i] = now + Hold(ctx) end

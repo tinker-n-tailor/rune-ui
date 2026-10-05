@@ -29,9 +29,15 @@ function M.ById(id)
 end
 
 -- Elements with no widget of their own: they only switch something on or off
-function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" or E.Custom == "questnext" or E.Custom == "slimlevel" end
+function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" or E.Custom == "questnext" or E.Custom == "cdhoriz" or E.Custom == "slimlevel" or E.Custom == "combattext" end
+-- The box of E: width and height swap while the switch named in E.Turn is on (the spell cooldowns, as a row). It
+-- keeps its left edge and its middle height, see ScreenBox.
+function M.Box(E)
+    if E.Turn and M.ById(E.Turn).Visible then return E.Size.Y, E.Size.X end
+    return E.Size.X, E.Size.Y
+end
 -- Elements the mod draws on the viewport, not inside the game's HUD scale box
-function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" or E.Custom == "questtracker" end
+function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" or E.Custom == "questtracker" or E.Custom == "party" end
 
 -- The edge an element follows on a screen of another shape: the third of the screen it sits in,
 -- left, middle or right (and top, middle or bottom). v is where it ends up, size the screen's.
@@ -105,14 +111,16 @@ function M.Pivot(E)
     return hx / M.Hud.W, hy / M.Hud.H
 end
 
--- where E sits on this screen, in viewport units: its box (x, y, width, height)
+-- where E sits on this screen, in viewport units: its box (x, y, width, height). A turned box (Box) keeps the left
+-- edge that its unturned box has: the point it is moved and sized about is the same in both.
 function M.ScreenBox(E)
     local cx, cy = M.FinalCenter(E)
     local sz = E.Scale * (M.OnViewport(E) and 1 or M.Hud.S) * (E.Follows and M.ById(E.Follows).Scale or 1)
-    local w, h = E.Size.X * sz, E.Size.Y * sz
+    local bw, bh = M.Box(E)
+    local w, h = bw * sz, bh * sz
     -- Below: room under the element's own box that belongs to it (the XP row under the bars). Only the frame grows;
     -- the centre, and so every saved layout, stays as it is.
-    return cx - w / 2, cy - h / 2, w, h + (E.Below or 0) * sz
+    return cx - E.Size.X * sz / 2, cy - h / 2, w, h + (E.Below or 0) * sz
 end
 
 -- E's centre and size on a 1920 x 1080 screen, for the F9 readouts; a Follows element is carried by its parent

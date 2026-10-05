@@ -311,7 +311,7 @@ Drinks.COLOURS = {
 local RING_ART = { Back = "upkeep_back.png", Half = "upkeep_half.png", Centre = "upkeep_centre.png" }
 local RingArt = {}
 local function RingTextures(outer)
-    for k, file in pairs(RING_ART) do CachedTex(RingArt, k, outer, "ue4ss/Mods/RuneUI/Art/" .. file) end
+    for k, file in pairs(RING_ART) do CachedTex(RingArt, k, outer, (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/" .. file) end
     return RingArt
 end
 

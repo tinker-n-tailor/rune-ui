@@ -12,7 +12,7 @@ function M.Init(ctx)
     MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
 end
 
-local AVATAR_FILES = { "ue4ss/Mods/RuneUI/avatar.png" }
+local AVATAR_FILES = { (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "avatar.png" }
 
 -- The player's power level, read from the level display of the inventory (it exists while the inventory is
 -- closed too): SizeBox > Border > Overlay > [icon, text].

@@ -64,7 +64,8 @@ end
 -- The F8 settings (1.1). Map: off means the mod does not build the map at all, which hiding it in F9 still does
 -- (playtest, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
 -- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
--- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua).
+-- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua). Name: the
+-- name the game prints beside your own marker, on this map and the big map (mapname.lua hides it while off).
 -- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
 -- in main.lua's settings file: Store is its [map] section, Save writes the file (Attach, called once at start).
 -- Immersive: what stays while the immersive mode is on: "Nothing", "Map" or "Compass" (settings.lua STAY; main.lua
@@ -72,8 +73,8 @@ end
 -- immersive mode hid the map since 1.2, and a player could not get it back ("map can't be activated in immersive
 -- mode", 03-10-2026). A lighter look of the map for that mode was tried and dropped: two looks of one map.
 -- neutral creatures start hidden: they take room on the map (29-09-2026)
-local SETTING_START = { Map = true, North = false, Mark = true, Smooth = false, Neutral = false, Ore = true, Herbs = true,
-    Essence = true, Trees = true, Immersive = "Nothing" }
+local SETTING_START = { Map = true, North = false, Mark = true, Name = true, Smooth = false, Neutral = false, Ore = true,
+    Herbs = true, Essence = true, Trees = true, Immersive = "Nothing" }
 M.Set = {}
 for k, v in pairs(SETTING_START) do M.Set[k] = v end
 M.Store, M.Save = {}, function() end
@@ -138,7 +139,7 @@ end
 -- Pictures drawn by tools/make-runemap-art.js: the day band, the time arrow, the north arrow and the diamonds. Smooth, where
 -- rings of small pieces came out jagged (in-game test, 27-09-2026). The band assumes the game's night
 -- start of 0.795. The pictures ship with the mod; a missing one is logged and left out.
-local ART_DIR = "ue4ss/Mods/RuneUI/Art/"
+local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local ART_NIGHT_START = 0.795
 -- The time arrow (1.5, sizes picked live in the game on 02-10-2026): 13 x 19 units seen, between the two gold rings
 -- and a little over both; a smaller one that stayed inside the band was "super tiny". It points out.
