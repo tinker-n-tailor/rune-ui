@@ -1,5 +1,4 @@
 _archive/
-.claude/
 node_modules/
 package-lock.json
 *.zip
