@@ -1,16 +1,14 @@
--- Rune XP (1.6; made live in the game with Ivan, 03-10-2026): the XP under the bars, in place of the game's circle.
--- The gold line under the bars (bars.lua) becomes the XP bar: while an XP notice shows, the line is thick, dim, and a
--- bright fill sweeps in from its left end to the progress of the skill's level. Under the line: the skill's own
+-- Rune XP: the XP under the bars, in place of the game's circle.
+-- The gold line under the bars (bars.lua) becomes the XP bar: while an XP notice shows, the line is thick and dim,
+-- and a bright fill sweeps in from its left end to the progress of the skill's level. Under the line: the skill's
 -- icon, its name in white and the XP in gold. Then all of it fades, and the plain line is back.
 -- The game's notices (probe 7, 03-10-2026): WBP_Notifications_ExperienceProgressContainer_C (main.lua's "xp") holds
 -- a grid of slots, each with one WBP_ExperienceProgress_Item_C. The item on show is not collapsed. In it: SkillIcon
 -- (T_Notification_Skill_<skill>), XP_Text ("+ 13 XP") and Ring_Fill, whose material has the progress as "FillBar".
--- The game animates the opacity of each item, so its circles are made unseen by the grid's size, 0, and not by an
+-- The game animates the opacity of each item, so its circles are hidden by the grid's size, 0, and not by an
 -- opacity. Our parts live in the bars widget, so they move and size with the bars.
--- Two skills in the same instant (the game shows two circles): one after the other, TURN seconds each, and round again
--- while the game shows them.
--- The skill's name comes from the name of its icon, so it is English in every language of the game: the game's notice
--- has no name to copy.
+-- With two skills at the same instant the game shows two circles. Ours show one after the other, TURN seconds each.
+-- The skill's name comes from the name of its icon, so it is English in every language: the game's notice has no name.
 -- "Rune XP" in F9 turns it off: the game's circle is back. main.lua loads this file with pcall.
 
 local M = {}
@@ -26,14 +24,13 @@ local EVERY = 0.15    -- seconds between two looks at the game's notices
 local TURN = 1.5      -- seconds one skill shows while the game shows more than one
 local GOLD = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 }   -- the pick-up count's gold
 local WHITE = { R = 1, G = 1, B = 1, A = 1 }
--- A level up is bigger than an XP notice (in game, 04-10-2026: at the XP row's size nobody saw it). The line and the
--- row grow from their left end, and the line under the fill is bright. One soft motion (M.SizeNow, M.LevelFade): it
--- grows in from BIG + POP to BIG with an ease-out curve (fast at first, slow into its rest) while it fades in. The pop
--- is short, and the row keeps its size while it fades out: letters that change size slowly snap from pixel to pixel
--- and look jagged (live preview with Ivan, 04-10-2026).
+-- A level up is bigger than an XP notice: at the XP row's size nobody saw it (in game, 04-10-2026). The line and the
+-- row grow from their left end, and the line under the fill is bright. One soft motion (M.SizeNow, M.LevelFade): the
+-- size eases out from BIG + POP to BIG (fast at first, slow into its rest) while the row fades in. The row keeps its
+-- size while it fades out: letters that change size slowly snap from pixel to pixel and look jagged.
 -- A level up mostly comes over an XP notice that is on show, and an XP notice mostly takes the row back after it.
--- There the size never jumps: it goes from the size it has to the new one in RESIZE seconds, soft at both ends, and
--- the line under the fill gets bright and dim with it (in game, 04-10-2026: it got bigger and went back too sharply).
+-- There the size goes from the size it has to the new one in RESIZE seconds, soft at both ends, and the line under
+-- the fill gets bright and dim with it.
 local BIG, POP, POP_TIME = 1.6, 0.3, 0.3
 local FADE_IN = 0.22                 -- seconds for a level up to come in
 local RESIZE = 0.4                   -- seconds for a row on show to change size
@@ -85,8 +82,8 @@ function M.SkillName(texture)
     return string.upper((string.gsub(name, "_", " ")))
 end
 
--- Slim level up (1.7): the game's level up notice is on show while its own render opacity is above zero (probes of
--- 04-10-2026: 0.00 idle, up to 1.00 for about 3 s, fading, 0.00 again; about 5 s in all).
+-- The game's level up notice is on show while its own render opacity is above zero (probes of 04-10-2026: 0.00 idle,
+-- up to 1.00 for about 3 s, fading, 0.00 again; about 5 s in all).
 local SHOWN = 0.02
 function M.LevelShown(opacity) return type(opacity) == "number" and opacity > SHOWN end
 -- In a fresh world the notice sits at opacity 1.00 with the designer's sample in it (Attack, level 6; probe L3,
@@ -94,16 +91,16 @@ function M.LevelShown(opacity) return type(opacity) == "number" and opacity > SH
 -- notice starts from 0.
 local FULL = 0.98
 function M.LevelArmed(armed, opacity) return armed or (type(opacity) == "number" and opacity < FULL) end
--- That is not enough after a way out to the menu and back into the world (in game, 04-10-2026: "ATTACK Level 6" stayed
--- on the row). The sample's icon is an XP notice's picture, T_Notification_Skill_Attack; a real level up has the
--- skill's tag, T_Icon_Tag_Skill_<skill> (probes L4 and L5). Only that one is shown.
+-- That is not enough after a way out to the menu and back into the world: the sample ("ATTACK Level 6") can show on the
+-- row again (04-10-2026). The sample's icon is an XP notice's picture, T_Notification_Skill_Attack; a real level up has
+-- the skill's tag, T_Icon_Tag_Skill_<skill> (probes L4 and L5). Only that one is shown.
 function M.LevelIcon(texture) return string.find(texture or "", "^T_Icon_Tag_Skill_") ~= nil end
 
 local function Clamp01(x) return math.max(0, math.min(1, x)) end
 local function Smooth(x) x = Clamp01(x) return x * x * (3 - 2 * x) end   -- soft at both ends
 
 -- The size of the row: it goes from S.SizeFrom to S.SizeTo, from S.SizeAt. The pop (S.SizePop) is fast at first and
--- has no visible stop (a cubic ease-out); a row on show changes size soft at both ends. No move yet: the plain size, 1.
+-- has no visible stop (a cubic ease-out); a row on show changes size soft at both ends. Without a move the size is 1.
 local function SizeTime(S) return S.SizePop and POP_TIME or RESIZE end
 function M.SizeNow(S, now)
     if not S.SizeTo then return 1 end
@@ -192,8 +189,8 @@ local function Text(ctx, tree, name, color)
     return T
 end
 
--- The fill's box is centred like the line's; half the missing width puts its left end on the line's left end
--- (the whole of it put the fill at the screen's edge: in game, 03-10-2026).
+-- The fill's box is centred like the line's; half the missing width puts its left end on the line's left end.
+-- The whole missing width put the fill at the screen's edge (03-10-2026).
 local function Place(slot, width, bottom)
     slot:SetPadding({ Left = 0, Top = 0, Right = RIGHT + (WIDTH - width) / 2, Bottom = bottom })
 end
@@ -221,7 +218,6 @@ local function Build(ctx, bars, host)
     local w = { Host = host }
     w.Track = Line("Track", WIDTH)
     w.Fill, w.FillSlot = Line("Fill", 1)
-    -- the row under the line: the icon, the skill, the XP
     local line = New(ctx, "HorizontalBox", tree, "RU_XpLine")
     local ibox = New(ctx, "SizeBox", tree, "RU_XpIconBox")
     ibox:SetWidthOverride(ROW)
@@ -237,7 +233,7 @@ local function Build(ctx, bars, host)
     local s3 = line:AddChildToHorizontalBox(w.Gain)
     s3:SetVerticalAlignment(2)
     s3:SetPadding({ Left = 8, Top = 0, Right = 0, Bottom = 0 })
-    -- the row holds the line and, at its right end, "Level N" (a level up only); the box fills the line's place as before
+    -- the row holds the line and, at its right end, "Level N" (a level up only)
     local ov = New(ctx, "Overlay", tree, "RU_XpRowOv")
     local ls = ov:AddChildToOverlay(line)
     ls:SetHorizontalAlignment(0)
@@ -305,6 +301,21 @@ local function Progress(ring)
     return v
 end
 
+-- Our row shows a notice: the icon, the skill's name, the gain and the level. Written only when the key is another one.
+local function Show(key, tex, name, gain, level)
+    if key == W.Key then return end
+    W.Key = key
+    if Ok(tex) then
+        W.Icon:SetBrushFromTexture(tex, false)
+        local b = W.Icon.Brush
+        b.ImageSize = { X = ROW, Y = ROW }
+        W.Icon:SetBrush(b)
+    end
+    W.Name:SetText(FText(name))
+    W.Gain:SetText(FText(gain))
+    W.Level:SetText(FText(level))
+end
+
 -- The notices on show; the one whose turn it is goes into the state and into our row.
 local function Read(q, now)
     local shown = {}
@@ -321,34 +332,23 @@ local function Read(q, now)
     local tname = Ok(tex) and Nm(tex) or ""
     local pct = Progress(P.Ring)
     if not pct then return end   -- the game has not set the ring yet: the next look has it
-    local key = tname .. txt
-    if key ~= W.Key then
-        W.Key = key
-        if Ok(tex) then
-            W.Icon:SetBrushFromTexture(tex, false)
-            local b = W.Icon.Brush
-            b.ImageSize = { X = ROW, Y = ROW }
-            W.Icon:SetBrush(b)
-        end
-        W.Name:SetText(FText(M.SkillName(tname)))
-        W.Gain:SetText(FText((string.gsub(txt, "^%+%s+", "+"))))
-        W.Level:SetText(FText(""))
-    end
+    Show(tname .. txt, tex, M.SkillName(tname), (string.gsub(txt, "^%+%s+", "+")), "")
     M.LevelOut(S, now)   -- an XP notice has the row: a level up before it is over
     M.Take(S, tname, pct)
 end
 
----------------------------------------------------------------- the slim level up (1.7)
+---------------------------------------------------------------- the slim level up
 -- The game's level up notice, WBP_LevelUpNotification_C (probes L1 and L2, 04-10-2026): one live widget per world in
 -- the notification queue, always visible; the game shows it by its own render opacity (M.LevelShown). Its named parts:
 -- LevelTextBlock (the number), SkillIconImage (the skill's texture, T_Icon_Tag_Skill_<skill>), LevelUpOverlay,
--- IconOverlay, the three LevelUpTextBackground pictures, InputEntryWidget (the game's own key hint, a picture) and two Niagara widgets, the
--- sparks (NS_UI_LevelUpUpper, NS_UI_LevelUpLower). The level text and the icon keep the last level up while idle, so they are read only while it is on show.
+-- IconOverlay, the three LevelUpTextBackground pictures, InputEntryWidget (the game's own key hint, a picture) and two
+-- Niagara widgets, the sparks (NS_UI_LevelUpUpper, NS_UI_LevelUpLower). The level text and the icon keep the last
+-- level up while idle, so they are read only while it is on show.
 -- Hidden: the banner's parts, by render scale 0, as the XP circles are (the game animates opacity). The root's
--- render opacity is never written here: it is the signal that the notice is on show, and main.lua's ApplyOne writes it
+-- render opacity is never written here: it is the signal that the notice is on show, and apply.lua's ApplyOne writes it
 -- only for a hidden element or while the editor is open (this part is off in both). The sparks are hidden too: alone
--- they were two gold lines in the middle of the screen (in game, 04-10-2026). A spark effect draws inside a part at
--- scale 0, and also inside a box at opacity 0 (both seen in game), so each one is collapsed: then it is not drawn.
+-- they were two gold lines in the middle of the screen. A spark effect draws inside a part at scale 0, and also
+-- inside a box at opacity 0 (both seen in game, 04-10-2026), so each one is collapsed: then it is not drawn.
 -- The sound stays as the game makes it; no function of the game's widget is called.
 local PARTS = { "LevelUpOverlay", "IconOverlay", "LevelUpTextBackground", "LevelUpTextBackgroundFrame",
     "LevelUpTextBackgroundShadow", "InputEntryWidget", "LevelTextBlock", "SkillIconImage" }
@@ -420,17 +420,7 @@ local function Level(ctx, wanted, now)
 end
 
 local function ShowLevel(info)
-    local key = "level:" .. info.Skill .. info.Label
-    if key ~= W.Key then
-        W.Key = key
-        W.Icon:SetBrushFromTexture(info.Tex, false)
-        local b = W.Icon.Brush
-        b.ImageSize = { X = ROW, Y = ROW }
-        W.Icon:SetBrush(b)
-        W.Name:SetText(FText(M.SkillName(info.Skill)))
-        W.Gain:SetText(FText(""))
-        W.Level:SetText(FText(info.Label))
-    end
+    Show("level:" .. info.Skill .. info.Label, info.Tex, M.SkillName(info.Skill), "", info.Label)
     M.Take(S, "level:" .. info.Skill, 1)
 end
 
@@ -516,7 +506,6 @@ local function Look(ctx, on, now)
     else M.Rest(S) end
 end
 
--- One drawing step: the fade, the fill and the size.
 local function Paint(ctx, now)
     local dt = math.min(0.1, now - (M.Last or now))
     M.Last = now
@@ -539,15 +528,14 @@ local function Paint(ctx, now)
     Draw(ctx, fade or sized, fill)
 end
 
--- A level up changes size, and at the 16 steps a second of the mod that is not smooth (in game, 04-10-2026). While
+-- A level up changes size, and the 16 steps a second of the mod are not smooth for that (in game, 04-10-2026). While
 -- the size changes and while a level up goes out, it is also painted about every frame, by a chain of delayed calls
 -- (chain.lua).
 local FAST = 8   -- ms between two calls of the chain
 local Chain = {}
-local function Step(ctx, t) Paint(ctx, t) end
 local function Moving(_, t) return W ~= nil and M.Moving(S, t) end
 local function Fast(ctx)
-    if ctx.Chain then ctx.Chain.Run(Chain, ctx, FAST, Step, Moving) end
+    if ctx.Chain then ctx.Chain.Run(Chain, ctx, FAST, Paint, Moving) end
 end
 
 function M.Tick(ctx)

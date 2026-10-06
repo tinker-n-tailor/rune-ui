@@ -1,7 +1,6 @@
--- The menu buttons (chat, map, spell book, building, bag) in the ring style of food, water and rest (design sketch
--- A, playtest 29-09-2026): the gold rim and dark centre of survival.lua's ring, the game's own icon in cream on top, and
--- the key in a small dark box under it. The bag's ring fills with the bag's weight, gold, red past 90%.
--- The row is the game's (HorizontalBox_436 in the input legend's world page); main.lua moves it as "menubtn".
+-- The menu buttons (chat, map, spell book, building, bag) in the ring style of food, water and rest: the gold rim and
+-- dark centre of survival.lua's ring, the game's own icon in cream on top, and the key in a small dark box under it. The bag's ring fills with the bag's weight, gold, red past 90%.
+-- The row is the game's (HorizontalBox_436 in the input legend's world page); apply.lua moves it as "menubtn".
 -- What each button holds (widget dump, 29-09-2026): Overlay_371 with the grey circle (BackgroundImage) and the
 -- icon (ContextualImage); the bag adds its weight ring (EncumbranceRadialImage, a material with FillBar 0..1),
 -- the ring's track and a weight icon; the key is drawn by ContextualInput under it.
@@ -11,7 +10,7 @@ local M = {}
 
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING = 64      -- the button's box is 75 units; the game's grey circle fills about 64 of it
-local ICON = 62      -- the game's icon picture, with wide empty edges; 75 (the whole box) overlapped the rim (in game 29-09-2026)
+local ICON = 62      -- the game's icon picture has wide empty edges; 75 (the whole box) overlapped the rim (in game 29-09-2026)
 local GAME_PARTS = { BackgroundImage = true, EncumbranceBackgroundImage = true, EncumbranceRadialImage = true }
 local ICON_PARTS = { ContextualImage = true, WeightImage = true }   -- copied in cream on top of our ring
 local KEYS = { InputLegend_Contextual_OpenChat = "Enter", InputLegend_Contextual_MapQuest = "M",
@@ -23,7 +22,7 @@ local function Lin(r, g, b) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = 
 local CREAM = Lin(0.945, 0.902, 0.784)                 -- #f1e6c8, the survival icons' tint
 local GOLD = { R = 0.95, G = 0.77, B = 0.38, A = 1.0 } -- the game's own weight ring colour (dump)
 local RED = Lin(0.85, 0.22, 0.16)
-local WHITE = { R = 1, G = 1, B = 1, A = 1 }             -- the key letters (playtest, 01-10-2026: white with a shadow)
+local WHITE = { R = 1, G = 1, B = 1, A = 1 }             -- the key letters
 
 local function Obj(path) return StaticFindObject(path) end
 local function New(cls, outer, name) return StaticConstructObject(Obj("/Script/UMG." .. cls), outer, FName(name)) end
@@ -37,16 +36,7 @@ local function LoadArt(ctx, outer, name)
     Once(ctx, "art" .. name, "menu buttons: picture not loaded: " .. name .. " " .. tostring(tex))
 end
 
-local function Picture(tree, name, tex, size)
-    local img = New("Image", tree, name)
-    img:SetBrushFromTexture(tex, false)
-    local b = img.Brush
-    b.ImageSize = { X = size, Y = size }
-    img:SetBrush(b)
-    return img
-end
-
-local Built = {}   -- one per button: { Name, Right, Left (the ring's halves), Fill (the bag's material) }
+local Built = {}   -- one per button: { Right, Left (the ring's halves), Fill (the bag's material) }
 M.Host, M.Builds, M.Chat = nil, 0, nil
 
 -- the key's name from the game's key widget, else the default key
@@ -62,6 +52,7 @@ local function Decorate(ctx, row)
     M.Builds = M.Builds + 1
     local tag = "RU_Mb" .. M.Builds .. "_" .. os.time()   -- a new name each build (see survival.lua)
     Built = {}
+    local Picture, Sized, Add = ctx.Survival.Picture, ctx.Survival.Sized, ctx.Survival.Add
     for i = 0, row:GetChildrenCount() - 1 do
         local entry = row:GetChildAt(i)
         local ename = entry:GetFName():ToString()
@@ -75,12 +66,8 @@ local function Decorate(ctx, row)
             local cap = LoadArt(ctx, tree, "keycap.png")
             if not (art.Back and art.Half and art.Centre and cap) then error("pictures missing") end
             -- ours from an earlier round first (a player restart keeps the game's widgets)
-            for _, panel in ipairs({ ov, outer }) do
-                for c = panel:GetChildrenCount() - 1, 0, -1 do
-                    local w = panel:GetChildAt(c)
-                    if string.find(w:GetFName():ToString(), "RU_Mb", 1, true) == 1 then w:RemoveFromParent() end
-                end
-            end
+            ctx.ClearOurs(ov, "RU_Mb")
+            ctx.ClearOurs(outer, "RU_Mb")
             local n = tag .. "_" .. i
             local stack, rImg, lImg = ctx.Ring(tree, n, RING, art, GOLD)
             -- the game's icons, copied in cream; the game's circle, ring and icons stay alive but unseen
@@ -96,18 +83,8 @@ local function Decorate(ctx, row)
                 end
                 if GAME_PARTS[wn] or ICON_PARTS[wn] then w:SetRenderOpacity(0.0) end
             end
-            local box = New("SizeBox", tree, n)
-            box:SetWidthOverride(RING)
-            box:SetHeightOverride(RING)
-            box:SetContent(stack)
-            local s = ov:AddChildToOverlay(box)
-            s:SetHorizontalAlignment(2)
-            s:SetVerticalAlignment(2)
-            for _, pic in ipairs(icons) do
-                local si = ov:AddChildToOverlay(pic)
-                si:SetHorizontalAlignment(2)
-                si:SetVerticalAlignment(2)
-            end
+            Add(ov, Sized(tree, n, RING, RING, stack), 2, 2)
+            for _, pic in ipairs(icons) do Add(ov, pic, 2, 2) end
             -- the key: the game's key box unseen, ours at the bottom of the button (Tick swaps the two for a gamepad)
             local gameKey
             pcall(function() gameKey = ctx.Find(entry, "ScaleBox_0") gameKey:SetRenderOpacity(0.0) end)
@@ -118,16 +95,12 @@ local function Decorate(ctx, row)
             b.Margin = { Left = 0.5, Top = 0.5, Right = 0.5, Bottom = 0.5 }
             b.ImageSize = { X = 8, Y = 8 }
             border:SetBrush(b)
-            border:SetPadding({ Left = 8, Top = 3, Right = 8, Bottom = 3 })   -- roomier, smaller text (playtest, 29-09-2026)
+            border:SetPadding({ Left = 8, Top = 3, Right = 8, Bottom = 3 })
             border:SetContent(ctx.Text(tree, n .. "KeyText", 9, WHITE, KeyName(ctx, entry)))
-            local ks = outer:AddChildToOverlay(border)
-            ks:SetHorizontalAlignment(2)
-            ks:SetVerticalAlignment(3)   -- bottom
-            ks:SetPadding({ Left = 0, Top = 0, Right = 0, Bottom = 6 })
+            Add(outer, border, 2, 3, { Left = 0, Top = 0, Right = 0, Bottom = 6 })   -- bottom
             local fill
             pcall(function() fill = ctx.Find(entry, "EncumbranceRadialImage").Brush.ResourceObject end)
-            Built[#Built + 1] = { Name = ename, Right = rImg, Left = lImg, Fill = fill, Value = nil, Red = nil,
-                GameKey = gameKey, Key = border }
+            Built[#Built + 1] = { Right = rImg, Left = lImg, Fill = fill, GameKey = gameKey, Key = border }
         end)
         if not ok then ctx.Log("menu buttons: " .. ename .. " failed: " .. tostring(err)) end
     end
@@ -171,7 +144,7 @@ function M.Tick(ctx)
     local E = ctx.ById("menubtn")
     local row = E.Instances[1]
     if not (row and row:IsValid()) then return end
-    local name = E.Keys[1]   -- its full name, read by main.lua's search
+    local name = E.Keys[1]   -- its full name, read by finder.lua's search
     local function Alive()
         for _, b in ipairs(Built) do if b.Right and b.Right:IsValid() then return true end end
         return false
@@ -182,8 +155,8 @@ function M.Tick(ctx)
         Decorate(ctx, row)
         M.Tried = not Alive()
     end
-    -- With a gamepad our key box holds a keyboard key, so the game's own key box shows: it draws the gamepad's
-    -- button (play test, 03-10-2026: the boxes said Enter, M, Q, B and Tab with a gamepad in hand).
+    -- With a gamepad our key box would hold a keyboard key (Enter, M, Q, B, Tab, seen on 03-10-2026), so the game's own
+    -- key box shows: it draws the gamepad's button.
     local okPad, pad = pcall(ctx.Pad)
     pad = okPad and pad or false
     if pad ~= M.Pad then

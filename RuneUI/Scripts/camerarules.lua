@@ -1,14 +1,15 @@
--- The immersive camera (1.8): its settings, its rules and its panel (F6). Pure Lua, no game calls, so
+-- The immersive camera: its settings, its rules and its panel (F6). Pure Lua, no game calls, so
 -- tools/test-camera.js runs it without the game. camera.lua reads the game and writes what Step gives back;
 -- crosshair.lua asks HideCrosshair; main.lua draws the panel from View and saves through Attach.
 -- The camera works only while the immersive mode is on: its line in F9, the switch, not the moment the HUD is faded
 -- (the fade comes and goes with every hit, and the camera would jump with it). Out of it, the game's camera.
--- Ivan's picks from the live preview (04-10-2026 and 05-10-2026): walking close with the character on the left, a
--- sprint far (the game moves the camera in and out of a sprint itself), and a fight's distance held a while after it ends
--- (the game's combat switch drops the moment the enemy dies). His rule after the play test (05-10-2026): the walk distance with any weapon, tool or
--- empty hands; only a fight changes it, closer with a melee weapon, farther while a staff, a wand or a bow aims or casts.
+-- The views: walking close with the character on the left, a sprint far (the game moves the camera in and out of a
+-- sprint itself), and a fight's distance held a while after it ends (the game's combat switch drops the moment the
+-- enemy dies). The walk distance holds with a tool, empty hands or a weapon out of a fight; a fight changes it, closer
+-- with a melee weapon, farther while a ranged weapon aims or casts. A staff is the exception: the game shows the magic
+-- reticle all the time a staff is in the hand, so a staff in the hand gives the ranged view (seen in the game, 06-10-2026).
 -- Every distance is set at once: the game blends the camera to a new distance of the walking profile by itself, in
--- about 0.5 to 0.7 s (Ivan's play test, 05-10-2026). The mod's own glide looked choppy beside it and is gone.
+-- about 0.5 to 0.7 s (seen in the game, 05-10-2026).
 local M = {}
 
 -- the rows of the panel, of Mod Menu (camera_<Key>) and of the [camera] section of runeui.txt, in this order.
@@ -21,7 +22,7 @@ M.ROWS = {
     { Key = "melee", Label = "Melee zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 200 },
     { Key = "ranged", Label = "Ranged zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 500 },
     { Key = "hold", Label = "Hold after a fight", Kind = "number", Min = 0, Max = 30, Step = 1, Unit = "s", Default = 8 },
-    -- "Aim only" was "Hide" in the 1.9 test builds: an old file or Mod Menu value reads as "Aim only" (Old)
+    -- "Aim only" was "Hide" in older files: an old file or Mod Menu value reads as "Aim only" (Old)
     { Key = "crosshair", Label = "Crosshair in immersive mode", Kind = "choice", Options = { "Show", "Aim only" }, Default = "Show",
         Old = { hide = "Aim only" } },
 }
@@ -64,7 +65,7 @@ function M.Attach(store, save)
 end
 
 -- the settings into the section, as the file writes them: a switch as 1 and 0, a choice as its word. A line of a row
--- that is gone (zoomease and returnease of the 1.9 test builds) leaves the file at the next save.
+-- that is gone (zoomease and returnease of older files) leaves the file at the next save.
 function M.Write(store)
     for k in pairs(store) do if not BY_KEY[k] then store[k] = nil end end
     for _, r in ipairs(M.ROWS) do
@@ -130,7 +131,7 @@ end
 
 -- Whether a fight is on, for the kind of weapon in the hands. A tool or empty hands never fight. A melee weapon fights
 -- while the combat switch (s.Combat) is on. A ranged weapon fights while it aims or casts (s.Aiming, the reticle) or
--- while the combat switch is on: the switch never went on with a staff or a bow in the play tests of 05-10-2026.
+-- while the combat switch is on: the switch never went on with a staff or a bow (seen in the game, 05-10-2026).
 local function Fighting(kind, s)
     if kind == "melee" then return s.Combat == true end
     if kind == "ranged" then return s.Aiming == true or s.Combat == true end
@@ -145,8 +146,7 @@ local MIN_DISTANCE, MAX_DISTANCE = BY_KEY.walk.Min, BY_KEY.walk.Max
 -- s: Immersive (the switch), Combat (the combat switch), Aiming (an aim reticle shows), Right, Left (class names).
 -- now: seconds. Gives back Active false (the game's camera: every value goes back), or Active with Walk (the walking
 -- profile's distance, set at once: the game blends the camera there), Sprint (the sprinting profile's), Side (both
--- profiles' side offset), Lock (the lock-on camera's distance: the view the player is in, so the lock-on does not
--- jump), View ("walk", "melee", "ranged") and Kind (what is in the hands, as Classify).
+-- profiles' side offset), View ("walk", "melee", "ranged") and Kind (what is in the hands, as Classify).
 function M.Step(mem, s, now)
     local set, out = M.Set, mem.Out
     if not (set.on and s.Immersive) then
@@ -162,7 +162,7 @@ function M.Step(mem, s, now)
     if fight then view = kind
     elseif now < mem.FightUntil then view = mem.FightView end
     local target = math.max(MIN_DISTANCE, math.min(MAX_DISTANCE, set[view]))
-    out.Active, out.Walk, out.Sprint, out.Side, out.Lock, out.View, out.Kind = true, target, set.sprint, set.side, target, view, kind
+    out.Active, out.Walk, out.Sprint, out.Side, out.View, out.Kind = true, target, set.sprint, set.side, view, kind
     return out
 end
 
@@ -184,7 +184,7 @@ local HINTS = {
     side = "How far right the camera sits, so you stand on the left. 0 is the middle.",
     sprint = "How far the camera goes out in a sprint. The game brings it back after you stop.",
     melee = "The distance in a fight with a melee weapon.",
-    ranged = "The distance while you aim a bow or cast a staff. It holds for a few seconds.",
+    ranged = "The distance while you aim a bow or hold a staff. It holds for a few seconds.",
     hold = "How long the zoom stays after a fight or an aim. Then the camera goes back.",
 }
 -- keys: main.lua's key names (editor, camera); immersive: the immersive mode's switch
@@ -196,7 +196,7 @@ function M.Hint(i, keys, immersive)
         return "On while the immersive mode is on. Out of it, the game's camera is back."
     end
     if r.Key == "crosshair" then
-        if M.Set.crosshair == "Aim only" then return "No crosshair dot, except while you aim a bow or cast a staff." end
+        if M.Set.crosshair == "Aim only" then return "No crosshair dot, except while you aim a bow or hold a staff." end
         return "The game's crosshair, as always."
     end
     return HINTS[r.Key]

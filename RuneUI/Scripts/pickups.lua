@@ -1,23 +1,22 @@
--- The item pick-ups (1.5; picked live in the game, 02-10-2026): the rows of the list at the right edge in the
--- HUD's look. The game's row is a dark band with a gold line above and below, in the game's title font, the count
--- in red; four rows were a ladder of eight lines. Now: no band, the HUD font, the letters' shadow (letters.lua),
--- the count in gold.
--- A row (probe 21, 02-10-2026), WBP_ItemPickups_Item_C: SizeBox > Overlay > [SizeBox > the "new item" sparks,
+-- The item pick-ups: the rows of the list at the right edge in the HUD's look. The game's row is a dark band with
+-- a gold line above and below, in the game's title font, the count in red. Here: no band, the HUD font, the
+-- letters' shadow (letters.lua), the count in gold.
+-- A row (probe of 02-10-2026), WBP_ItemPickups_Item_C: SizeBox > Overlay > [SizeBox > the "new item" sparks,
 -- CommonLazyImage (the band), Overlay > [the icon, its highlight, InventoryCount], VerticalBox > [HorizontalBox >
 -- [ItemText, Spacer, ItemCountText], NewItemText]]. The texts are WBP_DomTextBlock_C.
 -- The game keeps a few rows and uses them again, so a row is styled once, by its full name. The count's colour is
 -- looked at on every step: the game may write its red again.
--- A new item (playtest, 02-10-2026): its row matches the others. The sparks' box is unseen (render opacity 0, as the
--- band: the game starts the sparks by code). "NEW MATERIAL !" gets a little room under the name. The game's animation for a new
--- item (InAnimationNewMaterial) tints that word near black for 2.4 s, then light (the game's files): its colour keys
--- all get the last one, once, in the animation itself (probe 54), so the word is light from the start. Its alpha keys
+-- A new item: its row matches the others. The sparks' box is unseen (render opacity 0, as the band: the game starts
+-- the sparks by code). "NEW MATERIAL !" gets a little room under the name. The game's animation for a new item
+-- (InAnimationNewMaterial) tints that word near black for 2.4 s, then light (the game's files). Its colour keys all
+-- get the last one, once, in the animation itself (probe 54), so the word is light from the start. Its alpha keys
 -- too: the word does not fade in late and does not blink.
 -- main.lua moves the list as "pickups" and loads this file with pcall, so an error here leaves the rest running.
 
 local M = {}
 
 local OFFSET, SHADE = { X = 1.5, Y = 1.5 }, { R = 0, G = 0, B = 0, A = 0.85 }   -- as letters.lua
-local GOLD = { R = 1.0, G = 0.638, B = 0.168 }   -- the sketch's #ffd173, as linear light
+local GOLD = { R = 1.0, G = 0.638, B = 0.168 }   -- #ffd173, as linear light
 local EVERY = 0.5   -- seconds between two looks
 local GAP = 3       -- units of room above "NEW MATERIAL !"
 local NEWCOLOUR = "/Game/UI/Notifications/ItemPickups/WBP_ItemPickups_Item.WBP_ItemPickups_Item_C:InAnimationNewMaterial_INST"

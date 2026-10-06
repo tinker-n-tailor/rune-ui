@@ -14,7 +14,7 @@
 local M = {}
 
 M.Elements = {}
--- The screen in units (1.2, wide screens). The viewport is its pixels over the DPI scale, which follows the short
+-- The screen in units. The viewport is its pixels over the DPI scale, which follows the short
 -- side: 2560x1440 and 2560x1080 are both 1080 units high, 1920 and 2560 wide. The HUD sits in a scale box set by
 -- the game's HUD scale, so the HUD is the viewport over that scale. RuneMap is on the viewport.
 -- W, H: the HUD. VW, VH: the viewport. S: the HUD scale. 1920x1080 until main.lua reads the screen.
@@ -29,7 +29,9 @@ function M.ById(id)
 end
 
 -- Elements with no widget of their own: they only switch something on or off
-function M.IsSwitch(E) return E.Custom == "creatures" or E.Custom == "baricons" or E.Custom == "immersive" or E.Custom == "aim" or E.Custom == "runexp" or E.Custom == "questnext" or E.Custom == "cdhoriz" or E.Custom == "slimlevel" or E.Custom == "combattext" end
+local SWITCH = { creatures = true, baricons = true, immersive = true, aim = true, runexp = true, questnext = true, cdhoriz = true,
+    slimlevel = true, combattext = true }
+function M.IsSwitch(E) return SWITCH[E.Custom] == true end
 -- The box of E: width and height swap while the switch named in E.Turn is on (the spell cooldowns, as a row). It
 -- keeps its left edge and its middle height, see ScreenBox.
 function M.Box(E)
@@ -37,7 +39,8 @@ function M.Box(E)
     return E.Size.X, E.Size.Y
 end
 -- Elements the mod draws on the viewport, not inside the game's HUD scale box
-function M.OnViewport(E) return E.Custom == "map" or E.Custom == "creatures" or E.Custom == "cooldowns" or E.Custom == "clock" or E.Custom == "questtracker" or E.Custom == "party" end
+local VIEWPORT = { map = true, creatures = true, cooldowns = true, questtracker = true, party = true }
+function M.OnViewport(E) return VIEWPORT[E.Custom] == true end
 
 -- The edge an element follows on a screen of another shape: the third of the screen it sits in,
 -- left, middle or right (and top, middle or bottom). v is where it ends up, size the screen's.

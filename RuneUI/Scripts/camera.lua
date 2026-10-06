@@ -1,12 +1,11 @@
--- The immersive camera (1.8): reads what the player does and writes the camera's distance and side. The rules and
+-- The immersive camera: reads what the player does and writes the camera's distance and side. The rules and
 -- the settings are in camerarules.lua (ctx.Rules); this file only talks to the game.
--- What the live game showed (05-10-2026): a write to the player's own camera arm is undone every frame, but the camera
--- follows the profile data assets, so the walking and the sprinting profile are written. The assets are shared in
+-- A write to the player's own camera arm is undone every frame, but the camera
+-- follows the profile data assets, so the walking and the sprinting profile are written (probe of 05-10-2026). The assets are shared in
 -- memory and nothing goes to disk: the game's values are kept and put back when the camera goes off, when the immersive
--- mode goes off and on a new world. The lock-on view is its own actor with its own arm, and a write there stays.
+-- mode goes off and on a new world. The lock-on view is its own camera and stays the game's.
 -- A new distance is written once, as it is: the game blends the camera to it by itself in about 0.5 to 0.7 s, as it does
--- between its own profiles (Ivan's play test, 05-10-2026). The mod's own glide, a spring written on every frame, looked
--- choppy beside that and is gone.
+-- between its own profiles (seen in the game, 05-10-2026). A write on every frame looks choppy beside that.
 -- The signals: the combat switch, the actors in the hands, and the HUD reticle (a bow's aim or a staff's cast: the
 -- combat switch never went on with those). Fishing, swimming and the rest keep the game's own profiles. The sprint is
 -- the game's own: its sprinting profile has the configured sprint distance, and the game moves the camera in and out of
@@ -17,19 +16,18 @@ local M = {}
 
 local WALK = "/Game/Gameplay/Character/Data/DA_DefaultLocomotionCameraProfile.DA_DefaultLocomotionCameraProfile"
 local SPRINT = "/Game/Gameplay/Character/Data/DA_OnFootSprintingCameraProfile.DA_OnFootSprintingCameraProfile"
-local CLASSES = { Combat = "/Script/Dominion.PlayerCombatModeComponent",
-    Equip = "/Script/Dominion.PlayerEquipmentComponent", Lock = "/Script/Dominion.LockOnTargetingComponent" }
+local CLASSES = { Combat = "/Script/Dominion.PlayerCombatModeComponent", Equip = "/Script/Dominion.PlayerEquipmentComponent" }
 local NO_RETICLE = "camera: no reticle switcher, ranged zoom follows the combat switch"
 local RETICLE_LINES = 40   -- "camera: reticle" lines a game start, at most
 
 local Mem = nil          -- camerarules' memory, made on first use
-local Comp = {}          -- the pawn's components: Combat, Equip, Lock; Pawn and its address
+local Comp = {}          -- the pawn's components: Combat, Equip; the pawn's address
 local Hands = {}         -- the last class name read for each hand's actor, by address: a name is not read every step
 -- the HUD reticle's switcher: Switcher, Names (a child's class name by index: the children never change), Name (the
 -- active one), and Fails and RetryAt for ctx.MayTry
 local Ret = { Names = {} }
 local ReticleLines = 0   -- not reset by a new world: the cap is per game start
-local Orig = {}          -- the game's values by name (walk, sprint, lock): { Arm, X, Y, Z }
+local Orig = {}          -- the game's values by name (walk, sprint): { Arm, X, Y, Z }
 local State = { Immersive = true }   -- the readings of a step, one table for the whole session
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
@@ -67,9 +65,9 @@ end
 -- the components again when the pawn changed or one went away; at most every 2 s while one is missing
 local function Find(ctx, pawn, now)
     local addr = pawn:GetAddress()
-    if Comp.Addr == addr and Ok(Comp.Combat) and Ok(Comp.Equip) and Ok(Comp.Lock) then return end
+    if Comp.Addr == addr and Ok(Comp.Combat) and Ok(Comp.Equip) then return end
     if Comp.Addr == addr and now < (Comp.Next or 0) then return end
-    Comp = { Addr = addr, Pawn = pawn, Next = now + 2 }
+    Comp = { Addr = addr, Next = now + 2 }
     for k, path in pairs(CLASSES) do
         local ok, c = pcall(Component, pawn, path)
         if ok then Comp[k] = c end
@@ -171,40 +169,17 @@ local function Profile(ctx, name, path, arm, side)
     if math.abs(so.Y - side) > 0.05 then P.SocketOffset = { X = so.X, Y = side, Z = so.Z } end
 end
 
--- the lock-on view's own arm: the same distance and side as the view the player is in
-local function LockOn(ctx, arm, side)
-    if not Ok(Comp.Lock) then return end
-    local A = Comp.Lock.LockOnCameraActor
-    if not Ok(A) then return end
-    local S = A.SpringArm
-    if not Ok(S) then return end
-    if not Orig.lock then Keep(ctx, "lock", S.TargetArmLength, S.SocketOffset) end
-    M.Arm = S
-    local so = S.SocketOffset
-    if math.abs(S.TargetArmLength - arm) > 0.5 or math.abs(so.Y - side) > 0.5 then
-        S.TargetArmLength = arm
-        S.SocketOffset = { X = so.X, Y = side, Z = so.Z }
-    end
-end
-
 local function Back(P, o)
     if not (P and o) then return end
     P.ArmLength = o.Arm
     P.SocketOffset = { X = o.X, Y = o.Y, Z = o.Z }
 end
 
--- the game's camera back. lockToo: the lock-on arm too, only while its world still stands.
-local function Restore(ctx, lockToo)
+-- the game's camera back
+local function Restore(ctx)
     pcall(Back, Asset(WALK), Orig.walk)
     pcall(Back, Asset(SPRINT), Orig.sprint)
-    if lockToo and Ok(M.Arm) and Orig.lock then
-        pcall(function()
-            local so = M.Arm.SocketOffset
-            M.Arm.TargetArmLength = Orig.lock.Arm
-            M.Arm.SocketOffset = { X = so.X, Y = Orig.lock.Y, Z = so.Z }
-        end)
-    end
-    M.Arm, M.Applied, M.View, M.Perf, M.Checked = nil, false, nil, NewPerf(0), true
+    M.Applied, M.View, M.Perf, M.Checked = false, nil, NewPerf(0), true
     if Mem then ctx.Rules.Step(Mem, { Immersive = false }, os.clock()) end   -- forgets the fight
     ctx.Log("camera: the game's camera back")
 end
@@ -223,12 +198,11 @@ local function Leftover(ctx)
 end
 
 function M.Forget(sameWorld)
-    M.Arm = nil
     Comp, Hands, Ret = {}, {}, { Names = {} }
     if not sameWorld then
         Assets = {}
         -- the assets are not the world's: they are put back now, and given again once the new world runs
-        if M.Applied and M.Ctx then Restore(M.Ctx, false) end
+        if M.Applied and M.Ctx then Restore(M.Ctx) end
         Logged = {}
     end
 end
@@ -238,7 +212,7 @@ function M.Tick(ctx)
     local R = ctx.Rules
     local immersive = ctx.Immersive()
     if not (R.Set.on and immersive) then
-        if M.Applied then Restore(ctx, true)
+        if M.Applied then Restore(ctx)
         elseif not M.Checked then M.Checked = Leftover(ctx) end
         return
     end
@@ -253,14 +227,11 @@ function M.Tick(ctx)
     M.Applied = true
     Profile(ctx, "walk", WALK, out.Walk, out.Side)
     Profile(ctx, "sprint", SPRINT, out.Sprint, out.Side)
-    local okL, errL = pcall(LockOn, ctx, out.Lock, out.Side)
-    if not okL then Once(ctx, "lock", "camera: lock-on view failed: " .. tostring(errL)) end
-    -- a line when the view changes, for the play test: with the reticle lines it shows that an aim or a cast starts
-    -- the ranged view
+    -- a log line when the view changes: with the reticle lines it shows what starts the ranged view
     local view = out.View
     if view ~= M.View then
         M.View = view
-        ctx.Log(string.format("camera: %s, distance %.0f (right hand %s, left hand %s)", view, out.Lock, tostring(State.Right), tostring(State.Left)))
+        ctx.Log(string.format("camera: %s, distance %.0f (right hand %s, left hand %s)", view, out.Walk, tostring(State.Right), tostring(State.Left)))
     end
     local P, took = M.Perf, os.clock() - now
     P.N, P.Sum, P.Max = P.N + 1, P.Sum + took, math.max(P.Max, took)

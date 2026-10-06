@@ -5,14 +5,14 @@
 local M = { W = nil, HostName = nil, Tex = nil }   -- W: the badge's box, the F9 element "avatar"
 local Avatar = M
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
+local Log, ById, G, ClearOurs, FindClass, Asset, SetColor, MayTry, Failed
 function M.Init(ctx)
-    Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
+    Log, ById, G, ClearOurs, FindClass = ctx.Log, ctx.ById, ctx.G, ctx.ClearOurs, ctx.FindClass
     Asset, SetColor = ctx.Asset, ctx.SetColor
-    MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
+    MayTry, Failed = ctx.MayTry, ctx.Failed
 end
 
-local AVATAR_FILES = { (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "avatar.png" }
+local AVATAR_FILE = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "avatar.png"
 
 -- The player's power level, read from the level display of the inventory (it exists while the inventory is
 -- closed too): SizeBox > Border > Overlay > [icon, text].
@@ -26,7 +26,6 @@ local function ReadPowerLevel()
     return T:GetText():ToString(), T, icon
 end
 
--- Level badge: the green diamond from the inventory with the level number, the default avatar.
 local function BuildLevelBadge(tree)
     local ov = StaticConstructObject(StaticFindObject("/Script/UMG.Overlay"), tree, G("RU_LevelBadge"))
     local tex = Asset("/Game/Art/UI/PowerLevel/T_PowerLevel_AboveZone.T_PowerLevel_AboveZone", "/Script/Engine.Texture2D")
@@ -55,7 +54,7 @@ local function BuildLevelBadge(tree)
     local ts = ov:AddChildToOverlay(txt)
     ts:SetHorizontalAlignment(2) ts:SetVerticalAlignment(2)   -- centre
     -- the menu font's line carries a deep descender, so its digits sit high. Only down, not sideways: at
-    -- +2 a digit with a heavy right stroke (the 4) looked shifted right (in-game test, 27-09-2026)
+    -- +2 a digit with a heavy right stroke (the 4) looked shifted right (27-09-2026)
     pcall(function() txt:SetRenderTranslation({ X = 0, Y = 2 }) end)
     Avatar.LevelText = txt
     return ov
@@ -68,7 +67,6 @@ local function EnsureAvatar()
     if not (V and V:IsValid()) then return end
     local hostName = VE.Keys[1]   -- its full name, read by the search
     if Avatar.W and Avatar.W:IsValid() and Avatar.HostName == hostName then
-        -- keep the level number fresh
         if Avatar.LevelText then
             pcall(function()
                 local lv, _, icon = ReadPowerLevel()
@@ -88,13 +86,11 @@ local function EnsureAvatar()
         -- a picture only when the player put avatar.png in the mod folder; otherwise the level badge
         if not (Avatar.Tex and Avatar.Tex:IsValid()) and not Avatar.NoPicture then
             local KRL = StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary")
-            for _, file in ipairs(AVATAR_FILES) do
-                local fh = io.open(file, "rb")
-                if fh then
-                    fh:close()
-                    local okT, tex = pcall(function() return KRL:ImportFileAsTexture2D(V, file) end)
-                    if okT and tex and tex:IsValid() then Avatar.Tex = tex Log("avatar picture loaded from " .. file) break end
-                end
+            local fh = io.open(AVATAR_FILE, "rb")
+            if fh then
+                fh:close()
+                local okT, tex = pcall(function() return KRL:ImportFileAsTexture2D(V, AVATAR_FILE) end)
+                if okT and tex and tex:IsValid() then Avatar.Tex = tex Log("avatar picture loaded from " .. AVATAR_FILE) end
             end
             if not Avatar.Tex then Avatar.NoPicture = true Log("no avatar.png, showing the level badge") end
         end
@@ -111,8 +107,8 @@ local function EnsureAvatar()
         step = "place"
         -- The bars widget's root is a full-screen Overlay. The bars sit in it centred and at the bottom, so the
         -- badge does too, next to the bars' left end: its box at 710,932 on a 16:9 screen. Pinned to the top left, it
-        -- slid off the bars on a wide screen (Nexus, 29-09-2026). A centred child's middle is at half the width
-        -- plus Left minus Right (not the middle of the room between the paddings: in-game test, 29-09-2026), and a
+        -- slid off the bars on a wide screen. A centred child's middle is at half the width plus Left minus Right
+        -- (not the middle of the room between the paddings; checked 29-09-2026), and a
         -- bottom one's bottom edge is Bottom above the bottom. So Right = 960 - 744.5 and Bottom = 1080 - 1001.
         local box = StaticConstructObject(StaticFindObject("/Script/UMG.SizeBox"), V.WidgetTree, G("RU_AvatarBox"))
         box:SetWidthOverride(69)

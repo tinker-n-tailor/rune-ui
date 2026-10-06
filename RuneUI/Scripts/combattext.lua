@@ -1,37 +1,38 @@
--- Combat text (1.8; made live in the game with Ivan, 04-10-2026, sketches F5 to F9): the damage numbers over enemies in the
--- look of the HUD, and a critical hit that pops. The switch "Combat text" (main.lua's "combattext") turns it off and
--- the game's look is back.
--- The look is in style classes, /Game/UI/Styles/Texts/CUIS_DamageFloatie_*: a number reads its style again on every hit, so
--- a write to the class defaults (cdo) is enough. White numbers, bigger, with a black edge and a shadow, Poppins Medium;
--- the critical number is gold; the game's gradient on the number's font stays. The word "Critical" reads its style once,
--- so each pooled widget gets SetStyle once after the defaults changed; its gradient goes (FontMaterial nil) and it is
--- gold, in the same font. The game keeps a pool of 16 WBP_FloatingDamage_C, made once and used for every hit, and the
--- pool may grow. In each: the type icon and the glow behind the word are unseen (render opacity 0).
--- The pop: while a critical number's animation FlyUpCritical plays, the widget's render scale (the game's animation does
--- not fight it) starts at 1 + BIG and settles to 1 in POP seconds, one pop for each play. A chain of 16 ms calls
--- (chain.lua) paints it. The chain starts only when a number plays an animation and ends 5 s after the last one played,
--- so it costs nothing in a calm world (0.09 ms a step for 16 numbers, measured in the sketch). What a calm world does cost
--- is the poll: one IsAnyAnimationPlaying for each number on every step of the main loop, 16 calls. The step that starts
--- the chain paints the first size itself. A hit in a calm world is still seen only by that poll, so its pop can start up
--- to one step of the main loop (50 ms) after the number shows.
--- A critical hit with a staff (fire, 05-10-2026) showed a white number beside the gold word, in two fights; with a sword
--- the number is gold. The white number has our edge, so it holds one of our three white styles: the game is taken to
--- choose the number's style by the kind of damage there, not by the critical flag (not proven). So the step that
--- starts a pop also looks at the style the number holds, and gives it the critical style when it holds another (Gild).
--- The game gives a number its style again on the next hit, so nothing stays. The log tells what each such number
--- held, once for each style and at most TOLD_MAX lines for each start of the game.
--- The status words (Poison, Burn, Bleed, Slowed, Immune; WBP_FloatingText_C, a second pool of 16, found 05-10-2026) get the
--- look of the numbers, each in its own colour: the same style changes at size 18, and in each pooled word the soft band
--- behind it (TextBackground) and its faint bigger copy (FloatieShadowText) are unseen. The game shows and hides the band by
--- its visibility, so that is left alone. It is not proven that a word reads its style again on every show, so each pooled
--- word also gets SetStyle once, with the class it holds. The resource numbers this widget shows use the number styles.
--- No pop and no poll for the words. One list of styles (LIST), one record of the opacities (Record) and one Undo serve both
--- pools (KINDS).
--- The values before the first write are kept (Orig, by style, as paths for the game's own objects) so the switch can
--- put them back. A style class can load again at a new address in a new world, and then it holds the game's values
--- again; one that still holds ours (Ours) keeps the originals read the first time. The switch puts back from what the game
--- holds now (Undo), so it works after a new world or a player restart too, when the part holds no handles.
+-- Combat text: the damage numbers over enemies in the look of the HUD, and a critical hit that pops.
+-- The switch "Combat text" (main.lua's "combattext") turns it off and the game's look is back.
 -- main.lua loads this file with pcall and runs its Tick (about 16 times a second).
+-- The look is in style classes, /Game/UI/Styles/Texts/CUIS_DamageFloatie_*. A number reads its style again on every hit,
+-- so a write to the class defaults (cdo) is enough.
+-- Numbers are white, bigger, with a black edge and a shadow, in Poppins Medium. The critical number is gold.
+-- The game's gradient on the number's font stays.
+-- The word "Critical" reads its style once, so each pooled widget gets SetStyle once after the defaults changed.
+-- Its gradient goes (FontMaterial nil) and it is gold, in the same font.
+-- The game keeps a pool of 16 WBP_FloatingDamage_C, made once and used for every hit. The pool may grow.
+-- In each, the type icon and the glow behind the word are unseen (render opacity 0).
+-- The pop: while a critical number's animation FlyUpCritical plays, the widget's render scale starts at 1 + BIG
+-- and settles to 1 in POP seconds, one pop for each play. The game's animation does not fight the scale.
+-- A chain of 16 ms calls (chain.lua) paints it. The chain starts only when a number plays an animation
+-- and ends 5 s after the last one played, so it costs nothing in a calm world (0.09 ms a step for 16 numbers).
+-- A calm world costs only the poll: one IsAnyAnimationPlaying for each number on every step of the main loop, 16 calls.
+-- The step that starts the chain paints the first size itself.
+-- A hit in a calm world is seen only by that poll, so its pop can start up to one step of the main loop (50 ms) late.
+-- A critical hit with a staff (fire, 05-10-2026) showed a white number beside the gold word, in two fights.
+-- With a sword the number is gold. The white number has our edge, so it holds one of our three white styles.
+-- The game seems to choose the number's style by the kind of damage, not by the critical flag (not proven).
+-- So the step that starts a pop also looks at the style the number holds, and gives it the critical style (Gild).
+-- The game gives a number its style again on the next hit, so nothing stays.
+-- A failure in Gild is not logged: it must not stop the pop.
+-- The status words (Poison, Burn, Bleed, Slowed, Immune) are WBP_FloatingText_C, a second pool of 16 (probe of 05-10-2026).
+-- They get the look of the numbers, each in its own colour: the same style changes at size 18.
+-- In each pooled word the soft band behind it (TextBackground) and its faint bigger copy (FloatieShadowText) are unseen.
+-- The game shows and hides the band by its visibility, so that is left alone.
+-- It is not proven that a word reads its style again on every show, so each pooled word also gets SetStyle once.
+-- The resource numbers this widget shows use the number styles.
+-- No pop and no poll for the words. One list of styles (LIST), one record of the opacities (Record) and one Undo serve both pools (KINDS).
+-- The values before the first write are kept (Orig, by style, as paths for the game's own objects) so the switch can put them back.
+-- A style class can load again at a new address in a new world, and then it holds the game's values again.
+-- One that still holds ours (Ours) keeps the originals read the first time.
+-- The switch puts back from what the game holds now (Undo), so it works after a new world or a player restart too.
 
 local M = {}
 
@@ -43,8 +44,7 @@ local EDGE = { R = 0, G = 0, B = 0, A = 0.9 }
 local SHADE, SHADE_OFFSET = { R = 0, G = 0, B = 0, A = 0.6 }, { X = 1, Y = 1 }
 local EDGE_SIZE = 2
 -- Word: the font material goes (no gradient). Shadow: the drop shadow is switched on; the word "Critical" has no drop
--- shadow switch of its own to set (the sketch left it as the game has it). Status: one of the five status words; their
--- colours are linear values, as written to the engine.
+-- shadow switch of its own to set. Status: one of the five status words; their colours are linear values.
 local LIST = {
     { Name = "NumberSmallTextStyle", Size = 18, Color = WHITE, Shadow = true },
     { Name = "NumberNormalTextStyle", Size = 22, Color = WHITE, Shadow = true },
@@ -58,16 +58,14 @@ local LIST = {
     { Name = "ImmuneTextStyle", Size = 18, Color = { R = 0.75, G = 0.75, B = 0.75, A = 1 }, Word = true, Shadow = true, Status = true },
 }
 local CRIT, WORD = LIST[4], LIST[5]
-local TOLD_MAX = 10            -- lines in the log about the styles of critical numbers, for each start of the game
 local POP, BIG = 0.35, 1.5     -- seconds, and how much bigger than 1 a pop starts
 local STOP_AFTER = 5           -- seconds after the last number played that the chain goes on
 local EVERY = 1                -- seconds between two looks at the styles and the pool
 
 local function Alive(o) return o and o:IsValid() end   -- a property or a call can give a wrapper of null: pcall does not catch it
 
-local S   -- the state of a round, made by Fresh
+local S
 local Lib   -- chain.lua, given by main.lua
-local Told, told = {}, 0   -- not in S: a new world must not start the count again
 
 -- Orig and Seen are kept over a world change (see Forget and Record); the rest starts again
 local function Fresh(keep)
@@ -198,9 +196,16 @@ end
 -- A number that reads 0 holds what we wrote, whose record was lost: the game's own opacity is 1, so it is not taken as one.
 local function Original(part) local o = part:GetRenderOpacity() return o > 0 and o or 1 end
 
--- The two pools of the game. Parts: the two widgets of each that go unseen (render opacity 0). Style(e) gives the pooled
--- widget its word style once, when the defaults are written: true when done, nothing when it must wait. Reread(W) makes
--- a word read its style class again, after the switch put the game's values back. Pop: the numbers' pop and poll.
+local function Restyle(W)
+    local text = W.FloatieText
+    local class = Alive(text) and text.Style
+    if Alive(class) then text:SetStyle(class) end
+end
+
+-- The two pools of the game. Parts: the two widgets of each that go unseen (render opacity 0).
+-- Style(e) gives the pooled widget its word style once, when the defaults are written: true when done, nothing when it must wait.
+-- Reread(W) makes a word read its style class again, after the switch put the game's values back.
+-- Pop: the numbers' pop and poll.
 local KINDS = {
     { Class = "WBP_FloatingDamage_C", Parts = { "FloatiesIcon", "BackgroundGlow" }, Pop = true,
       Style = function(e)
@@ -219,19 +224,13 @@ local KINDS = {
     { Class = "WBP_FloatingText_C", Parts = { "TextBackground", "FloatieShadowText" },
       Style = function(e)
           if not S.Statuses then return end
-          local text = e.W.FloatieText
-          local class = Alive(text) and text.Style
-          if Alive(class) then text:SetStyle(class) end   -- none valid: this word is skipped
+          Restyle(e.W)
           return true
       end,
-      Reread = function(W)
-          local text = W.FloatieText
-          local class = Alive(text) and text.Style
-          if Alive(class) then text:SetStyle(class) end
-      end },
+      Reread = Restyle },
 }
 
--- Once for each part of a pooled widget: its two opacities, and its word's style when the defaults are written.
+-- Once for each pooled widget: its two opacities, and its word's style when the defaults are written.
 local function Dress(e)
     local kind = e.Kind
     if not e.Faded then
@@ -271,7 +270,7 @@ local function Pool(ctx)
         end
     end
     S.Pool, S.List = kept, numbers
-    if count > 0 then for key in pairs(S.Seen) do if not kept[key] then S.Seen[key] = nil end end end   -- widgets that are gone
+    if count > 0 then for key in pairs(S.Seen) do if not kept[key] then S.Seen[key] = nil end end end
     if not step.Logged and count > 0 then step.Logged = true ctx.Log("combat text: " .. #numbers .. " numbers and " .. (count - #numbers) .. " words watched") end
 end
 
@@ -290,14 +289,8 @@ end
 
 local function More(_, t) return t - S.Played < STOP_AFTER end
 
-local function Tell(ctx, what)
-    if Told[what] or told >= TOLD_MAX then return end
-    Told[what], told = true, told + 1
-    ctx.Log("combat text: a critical number " .. what)
-end
-
 -- The number of a critical hit in the critical style, when the game gave it another (see the head of the file).
-local function Gild(e, ctx)
+local function Gild(e)
     if not S.Done[CRIT.Name] then return end
     local class, text = S.CritClass, e.Number
     if not Alive(class) then class = Find(ClassPath(CRIT.Name)) S.CritClass = class end
@@ -306,26 +299,18 @@ local function Gild(e, ctx)
         if not Alive(text) then text = Child(e.W.FloatieOverlay, "FloatiesText") end
         e.Number = text
     end
-    if not (class and text) then Tell(ctx, "not looked at: no " .. (class and "FloatiesText" or "style class")) return end
+    if not (class and text) then return end
     local style = text.Style
-    local held = Alive(style) and style:GetFName():ToString() or "none"
-    local other = held == "none" or style:GetAddress() ~= class:GetAddress()
-    local ok, colour = pcall(function()
-        local c = text.ColorAndOpacity.SpecifiedColor
-        return string.format("%.2f %.2f %.2f", c.R, c.G, c.B)
-    end)
-    if other then text:SetStyle(class) end
-    Tell(ctx, "held the style " .. held .. ", colour " .. (ok and colour or "not read") .. (other and ": given the critical style" or ": left as it is"))
+    if not Alive(style) or style:GetAddress() ~= class:GetAddress() then text:SetStyle(class) end
 end
 
-local function Pop(e, t, ctx)
+local function Pop(e, t)
     local W = e.W
     if not (e.Crit and W:IsValid()) then return end
     local playing = W:IsAnimationPlaying(e.Crit)
     if playing and not e.At and not e.Done then
         e.At = t
-        local ok, err = pcall(Gild, e, ctx)   -- on its own: a failure here must not stop the pop
-        if not ok then Tell(ctx, "not looked at: " .. tostring(err)) end
+        pcall(Gild, e)   -- on its own: a failure here must not stop the pop
     end
     if e.At then
         local s = M.Scale(t - e.At)
@@ -337,16 +322,15 @@ local function Pop(e, t, ctx)
 end
 
 local function Step(ctx, t)
-    for _, e in ipairs(S.List) do pcall(Pop, e, t, ctx) end
+    for _, e in ipairs(S.List) do pcall(Pop, e, t) end
     if not More(ctx, t) then Rest() return false end
 end
 
 ---------------------------------------------------------------- off, a new world, the step
 
 -- The game's look back, from what the game holds now: each style class that still holds our values gets its originals
--- back, each number and word we dressed gets its opacities, and its word reads the class again. No pop, every number at
--- scale 1.
--- It needs no state of the round, so it works after a restart or a new world too.
+-- back, each number and word we dressed gets its opacities, and its word reads the class again.
+-- No pop, every number at scale 1. It needs no state of the round, so it works after a restart or a new world too.
 local function Undo(ctx)
     if Lib then Lib.Stop(S.Chain) end
     Rest()
@@ -400,7 +384,7 @@ function M.Tick(ctx)
         local W = e.W
         if Alive(W) and W:IsAnyAnimationPlaying() then S.Played = now break end
     end
-    -- the step that starts the chain paints too: the first critical hit after a calm stretch popped one chain call late
+    -- the step that starts the chain paints too, or the first pop after a calm stretch would start one chain call late
     if Lib and Lib.Run(S.Chain, ctx, 16, Step, More) then Step(ctx, now) end
 end
 

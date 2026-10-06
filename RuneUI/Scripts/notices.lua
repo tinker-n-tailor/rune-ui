@@ -1,11 +1,11 @@
--- The preview of the notices in the editor (1.8; probes N1 and N2, 05-10-2026): while F9 is open and a row of a notice
+-- The preview of the notices in the editor (probes N1 and N2, 05-10-2026): while F9 is open and a row of a notice
 -- is selected, the game's notice of that row shows at its place, so the player sees what the row moves. The game
 -- keeps one entry ("Item") for each notice queue, made at the start of a world and collapsed at rest, so this file
 -- makes nothing: it shows the entry that is there, with the content it kept or a sample text, and writes the old
 -- values back when another row is selected or the editor closes. An entry that is not collapsed is a real notice
 -- playing: it is not touched. The big notices share one entry (WBP_PrimaryNotificationQueue_Item_C) with a page for
 -- each kind of notice, and its WidgetSwitcher picks the page. The "banners" row goes through its pages, one every
--- CYCLE seconds. This file never writes the render opacity of a banner widget: main.lua does it for the editor.
+-- CYCLE seconds. This file never writes the render opacity of a banner widget: apply.lua does it for the editor.
 -- main.lua loads this file with pcall, so an error here leaves the rest running.
 
 local M = {}
@@ -99,7 +99,7 @@ local function Show(shot, item)
 end
 
 -- An entry of the row that does not show yet is looked for again every AGAIN seconds: the first answer of ctx.Find
--- for a class can be empty (main.lua keeps a class only after it was asked for), and an entry that a real notice
+-- for a class can be empty (finder.lua keeps a class only after it was asked for), and an entry that a real notice
 -- used is collapsed again when that notice ends.
 local function ShowRow(ctx, id)
     M.Again = os.clock() + AGAIN

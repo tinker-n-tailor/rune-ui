@@ -1,13 +1,14 @@
--- Quest tracker (1.7; the data came from the probes of 04-10-2026): under the minimap, at the top right, the main quest
--- and the side quest you track in the journal. Each has a small label, the name in gold and the step in white. With
--- "Show next steps" on, a quest with a clean list of steps also shows up to 3 steps after the current one, dimmed.
+-- Quest tracker under the minimap, at the top right: the main quest and the side quest tracked in the journal.
+-- Each has a small label, the name in gold and the step in white. With "Show next steps" on, a quest with a clean
+-- list of steps also shows up to 3 steps after the current one, dimmed.
 -- No background panel: the thin gold line of the XP bar on top, and the letters with the HUD's shadow.
 -- While the game's quest and unlock notice plays under the map, the tracker is off the screen (ctx.Popup).
--- The data (read only; a UFunction of the quest component is never called): the local controller has the property
--- BP_Components_QuestProgress. In it, Quests is a list of { Data, State, CurrentObjective } and TrackedSecondaryQuest is
--- the quest tracked in the journal. State: 0 not started, 1 open, 2 finished (read from one save). Data (QuestData) has
--- QuestName, bIsMainQuest, bHideInQuestList and ObjectiveTexts, a map of step key to step text, in the order held.
--- The step is ObjectiveTexts[CurrentObjective]. "None" is a real key. A key with no text gives the name only.
+-- The data is read only (probe of 04-10-2026); a UFunction of the quest component is never called. The local
+-- controller has the property BP_Components_QuestProgress. In it, Quests is a list of { Data, State, CurrentObjective }
+-- and TrackedSecondaryQuest is the quest tracked in the journal. State: 0 not started, 1 open, 2 finished (read from
+-- one save). Data (QuestData) has QuestName, bIsMainQuest, bHideInQuestList and ObjectiveTexts, a map of step key to
+-- step text, in the order held. The step is ObjectiveTexts[CurrentObjective]. "None" is a real key. A key with no
+-- text gives the name only.
 -- main.lua moves and sizes it as the F9 element "questtracker" and loads this file with pcall, so an error here leaves
 -- the rest of the mod running.
 
@@ -192,13 +193,14 @@ local function Component(ctx)
     Once(ctx, "nocomp", "quest tracker: the controller has no quest component")
 end
 
--- The game's quests, light: the list for Pick, the QuestData by name (only for this step of the tick), and the
+-- The game's quests, light: the open ones for Pick, the QuestData by name (only for this step of the tick), and the
 -- name of the tracked quest. Each element is read in a pcall, so one that cannot be read does not stop the rest.
 local function ReadQuests(comp)
     local quests, datas = {}, {}
     comp.Quests:ForEach(function(_, e)
         pcall(function()
             local s = e:get()
+            if s.State ~= 1 then return end   -- Pick only takes open quests: the rest are not read
             local d = s.Data
             if not (d and d:IsValid()) then return end
             local id = d:GetFName():ToString()
@@ -268,7 +270,7 @@ function M.Forget(sameWorld)
     -- as RuneMap: off the screen only in the same world; after a world change the engine has taken it away
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
     M.W, M.UW, M.Blocks, M.Visible = nil, nil, nil, false
-    M.Comp, M.Main, M.Tracked, M.Key, M.Sig, M.NextRead, M.Fails, Logged = nil, nil, nil, nil, "", 0, 0, {}
+    M.Comp, M.Main, M.Tracked, M.Key, M.Sig, M.NextRead, M.Fails, M.RetryAt, Logged = nil, nil, nil, nil, "", 0, 0, 0, {}
 end
 M.Forget(false)
 
@@ -277,12 +279,12 @@ function M.Tick(ctx)
     if now < (M.Next or 0) then return end
     M.Next = now + 0.25
     if not (M.W and M.W:IsValid()) then
-        if (M.Fails or 0) >= 3 then return end
+        if not ctx.MayTry(M) then return end   -- 3 tries at most, 10 s apart
         local V = ctx.ById("vitals").Instances[1]
         if not (V and V:IsValid()) then return end   -- no world yet
         M.W = nil
         local ok, err = pcall(Build, ctx)
-        if not ok then M.Fails = M.Fails + 1 ctx.Log("quest tracker failed: " .. tostring(err)) end
+        if not ok then ctx.Failed(M) ctx.Log("quest tracker failed: " .. tostring(err)) end
         return
     end
     local editing = ctx.Editing()
@@ -302,10 +304,10 @@ function M.Tick(ctx)
     Show(M.Blocks[2], tracked, LABEL.Tracked)
     -- with the game's HUD (menus, the big map); off the screen when empty. The game's quest and unlock notice plays in
     -- the same place under the map, so the tracker steps aside while one is on show (not in the editor, where the
-    -- player places the tracker).
+    -- player places the tracker). The notice is asked only when its answer can change the result.
     local V = ctx.ById("vitals").Instances[1]
     local hud = V and V:IsValid() and V:IsVisible()
-    local notice = not editing and ctx.Popup() == true
+    local notice = hud and (main ~= nil or tracked ~= nil) and not editing and ctx.Popup() == true
     local visible = (hud and not notice and (main ~= nil or tracked ~= nil)) and true or false
     if visible ~= M.Visible then
         M.Visible = visible

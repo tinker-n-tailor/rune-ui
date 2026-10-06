@@ -1,10 +1,10 @@
--- The name of a claimed bed roll or bed (1.5). The game shows "Ann'sBed Roll": its text for the owner,
+-- The name of a claimed bed roll or bed. The game shows "Ann'sBed Roll": its text for the owner,
 -- "{Owner}'s", goes before "Bed Roll" with no space (the game's string table ST_WorldInteractions: Bed.OwnerFormat,
 -- Bed.BedrollOwner, Bed.BedOwner). The prompt on the screen only shows what the bed roll's GetDisplayName gives, and
 -- the game writes it again all the time: a new text in the prompt was gone 2 s later (02-10-2026).
 -- So the mod hooks GetDisplayName. The hook runs after the game's function. UE4SS gives it no return value, so the
 -- hook asks the bed roll for its name again, and gives back the name with the space. UE4SS puts that in place of
--- the game's name (probe 25, 02-10-2026: the prompt showed the name with the space).
+-- the game's name (probe of 02-10-2026: the prompt showed the name with the space).
 -- The game loads a bed's class with a world: Tick looks for the function until it is there. After a leave to the
 -- main menu and a new entry into the world, the function sat at a new address (02-10-2026): after a new world
 -- Tick looks again, and hooks a function at a new address. Only the newest hook of a function does the work, as

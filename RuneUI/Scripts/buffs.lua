@@ -1,15 +1,14 @@
 -- The buffs: the buff list turned into a row, each buff its icon with the game's thin bar under it, and the drink,
--- food and potion buffs as rings beside the food, water and rest rings. main.lua loads this file with pcall. Its Scan
--- runs once per widget scan; its Tick turns the drink rings and gives each buff's shadow its picture every half second,
--- and at once when a new buff came (NextRings).
+-- food and potion buffs as rings beside the food, water and rest rings. main.lua loads this file with pcall.
+-- Scan runs once per widget scan. Tick turns the drink rings and gives each buff's shadow its picture every half
+-- second, and at once when a new buff came (NextRings).
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, CachedTex, Survival
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    Asset, SetColor = ctx.Asset, ctx.SetColor
-    MayTry, Failed, CachedTex, Survival = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival
+    CachedTex, Survival = ctx.CachedTex, ctx.Survival
 end
 
 ---------------------------------------------------------------- the buff count
@@ -17,8 +16,8 @@ end
 -- The drink ring (see "the drink buff" below). Declared here: the buff count reads its lists.
 local Drinks = { Lists = {}, ListsKey = nil }
 
--- The buff lists' item count. Reading their entries straight from the lists gave nothing (in-game test,
--- 29-09-2026), but the count is a plain number.
+-- The buff lists' item count. Reading their entries straight from the lists gave nothing (29-09-2026), but the
+-- count is a plain number.
 local BuffItems, BuffsLogged = nil, false
 local function BuffsChanged()
     local n = 0
@@ -32,9 +31,9 @@ local function BuffsChanged()
             end
         end)
     end
-    -- the drink, food and potion buffs beside the food rings sit in lists of their own (probe, 01-10-2026): a
-    -- new drink is found at once, not at the next 10 s search (playtest: "it should be transformed instantly")
-    -- counted on their own: BuffItems is the count of the buff row, and eating or drinking must not change it
+    -- the drink, food and potion buffs beside the food rings sit in lists of their own (probe, 01-10-2026). They are
+    -- counted on their own: BuffItems is the count of the buff row, and eating or drinking must not change it. A new
+    -- drink is found at once, not at the next 10 s search.
     local m = 0
     pcall(function()
         local E = ById("survival")
@@ -99,12 +98,11 @@ end
 ---------------------------------------------------------------- buffs under the bars
 
 -- Each buff entry is: SizeBox > Overlay > [icon, Overlay > [ProgressBarImage, TitleText]]. The buff is its icon with
--- the game's thin bar close under it, and no title: it sits under the bars and looks like one of them. As rings (1.2
--- to 1.4) the buffs looked like the food, water and rest rings and the drink, food and potion buffs (playtest,
--- 02-10-2026). The game fills the bar, gives it the buff's colour, and hides it for a buff without a timer, so the
--- mod only places it (and reads its number: BuffFill). (The hidden bar holds a test pink, which the rings showed: probe 13, 02-10-2026.)
+-- the game's thin bar close under it, and no title: it sits under the bars and looks like one of them. The game fills
+-- the bar, gives it the buff's colour, and hides it for a buff without a timer, so the mod only places it (and reads
+-- its number: BuffFill). The hidden bar holds a test pink (probe 13, 02-10-2026).
 -- The icon stands bare on the world, and on grass by day it was hard to read: a dark copy of it sits behind it, as
--- the letters' shadow (letters.lua). Sizes and shadow picked live in the game, 02-10-2026.
+-- the letters' shadow (letters.lua).
 local BUFF_BOX = { W = 46, H = 50 }     -- one entry of the row
 local BUFF_ICON = 42                    -- the game's icon; its picture has a wide empty edge
 local BUFF_BAR = { W = 26, H = 4 }      -- as wide as the icon's art
@@ -133,7 +131,7 @@ end
 
 -- The share of time left, from the bar's material. A buff without a timer has its bar hidden, and the game still
 -- writes the number: 1 while the buff is on, 0 when it is over (Encumbered and Sheltered, watched in game,
--- 03-10-2026). So the hidden bar is read too: the weight icon stayed after a death with an empty bag (1.6).
+-- 03-10-2026). So the hidden bar is read too: the weight icon stayed after a death with an empty bag.
 local function BuffFill(bar)
     local mid = bar.Brush.ResourceObject
     if not (mid and mid:IsValid()) then return nil end
@@ -146,15 +144,14 @@ local function BuffFill(bar)
 end
 
 -- The game keeps a buff that is over in its list: the poison's entry stayed, its bar shown and empty, long after the
--- poison ended (probes 29 to 32, 02-10-2026; as a ring in 1.4 too). An empty bar means the buff is over, also the
--- hidden bar of a buff without a timer (BuffFill): the entry goes unseen and 1 unit wide, so the row closes. It stays shown for the game, which fills the bar again when
--- the buff comes back; then the entry is back. An entry is reused for another buff, so the bar is read every time.
+-- poison ended (probes 29 to 32, 02-10-2026). An empty bar means the buff is over, also the hidden bar of a buff
+-- without a timer (BuffFill): the entry goes unseen and 1 unit wide, so the row closes. It stays shown for the game,
+-- which fills the bar again when the buff comes back; then the entry is back. An entry is reused for another buff, so
+-- the bar is read every time.
 -- One read is enough: with two, the old poison showed for a second each time the game built its list again.
--- The game can show the entry again while the buff is still over (playtest, 02-10-2026: the old poison squeezed into
--- its 1 unit, a thin mark between two buffs), so an entry that is over is made unseen on every look.
---
---
--- The immersive mode (1.7): a debuff is a warning and shows the whole time it lasts. A good buff shows when IT
+-- The game can show the entry again while the buff is still over (the old poison squeezed into its 1 unit, a thin
+-- mark between two buffs, 02-10-2026), so an entry that is over is made unseen on every look.
+-- The immersive mode: a debuff is a warning and shows the whole time it lasts. A good buff shows when IT
 -- arrives, stays for the wait, and fades; it comes back with the bars. immersive.lua keeps the time and the fade and
 -- tells each good entry its level (SetLevel). The game does not mark a buff as good or bad (probe, 04-10-2026), so
 -- the mod holds the names of the good ones. Everything else counts as a debuff, also an effect the mod does not know
@@ -290,16 +287,15 @@ end
 -- The drink buff is not in the buff row: it sits beside the food, water and rest rings, inside their widget.
 -- VerticalBox_0 > Overlay_0 [Background, ItemImage, ProgressBarImageBackground, ProgressBarImage] and Overlay_1
 -- [TextBackground, DurationText] (probe, 01-10-2026). It gets the ring of food, water and rest, smaller: dark back,
--- coloured ring, dark centre. The game's round pictures and the seconds under it go unseen (playtest, 01-10-2026:
--- the ring shows the time). The icon stays on top.
--- RING: 50 (playtest, 01-10-2026). ICON: the drink pictures have wide empty edges. LIFT: the game sets
+-- coloured ring, dark centre. The game's round pictures and the seconds under it go unseen, as the ring shows the
+-- time. The icon stays on top.
+-- ICON: the drink pictures have wide empty edges. LIFT: the game sets
 -- the drink 6.5 units below the food rings' centre (measured in game, 01-10-2026); the game's hidden 61-unit
 -- pictures still size the entry, so the ring stays centred where the game's was.
 -- Deco: entry full name -> { W, Root, Right, Left, Text, Value, Lit, Most, Last }.
--- One table: main.lua is near Lua's limit of 200 locals.
 -- The food and potion buffs sit in the same place, in lists of their own, and their entries have the same tree
--- (probe 11, 01-10-2026), so they get the same ring (1.5). COLOURS, by the entry's class: a drink in the water
--- ring's #5fb2dc, a food in the food ring's #78c265, a potion in the sketch's gold #ffd173, as it has no ring of its
+-- (probe 11, 01-10-2026), so they get the same ring. COLOURS, by the entry's class: a drink in the water
+-- ring's #5fb2dc, a food in the food ring's #78c265, a potion in gold #ffd173, as it has no ring of its
 -- own. All as linear light. At most 2 drinks, 3 foods and 1 potion at once (the game's wiki, 01-10-2026).
 Drinks.RING, Drinks.ICON, Drinks.LIFT = 50, 36, 6.5
 Drinks.Deco = {}
@@ -436,11 +432,10 @@ function M.Forget(sameWorld)
     Present, Next = {}, {}
     BuffDeco, RingArt, Drinks.Deco, Drinks.Lists, Drinks.ListsKey, Drinks.Items = {}, {}, {}, {}, nil, nil
     if not sameWorld then BuffRowDone = {} end   -- the old world's lists are gone; a restart keeps the row
-    M.Items = nil
 end
 
--- read by main.lua: the count changed since the last call, the count, and the drink rings
-function M.Changed() local c = BuffsChanged() M.Items = BuffItems return c end
+-- read by main.lua: the count changed since the last call, and the drink rings
+M.Changed = BuffsChanged
 M.Drinks = Drinks
 
 return M

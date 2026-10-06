@@ -1,10 +1,8 @@
--- RuneMap, the minimap (design sketch, 27-09-2026): the game's own minimap widget, fed by our own map view,
--- in a gold ring that is also the clock. The middle of the night is at the top and noon at the bottom; the
--- ring keeps the game's own share of night (about a fifth), so dawn sits near 1 o'clock and dusk near 11.
--- A gold arrow between the two gold rings points at the time of day, and a bigger arrow with an N shows north
--- (1.5; before, a needle across the ring and a round mark on the inner ring).
--- F8 (1.1, main.lua) turns the map on or off and sets faces north, the north mark, the creatures, the resources
--- (resources.lua), the zoom and how often the map draws.
+-- RuneMap, the minimap: the game's own minimap widget, fed by our own map view, in a gold ring that is also
+-- the clock. The middle of the night is at the top and noon at the bottom; the ring keeps the game's own
+-- share of night (about a fifth), so dawn sits near 1 o'clock and dusk near 11.
+-- A gold arrow between the two gold rings points at the time of day, and a bigger arrow with an N shows north.
+-- The F8 menu in main.lua sets the map, north, the creatures, the resources, the zoom and the draw rate.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
 -- Dirty, ResetWanted and PendingZoom are set by key handlers: kept in the table as false, never nil, so
@@ -14,8 +12,8 @@ local M = { W = nil, Fails = 0, Dirty = false, ResetWanted = false, PendingZoom 
 local D = 180                  -- map diameter; the art tool draws the band for the same size
 local BOX = D + 44             -- the whole element: map, day band and gold rings
 local C = BOX / 2
-local R_DIAMOND, DIAMOND = D / 2 + 17, 16   -- the marks on the outer gold ring; 13 units before 1.5 ("a bit bigger")
--- The game's clock (first test, 27-09-2026): the day and night dial's material holds "Fill Amount", the share
+local R_DIAMOND, DIAMOND = D / 2 + 17, 16   -- the marks on the outer gold ring
+-- The game's clock (probe of 27-09-2026): the day and night dial's material holds "Fill Amount", the share
 -- of the day cycle gone (0 = dawn), and "Night Start", where night begins (0.795). The ring puts the middle of
 -- the night at the top.
 local NIGHT_START = 0.795
@@ -23,19 +21,19 @@ local NIGHT_START = 0.795
 local MAP_CLASS = "/Game/UI/HUD/ModifiedMinimapPlugin/WBP_DominionMinimap.WBP_DominionMinimap_C"
 local VIEW_CLASS = "/Script/MinimapPlugin.MapViewComponent"
 
--- the map settings, taken from the MiniMap addon (27-09-2026)
+-- the map settings, taken from the MiniMap addon
 -- InitialMapSize: without the addon it stayed 0 and the map drew nothing, not even the arrow. IconScale: the
--- map icons (camps, boats) looked too big at 1, and 10% big at 0.6 (27-09-2026). 0.54 was still much too big for
--- the dungeons and the other game icons, and 0.3 super small (playtest, 29-09-2026). It scales our own icons too.
+-- map icons (camps, boats) looked too big at 1, and 10% big at 0.6. 0.54 was still much too big for
+-- the dungeons and the other game icons, and 0.3 far too small (seen in the game, 29-09-2026). It scales our own icons too.
 local ICON_SCALE = 0.4
 local MAP_SETTINGS = { bIsCircular = true, AutoLocateMapView = 4, IconScale = ICON_SCALE, FloorDistance = 300,
     InitialMapSize = { X = D, Y = D } }
--- the addon's view settings: without them (test of 27-09-2026) the view kept RotationMode 0 and the map
+-- the addon's view settings: without them (probe of 27-09-2026) the view kept RotationMode 0 and the map
 -- stopped turning with the camera
 local VIEW_SETTINGS = { bSupportZooming = true, RotationMode = 1, InheritedYawOffset = 90 }
 
--- Unreal takes widget colours as linear light; the sketch's colours are the screen kind (sRGB). Sent as they
--- are, they come out pale (first test, 27-09-2026), so every colour here goes through Lin first.
+-- Unreal takes widget colours as linear light; our colours are the screen kind (sRGB). Sent as they
+-- are, they come out pale (probe of 27-09-2026), so every colour here goes through Lin first.
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
 
@@ -48,12 +46,12 @@ local function FillToDeg(f, ns) return ((f - (ns + 1) / 2) * 360) % 360 end
 
 -- Zoom: the [ and ] keys (main.lua). It lives in main.lua's settings file with the F8 settings (Attach below).
 -- 2 is the addon's ZoomScale.
-local ZOOM_MIN, ZOOM_MAX = 0.5, 32   -- 8 was not far enough out (in-game test, 27-09-2026)
+local ZOOM_MIN, ZOOM_MAX = 0.5, 32   -- 8 was not far enough out
 function M.ZoomLevel() return M.Zoom or 2 end
 function M.ZoomBy(factor) M.PendingZoom = (M.PendingZoom or 1) * factor end   -- key handlers: applied in Tick
 
 local function SaveZoom(z) M.Store.zoom = z M.Save() end
-local function ApplyZoom(ctx)
+local function ApplyZoom()
     local z = math.max(ZOOM_MIN, math.min(ZOOM_MAX, M.ZoomLevel() * M.PendingZoom))
     M.PendingZoom = false
     M.Zoom = z
@@ -61,18 +59,17 @@ local function ApplyZoom(ctx)
     SaveZoom(z)
 end
 
--- The F8 settings (1.1). Map: off means the mod does not build the map at all, which hiding it in F9 still does
--- (playtest, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
+-- The F8 settings. Map: off means the mod does not build the map at all, which hiding it in F9 still does
+-- (seen in the game, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
 -- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
--- creatures (hidden on request, 29-09-2026). Ore, Herbs, Essence, Trees: the resource icons (resources.lua). Name: the
+-- creatures. Ore, Herbs, Essence, Trees: the resource icons (resources.lua). Name: the
 -- name the game prints beside your own marker, on this map and the big map (mapname.lua hides it while off).
 -- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
 -- in main.lua's settings file: Store is its [map] section, Save writes the file (Attach, called once at start).
 -- Immersive: what stays while the immersive mode is on: "Nothing", "Map" or "Compass" (settings.lua STAY; main.lua
--- reads it for the map's fade and for the compass). Nothing at first: the
--- immersive mode hid the map since 1.2, and a player could not get it back ("map can't be activated in immersive
--- mode", 03-10-2026). A lighter look of the map for that mode was tried and dropped: two looks of one map.
--- neutral creatures start hidden: they take room on the map (29-09-2026)
+-- reads it for the map's fade and for the compass). It starts at Nothing: the immersive mode hid the map,
+-- and a player could not get it back.
+-- neutral creatures start hidden: they take room on the map
 local SETTING_START = { Map = true, North = false, Mark = true, Name = true, Smooth = false, Neutral = false, Ore = true,
     Herbs = true, Essence = true, Trees = true, Immersive = "Nothing" }
 M.Set = {}
@@ -136,20 +133,20 @@ local function Disc(tree, name, size, fill, outline, width)
     return box, img
 end
 
--- Pictures drawn by tools/make-runemap-art.js: the day band, the time arrow, the north arrow and the diamonds. Smooth, where
--- rings of small pieces came out jagged (in-game test, 27-09-2026). The band assumes the game's night
--- start of 0.795. The pictures ship with the mod; a missing one is logged and left out.
+-- Pictures drawn by tools/make-runemap-art.js: the day band, the time arrow, the north arrow and the diamonds.
+-- Rings of small pieces came out jagged (27-09-2026), so these are smooth pictures. The band assumes the game's
+-- night start of 0.795. The pictures ship with the mod; a missing one is logged and left out.
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local ART_NIGHT_START = 0.795
--- The time arrow (1.5, sizes picked live in the game on 02-10-2026): 13 x 19 units seen, between the two gold rings
--- and a little over both; a smaller one that stayed inside the band was "super tiny". It points out.
+-- The time arrow: 13 x 19 units seen, between the two gold rings and a little over both; a smaller one that
+-- stayed inside the band was too tiny. It points out.
 local NEEDLE_W, NEEDLE_H = 14.3, 21.5
 local R_NEEDLE = D / 2 + 9.5
 -- The north arrow: from the inner gold ring out past the outer one, so it is the biggest mark on the ring.
 local R_NORTH, NORTH_SIZE = D / 2 + 14, 26
 -- The camera's yaw at which north is at the top of the ring. The view needs InheritedYawOffset 90 to put the
--- camera's forward at the top, so the map's own top (north on the big map) is yaw -90. Checked in game by
--- playtest, 29-09-2026: the mark and "Faces north" agree with the big map (M).
+-- camera's forward at the top, so the map's own top (north on the big map) is yaw -90. Checked in game
+-- (29-09-2026): the mark and "Faces north" agree with the big map (M).
 local NORTH_YAW = -90
 
 local function LoadArt(ctx, name)
@@ -209,7 +206,7 @@ local function MakeView(ctx, pawn)
     local comp = pawn:AddComponentByClass(cls, true, T, false)
     if not (comp and comp:IsValid()) then error("AddComponentByClass gave nothing") end
     -- on the camera arm, so the map turns with the camera. The arm puts its children at its far end, by the
-    -- camera: snapped there, the view sat 700 units from the player and the arrow was off the centre (test of
+    -- camera: snapped there, the view sat 700 units from the player and the arrow was off the centre (probe of
     -- 27-09-2026). So the place is kept (it stays on the body as the arm turns) and only the turn is taken.
     -- ponytail: the arm shortens near walls; the view is then off by that much until the next build.
     local okA, errA = pcall(function()
@@ -219,7 +216,7 @@ local function MakeView(ctx, pawn)
     for k, v in pairs(VIEW_SETTINGS) do pcall(function() comp[k] = v end) end
     if M.Set.North then pcall(function() comp.RotationMode = 0 end) end   -- F8: faces north
     -- HeightProxy tells the view how high the player stands, which picks the floor of terrain to draw.
-    -- Without it the terrain parts arrive (test of 27-09-2026) but nothing is drawn. It is the player's own
+    -- Without it the terrain parts arrive (probe of 27-09-2026) but nothing is drawn. It is the player's own
     -- body, but only if it is the kind the property holds (a wrong kind of object in an object property
     -- could crash the engine).
     pcall(function()
@@ -238,10 +235,10 @@ local function MakeView(ctx, pawn)
 end
 
 -- The terrain pictures. The level hands them to the maps that exist when it loads; ours comes later and got
--- none (first test: icons and labels, but a plain brown map). Later the plugin adds them itself; ours are added
+-- none (icons and labels, but a plain brown map). Later the plugin adds them itself; ours are added
 -- only when the map still has none at its first set-up (SetUpAgain).
--- The kind of object AddMapBackground takes, read from the function itself (the second test showed that
--- /Script/MinimapPlugin.MapBackgroundComponent does not exist, so the name is not guessed any more).
+-- The kind of object AddMapBackground takes, read from the function itself
+-- (/Script/MinimapPlugin.MapBackgroundComponent does not exist, so the name is not guessed).
 local function BackgroundClass(ctx)
     local fn = Obj(MAP_CLASS .. ":AddMapBackground")
     if not (fn and fn:IsValid()) then ctx.Log("runemap: no AddMapBackground function") return nil end
@@ -251,8 +248,8 @@ local function BackgroundClass(ctx)
             if p:GetClass():GetFName():ToString() == "ObjectProperty" then want = want or p:GetPropertyClass() end
         end)
     end)
-    -- the read above failed once (test of 27-09-2026), and then nothing was added; an earlier test had read
-    -- the kind as MapBackground, so look it up by that name
+    -- if the read above fails (it did once, 27-09-2026), nothing is added; an earlier read gave the kind
+    -- MapBackground, so look it up by that name
     if not want then
         local byName = Obj("/Script/MinimapPlugin.MapBackground")
         if byName and byName:IsValid() then want = byName end
@@ -340,10 +337,10 @@ local function MakeMap(ctx, PC, view)
     if not okV then ctx.Log("runemap: SetMapView failed: " .. tostring(errV)) end
     -- no terrain of ours here: the map plugin adds the pieces itself within a second, and ours were a second copy
     -- (log of 29-09-2026). SetUpAgain adds ours only if the map still has none.
-    -- the addon calls these after SetMapView; the first test (without them) stayed on "waiting for map view"
+    -- the addon calls these after SetMapView; without them the map stayed on "waiting for map view"
     local calls = {
         -- fog off: ours has no record of where the player has been, so the fog covered the whole map and it
-        -- stayed grey (F7 test of 27-09-2026)
+        -- stayed grey (probe of 27-09-2026)
         { "ShowFog", function() map:ShowFog(false) end },
         { "ReinitShape", function() map:ReinitShape() end },
         { "RetryMapSize", function() map:RetryMapSize() end },
@@ -365,7 +362,7 @@ local function BuildRing(ctx, tree, map)
         AddCentred(ov, (Disc(tree, "RU_MapBack", D + 34, DARK)))
     end)
     M.BandNS = nil
-    local bandTex = LoadArt(ctx, "runemap_band_clear.png")   -- the day fades out (chosen 27-09-2026)
+    local bandTex = LoadArt(ctx, "runemap_band_clear.png")   -- the day fades out
     if bandTex then
         local bb = StaticConstructObject(Obj("/Script/UMG.SizeBox"), tree, FName("RU_MapBandBox"))
         bb:SetWidthOverride(BOX)
@@ -386,7 +383,7 @@ local function BuildRing(ctx, tree, map)
     mb:SetWidthOverride(D)
     mb:SetHeightOverride(D)
     -- The game's map widget cost about 20 FPS at any zoom (28-09-2026). A retainer box draws it into a picture
-    -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (the chosen default).
+    -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (the default).
     -- F8 "Smooth" turns the retainer off, so the map draws every frame again (see ApplySettings).
     local okRB, errRB = pcall(function()
         local rb = StaticConstructObject(Obj("/Script/UMG.RetainerBox"), tree, FName("RU_MapRetainer"))
@@ -423,7 +420,7 @@ local function BuildRing(ctx, tree, map)
             AddCentred(ov, keep)
         end
     end
-    -- the north mark (1.1; since 1.5 an arrow with the N cut into it); under the time arrow
+    -- the north mark, an arrow with the N cut into it; under the time arrow
     local northTex = LoadArt(ctx, "runemap_north.png")
     if northTex then
         local okM, errM = pcall(function()
@@ -432,8 +429,7 @@ local function BuildRing(ctx, tree, map)
         end)
         if not okM then ctx.Log("runemap: north mark not drawn: " .. tostring(errM)) end
     end
-    -- the clock hand: a gold arrow on the day band that points out. Chosen over the sun and the moon twice
-    -- (design sketch, 27-09-2026, and live in the game, 02-10-2026: a spark and a sun were tried, "arrow was better")
+    -- the clock hand: a gold arrow on the day band that points out
     local needleTex = LoadArt(ctx, "runemap_needle.png")
     if needleTex then
         local okN, errN = pcall(function()
@@ -453,7 +449,7 @@ end
 ---------------------------------------------------------------- the time of day, read from the game's own dial
 
 function M.ReadClock(ctx)
-    local DN = ctx.ById("daynight").Instances[1]   -- main.lua finds it every 2 s; no scan of our own
+    local DN = ctx.ById("daynight").Instances[1]   -- finder.lua finds it; no scan of our own
     if not (DN and DN:IsValid()) then return nil end
     local root = DN.WidgetTree.RootWidget
     local bar, cursor = root:GetChildAt(0), root:GetChildAt(1)
@@ -465,7 +461,7 @@ function M.ReadClock(ctx)
             vals[p.ParameterInfo.Name:ToString()] = p.ParameterValue
         end)
     end)
-    -- the share of the day gone; the pointer's angle is the same share of 360 degrees (first test)
+    -- the share of the day gone; the pointer's angle is the same share of 360 degrees
     local fill = vals["Fill Amount"] or (angle / 360)
     local ns = math.max(0.15, math.min(0.9, vals["Night Start"] or NIGHT_START))
     return fill % 1, ns
@@ -515,12 +511,12 @@ local function UpdateNorth()
 end
 
 -- The F9 opacity. The whole map through its user widget, which leaves the editor's blinking (render opacity)
--- alone; the gold rings by their own colour, since outlines ignore the widget's opacity (LEARNINGS, 28-09-2026).
+-- alone; the gold rings by their own colour, since outlines ignore the widget's opacity (28-09-2026).
 -- The immersive mode's fade comes in here too (ctx.Fade), for the same reason.
--- In the play test of 03-10-2026 the rings followed the opacity keys at once, with no change of visibility after
--- SetBrush. The tool bar's edges were not drawn again after SetBrush alone (see toolbar.lua). The reason for the
+-- The rings followed the opacity keys at once, with no change of visibility after SetBrush (seen in the game, 03-10-2026).
+-- The tool bar's edges were not drawn again after SetBrush alone (see toolbar.lua). The reason for the
 -- difference is not known. A probe wrote a red outline to the rings' brush and called SetBrush, with no change of
--- opacity: the screen kept the old colour for seconds (probe 1, 03-10-2026).
+-- opacity: the screen kept the old colour for seconds (probe of 03-10-2026).
 local function ApplyOpacity(ctx)
     local op = (ctx.ById("runemap").Opacity or 1) * ctx.Fade()
     if op == M.Op then return end
@@ -540,7 +536,7 @@ end
 ---------------------------------------------------------------- build and update
 
 -- A second set-up once the map is on screen: the quest, bed and teleporter icons showed only after the
--- terrain was added again and the map set up again (second F7 test of 27-09-2026).
+-- terrain was added again and the map set up again (probe of 27-09-2026).
 local function SetUpAgain(ctx)
     local map = M.Map
     local t0 = os.clock()
@@ -606,7 +602,7 @@ local function Build(ctx)
         local E = ctx.ById("runemap")
         local slot = canvas:AddChildToCanvas(size)
         slot:SetAutoSize(true)
-        -- tied to the top right corner, so it stays there on a wide screen (Nexus, 29-09-2026); the spot is measured
+        -- tied to the top right corner, so it stays there on a wide screen; the spot is measured
         -- on a 16:9 screen, 1920 units wide
         slot:SetAnchors({ Minimum = { X = 1, Y = 0 }, Maximum = { X = 1, Y = 0 } })
         slot:SetPosition({ X = E.Center.X - BOX / 2 - 1920, Y = E.Center.Y - BOX / 2 })
@@ -635,16 +631,36 @@ end
 -- the map is on screen. (The MiniMap addon draws its diamonds from a native hook, which breaks with every game patch.)
 local ICON_CLASS = "/Script/MinimapPlugin.MapIconComponent"
 local CREATURE_SIZE = 8       -- used only when the icon has no default size to scale from
--- of the default size, which looked far too big; 0.6 was right at an icon scale of 0.54 (27-09-2026), so our icons
--- keep that size when the scale changes (the resources use the same)
+-- the share of the icon's default size (the default looked far too big); 0.6 was right at an icon scale of 0.54
+-- (27-09-2026), so our icons keep that size when the scale changes (the resources use the same)
 local CREATURE_SHARE = 0.6 * 0.54 / ICON_SCALE
 local Creatures = {}   -- full name -> { Icon, Shown }
+
+-- A map icon on an actor, for the creatures and for resources.lua. Returns the icon, nil when the actor is being
+-- removed (log, 28-09-2026): the caller tries again on the next scan. Then whether the picture was set, and the
+-- error if not. cls: the icon class, when the caller has looked it up already.
+local function MapIcon(A, tex, cls)
+    local T = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+    local icon = A:AddComponentByClass(cls or Obj(ICON_CLASS), false, T, false)
+    if not (icon and icon:IsValid()) then return nil end
+    local okT, errT = pcall(function() icon:SetIconTexture(tex) end)
+    -- The plugin's own size unit is unknown: its default drew them far too big, 8 drew nothing
+    -- (27-09-2026). So the size is a share of the icon's own default. SetIconSize takes two values
+    -- ("expected 2 parameters"): width and height, or a size and a flag.
+    local def = nil
+    pcall(function() local s = icon.IconSize def = (type(s) == "number") and s or s.X end)
+    local size = (def and def > 0) and def * CREATURE_SHARE or CREATURE_SIZE
+    if not pcall(function() icon:SetIconSize(size, size) end) then
+        pcall(function() icon:SetIconSize(size, true) end)
+    end
+    return icon, okT, errT
+end
 
 local function ScanCreatures(ctx)
     if not (M.EnemyTex and M.NeutralTex and M.Near) then return end
     local cls = Obj(ICON_CLASS)
     if not (cls and cls:IsValid()) then Once(ctx, "iconclass", "runemap: no map icon class, no creatures") return end
-    -- the editor's switch (they show at every zoom: wanted at the farthest one too, 27-09-2026). Hidden while
+    -- the editor's switch (they show at every zoom, also the farthest). Hidden while
     -- the game's HUD is hidden: the big map (M) draws every map icon too, and there it showed every creature in
     -- the world, which reads like a radar (28-09-2026).
     local show = ctx.ById("creatures").Visible ~= false and M.Shown == true
@@ -658,22 +674,10 @@ local function ScanCreatures(ctx)
             if not c then
                 if added >= 8 then return end   -- a few per scan, so a crowd does not stall one frame
                 added = added + 1
-                local T = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
-                local icon = A:AddComponentByClass(cls, false, T, false)
-                -- no icon when the creature is being removed (log, 28-09-2026): try again on the next scan
-                if not (icon and icon:IsValid()) then return end
                 local neutral = e.Group == "Calm"
-                local okT, errT = pcall(function() icon:SetIconTexture(neutral and M.NeutralTex or M.EnemyTex) end)
+                local icon, okT, errT = MapIcon(A, neutral and M.NeutralTex or M.EnemyTex, cls)
+                if not icon then return end
                 if not okT then Once(ctx, "icontex", "runemap: creature icon picture failed: " .. tostring(errT)) end
-                -- The plugin's own size unit is unknown: its default drew them far too big, 8 drew nothing
-                -- (27-09-2026). So the size is a share of the icon's own default. SetIconSize takes two values
-                -- ("expected 2 parameters"): width and height, or a size and a flag.
-                local def = nil
-                pcall(function() local s = icon.IconSize def = (type(s) == "number") and s or s.X end)
-                local size = (def and def > 0) and def * CREATURE_SHARE or CREATURE_SIZE
-                if not pcall(function() icon:SetIconSize(size, size) end) then
-                    pcall(function() icon:SetIconSize(size, true) end)
-                end
                 c = { Icon = icon, Shown = nil, Neutral = neutral }
                 Creatures[n] = c
             end
@@ -782,7 +786,7 @@ function M.Tick(ctx)
     if not M.Set.Map then
         -- off in F8: nothing built, nothing searched. Turned on again, the build below runs as after a world change.
         if M.UW or M.W then TakeOff() M.Pawn, M.Map, M.Visible = nil, nil, nil ctx.Log("runemap: off") end
-        if M.PendingZoom then ApplyZoom(ctx) end   -- the zoom keys still change the saved zoom
+        if M.PendingZoom then ApplyZoom() end   -- the zoom keys still change the saved zoom
         M.Fails = 0
         return
     end
@@ -799,7 +803,7 @@ function M.Tick(ctx)
         if okR and ready then Build(ctx) end
         return
     end
-    if M.PendingZoom then ApplyZoom(ctx) end
+    if M.PendingZoom then ApplyZoom() end
     ApplySettings(ctx)
     ApplyOpacity(ctx)
     if M.SetUpAt and os.clock() > M.SetUpAt then M.SetUpAt = nil SetUpAgain(ctx) end
@@ -807,7 +811,7 @@ function M.Tick(ctx)
         -- every 2 s, around the player (nearby.lua); the plugin moves the icons itself
         M.NextCreatures = os.clock() + 2.0
         if ctx.ById("creatures").Visible == false then
-            -- off: no icons and no search at all (the search ran with Creatures off too, 29-09-2026)
+            -- off: no icons and no search at all
             if next(Creatures) then DropCreatureIcons() end
         else
             local okC, errC = pcall(ScanCreatures, ctx)
@@ -847,8 +851,8 @@ function M.Tick(ctx)
     end)
     -- Hidden in the editor: off the screen, not only see-through. The gold rings are outlines, and the game draws
     -- outlines at full strength inside a see-through parent: the rings stayed on screen (28-09-2026).
-    -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans (review of
-    -- 29-09-2026); it fades through its colour only on the way out and back in.
+    -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans;
+    -- it fades through its colour only on the way out and back in.
     local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0
     if visible ~= M.Visible then
         -- shown again after a hidden stretch: set the map up again, as after the big map (the set-up needs a map on
@@ -878,7 +882,7 @@ function M.Tick(ctx)
     M.NeedleImg:SetRenderTransformAngle(deg)   -- the picture points up: out, when on top
 end
 
--- for resources.lua (main.lua sets M.Res and M.Near): the helpers it shares with the creatures
-M.H = { Obj = Obj, IconClass = ICON_CLASS, Share = CREATURE_SHARE }
+-- for resources.lua (main.lua sets M.Res and M.Near): the helper it shares with the creatures
+M.H = { MapIcon = MapIcon }
 
 return M

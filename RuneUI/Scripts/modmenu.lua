@@ -1,4 +1,4 @@
--- Rune UI's page in the mod "Mod Menu" (1.5): MODS in the pause menu, for a player who has that mod. The page is
+-- Rune UI's page in the mod "Mod Menu": MODS in the pause menu, for a player who has that mod. The page is
 -- RuneUI/modmenu.txt. Mod Menu shows it, keeps the values in its own file (config.txt in our folder; that cannot
 -- be turned off) and gives them to other mods as shared variables: ModMenu.RuneUI.<key>, .rev (one more on each
 -- change the player makes) and .action (the button the player clicked, with a count).

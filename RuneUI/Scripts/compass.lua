@@ -1,16 +1,14 @@
--- Compass, part two (1.7; the look was settled live in the game on 04-10-2026): the game's compass gets the gold style
--- of the mod, and, while the map is not on screen, the map's marks.
--- The gold style, always while the game's compass is shown: a gold line of the mod (goldline.lua) on top of the strip's
--- white line, and the game's middle mark in gold. The letters stay white: they are part of the strip's picture.
--- The marks, while the compass is shown and RuneMap is not (with the setting "In immersive mode" at Compass, this is the
--- immersive mode; with the map turned off in F8 it is always): the groups that the map settings (F8) switch on, in the
--- map's shapes: creatures (enemy red diamond, calm green diamond), ore, herbs, essence and rare trees. nearby.lua
--- finds the things and decides what each one is, as for the map. A mark sits on the compass at the bearing of its thing,
--- at the scale of the game's own marks, and fades out at the edge. Far things are smaller and dimmer.
--- The widgets are in the compass's own widget tree, so they fade, hide and move with it (immersive.lua, F9).
+-- The compass: a gold line and a gold middle mark, always while the game's compass is shown, and the map's marks.
+-- The gold line (goldline.lua) sits on the strip's white line. The letters stay white: they are part of the strip's picture.
+-- The marks show while RuneMap is not on screen, for the groups that the F8 map settings switch on, in the map's
+-- shapes: creatures (enemy red diamond, calm green diamond), ore, herbs, essence and rare trees.
+-- nearby.lua finds the things and decides what each one is.
+-- With the setting "In immersive mode" at Compass, this is the immersive mode; with the map turned off in F8 it is always.
+-- A mark sits at the bearing of its thing, at the scale of the game's own marks, and fades out at the edge.
+-- Far things are smaller and dimmer. The widgets are in the compass's own widget tree, so they fade, hide and move with it.
 -- A texture that only Lua holds is freed by the engine, and the next touch crashes the game: each picture sits in a
 -- hidden Image of the compass, next to the pool of marks.
--- Motion: the mod's main loop runs about 16 times a second, too few for a smooth turn. While marks are wanted and a thing
+-- Motion: the main loop runs about 16 times a second, too few for a smooth turn. While marks are wanted and a thing
 -- is near, a chain of delayed calls on the game thread (chain.lua) paints about every frame, as xp.lua does for a level up.
 -- The chain also runs while every thing is behind you: a mark must come in at the edge with no delay when you turn.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
@@ -26,7 +24,7 @@ local POOL = 40            -- marks at most on show
 local LINE_W, LINE_H, LINE_Y, LINE_TOP = 620, 22, -11.5, 21   -- the gold line on the strip's white line
 local GOLD = { R = 1.0, G = 0.638, B = 0.168, A = 1.0 }       -- the pick-up count's gold (pickups.lua)
 local STAMP = tostring(os.time())   -- in each name: a restart of the mod in the same world starts the counters of ctx.G again
-local ART = "ue4ss/Mods/RuneUI/Art/"
+local ART = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 -- the map's shapes without their dark outline: on the fine compass the outline was too heavy (in game, 04-10-2026)
 local FILES = { Enemy = "compass_enemy.png", Calm = "compass_neutral.png", Ore = "compass_ore.png",
     Herbs = "compass_herb.png", Essence = "compass_essence.png", Trees = "compass_tree.png" }
@@ -38,7 +36,7 @@ local CREATURES_EVERY, RESOURCES_EVERY = 2, 10   -- seconds, as on the map: ore 
 
 ---------------------------------------------------------------- what to show, without the game (tools/test-compass.js)
 
--- x to a number of steps in each unit (10: a tenth), so equal values are equal numbers
+-- Round x to a number of steps in each unit (10: a tenth), so equal values are equal numbers
 local function Round(x, steps) return math.floor(x * steps + 0.5) / steps end
 
 -- The offset of a thing in compass units: its bearing from the player (dx, dy: the thing minus the player, in game
@@ -270,12 +268,12 @@ local function Scan(ctx, now, groups, pawn)
     end
 end
 
-local function Step(ctx) return Safe(ctx) end
 local function More() return M.Runs(M.Want, #M.Creatures + #M.Resources) end
 
--- The compass of a new build: the old one is let go without a touch (the game made another, or freed it).
-local function Compass(ctx, comp, now)
-    if M.Comp and not (M.Comp:IsValid() and M.Name == comp:GetFullName()) then
+-- The compass of a new build: the old one is let go without a touch (the game made another, or freed it). key: the
+-- full name of comp, which finder.lua read when it found the widget.
+local function Compass(ctx, comp, key, now)
+    if M.Comp and not (M.Comp:IsValid() and M.Name == key) then
         Reset()
     end
     if M.Comp or M.Fails >= 3 or now < M.RetryAt then return end
@@ -307,16 +305,16 @@ M.Forget(false)
 function M.Tick(ctx)
     M.Ctx = ctx
     local now = os.clock()
-    local comp = ctx.Compass()
-    if comp then Compass(ctx, comp, now) end
+    local comp, key = ctx.Compass()
+    if comp then Compass(ctx, comp, key, now) end
     local groups = M.Groups(ctx.Set(), ctx.ById("creatures").Visible ~= false)
     local want = M.Comp ~= nil and M.MarksOn(comp ~= nil, ctx.MapShown(), groups)
     if want then
         local pc = ctx.Controller()
         local pawn = pc and pc.Pawn
         -- a group switched on or off shows at once, as on the map; the scan then runs again
-        local sig = ""
-        for _, g in ipairs(ORDER) do if groups[g] then sig = sig .. g end end
+        local sig = 0
+        for _, g in ipairs(ORDER) do sig = sig * 2 + (groups[g] and 1 or 0) end
         if sig ~= M.Key then M.Key, M.NextCreatures, M.NextResources = sig, 0, 0 end
         if pawn and pawn:IsValid() and ctx.Near then
             local ok, err = pcall(Scan, ctx, now, groups, pawn)
@@ -332,7 +330,7 @@ function M.Tick(ctx)
     local moved = want ~= M.Want or M.Dirty
     M.Want, M.Dirty = want, false
     if moved or not (ctx.Chain and ctx.Chain.Alive(M.Chain, ALIVE)) then Safe(ctx) end
-    if ctx.Chain then ctx.Chain.Run(M.Chain, ctx, FAST, Step, More) end
+    if ctx.Chain then ctx.Chain.Run(M.Chain, ctx, FAST, Safe, More) end
 end
 
 return M

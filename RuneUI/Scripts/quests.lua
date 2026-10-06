@@ -1,7 +1,6 @@
--- The quests and unlocks (1.5; playtest, 02-10-2026): the game's panel at the right edge, as the game made it, in
--- the HUD's font with the letters' shadow (letters.lua), as the item pick-ups. A mirror of the panel for the left
--- edge was tried and dropped: the game made the panel for the right edge, and after four fixes the mirror still cost
--- the game's slide-in and sparks. The editor moves the panel only up and down (OnlyY in main.lua).
+-- The quests and unlocks: the game's panel at the right edge, as the game made it, in the HUD's font with the
+-- letters' shadow (letters.lua), as the item pick-ups. The panel stays at the right edge: a mirror for the left
+-- edge would lose the game's slide-in and sparks. The editor moves the panel only up and down (OnlyY in elements.lua).
 -- The entry (WBP_QuestAndUnlocks_Item_C) is made once in a world and filled again for each notice. A row
 -- (WBP_QuestAndUnlocks_Item_Slot_C) is made new for each notice, from its master copy: the master copy's text gets
 -- the font, so a new row has it from the start. Every 5 s, every text under the panel is also styled, once each, so

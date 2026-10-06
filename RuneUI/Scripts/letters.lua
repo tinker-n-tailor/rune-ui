@@ -1,7 +1,6 @@
--- Readable letters (picked live in the game, 01-10-2026): white words with a shadow on the letters in the
--- pick-up prompt, the build panel and the repair mode. Gold read worse than white over bright grass, and the letter
--- shadow beat every background tried (dark stripes, the game's tapered shadow, a soft oval). So the build title also
--- loses the game's faint tapered shadow (NameBorder, M_UI_TapperedBg).
+-- Readable letters: white words with a shadow on the letters in the pick-up prompt, the build panel and the repair
+-- mode. White, not gold: gold reads worse over bright grass. The build title also loses the game's faint tapered
+-- shadow (NameBorder, M_UI_TapperedBg).
 -- Each panel is one widget for the whole game, refilled by the game (probes of 30-09 and 01-10-2026). Every text gets
 -- the shadow, the key letters (KeyText) not. Only the panel's own words turn white: the red "inventory full" and the
 -- cost rows keep the game's colours, they mean something.

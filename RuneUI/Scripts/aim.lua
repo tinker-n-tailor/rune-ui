@@ -1,6 +1,5 @@
--- The aim marks in the middle of the screen in our gold, and our gold diamond in place of the white lock-on orb
--- (design sketch B, playtest 29-09-2026). The marks: the dot of every weapon, the staff's ring, the bow's aim ring and
--- the bow's stamina arc. They live in WBP_HUD_ReticleWidget_C: one reticle per weapon kind in a switcher (probe of
+-- The aim marks in the middle of the screen in our gold, and our gold diamond in place of the white lock-on orb.
+-- The marks: the dot of every weapon, the staff's ring, the bow's aim ring and the bow's stamina arc. They live in WBP_HUD_ReticleWidget_C: one reticle per weapon kind in a switcher (probe of
 -- 29-09-2026). The orb is WBP_LockOnTargetOrb_C, one Image named Orb (T_Reticule_Asset, 64 in a 32 box).
 -- The staff's ring round a target (WBP_TargetIcon_C) becomes our gold diamond, set once in the ring's template.
 -- Every colour and picture changed here is remembered, so the F9 line off puts the game's look back.
@@ -9,7 +8,7 @@
 local M = {}
 
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
--- the orb's box is 32 units; the sketch's diamond is about 14 (playtest, 29-09-2026: the orb's own size is "way too big")
+-- the orb's box is 32 units; the diamond is about 14
 local DIAMOND_SCALE = 0.45
 -- the game's orb sits right of and below the middle of the staff's target mark; this puts the diamond in it
 -- (measured in game, 01-10-2026, 2560x1440)
@@ -20,7 +19,7 @@ local MARKS = { Crosshair = "image", MagicIcon = "brush", StaminaProgressBar = "
 local GLOW = "Glow Color and Opacity"   -- the bow ring's colour (MI_RangedAimRingReticle; white, 0.7)
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
-local GOLD = { R = Lin1(0.89), G = Lin1(0.72), B = Lin1(0.38) }   -- #e3b861, the sketch's gold
+local GOLD = { R = Lin1(0.89), G = Lin1(0.72), B = Lin1(0.38) }   -- #e3b861
 
 local function Obj(path) return StaticFindObject(path) end
 local Logged = {}
@@ -146,9 +145,8 @@ local function Marks(ctx)
     end
 end
 
--- The staff's ring round a target is our gold diamond (picked in game, 01-10-2026: "Diamond"). The game
--- builds a new WBP_TargetIcon_C for every target from its class template, so a ring tinted after the widget search
--- showed white half the time. The diamond goes into the template's one Image instead, once: every ring built after
+-- The staff's ring round a target is our gold diamond. The game builds a new WBP_TargetIcon_C for every target from
+-- its class template, so a ring tinted after the widget search shows white half the time. The diamond goes into the template's one Image instead, once: every ring built after
 -- has it. The template's full name holds "WBP_TargetIcon_C:WidgetTree." under /Game, never /Engine/Transient.
 local function Template()
     for _, I in pairs(FindAllOf("Image") or {}) do

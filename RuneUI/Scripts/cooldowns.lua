@@ -1,8 +1,8 @@
--- Spell cooldowns (design sketch C, playtest 29-09-2026): while a spell recovers, a see-through square tile on the left
--- of the screen with the spell's icon, a gold fill rising from the bottom and the seconds in the corner. It goes
--- when the spell is ready. The newest tile is at the bottom; when one finishes, the ones below move up (playtest,
--- 30-09-2026). The switch "cdhoriz" lays the same tiles in a row instead: the newest at the right end, and the ones
--- to its right move left; the left end of the box stays where it is. Never faded by the immersive mode. main.lua moves and sizes it as the F9 element "cooldowns".
+-- Spell cooldowns: while a spell recovers, a see-through square tile on the left of the screen with the spell's icon,
+-- a gold fill rising from the bottom and the seconds in the corner. It goes when the spell is ready. The newest tile
+-- is at the bottom; when one finishes, the ones below move up. The switch "cdhoriz" lays the same tiles in a row
+-- instead: the newest at the right end, and the ones to its right move left; the left end of the box stays where it
+-- is. Never faded by the immersive mode. apply.lua moves and sizes it as the F9 element "cooldowns".
 -- The data is the game's spell wheel, which counts on while it is closed (probe of 29-09-2026): 12 slices
 -- (WBP_SurvivalSorcery_RadialSlice_C), each with SliceIcon (the spell's texture), CooldownWidget (visibility 3 while
 -- the spell recovers), its TimerRing (material, FillBar rising 0 to 1) and CooldownText (the seconds).
@@ -25,7 +25,7 @@ end
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
-local DARK = Lin(0.086, 0.071, 0.051, 0.32)     -- #16120d at 32%: the sketch's see-through tile
+local DARK = Lin(0.086, 0.071, 0.051, 0.32)     -- #16120d at 32%: the see-through tile
 local EDGE = Lin(0.72, 0.57, 0.31, 0.45)        -- #b8924f at 45%: the thin gold edge
 local FILL = Lin(0.89, 0.72, 0.35, 0.38)        -- #e3b85a at 38%: the rising fill
 local CREAM = Lin(0.945, 0.902, 0.784)          -- #f1e6c8, the seconds
@@ -62,14 +62,8 @@ local function Box(tree, name, fill, outline)
     return img
 end
 
-local function Add(ov, w, h, v)
-    local s = ov:AddChildToOverlay(w)
-    s:SetHorizontalAlignment(h)
-    s:SetVerticalAlignment(v)
-    return s
-end
-
 local function Tile(ctx, tree, n)
+    local Add = ctx.Survival.Add
     local box = New("SizeBox", tree, n)
     box:SetWidthOverride(TILE)
     box:SetHeightOverride(TILE)
@@ -162,7 +156,7 @@ local function FillOf(ring)
 end
 
 -- the recovering spells now: key -> { Tex, Fill, Secs }, and their keys in slice order. ctx.Slices gives the
--- slices and their full names (read once by main.lua's search, not again here five times a second).
+-- slices and their full names (read once by finder.lua's search, not again here five times a second).
 local function Read(ctx)
     local now, fresh = {}, {}
     local slices, keys = ctx.Slices()
@@ -221,7 +215,7 @@ function M.Forget(sameWorld)
     -- as RuneMap: off the screen only in the same world; after a world change the engine has taken it away
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
     M.W, M.UW, M.Tiles, M.Slot, M.Visible, M.Op = nil, nil, nil, nil, false, nil
-    M.Parts, M.Keys, M.Fails, Logged = {}, {}, 0, {}
+    M.Parts, M.Keys, M.Fails, M.RetryAt, Logged = {}, {}, 0, 0, {}
 end
 M.Forget(false)
 
@@ -229,12 +223,12 @@ function M.Tick(ctx)
     if os.clock() < (M.Next or 0) then return end
     M.Next = os.clock() + 0.2
     if not (M.W and M.W:IsValid()) then
-        if (M.Fails or 0) >= 3 then return end
+        if not ctx.MayTry(M) then return end   -- 3 tries at most, 10 s apart
         local V = ctx.ById("vitals").Instances[1]
         if not (V and V:IsValid()) then return end   -- no world yet
         M.W = nil
         local ok, err = pcall(Build, ctx)
-        if not ok then M.Fails = M.Fails + 1 ctx.Log("cooldowns failed: " .. tostring(err)) end
+        if not ok then ctx.Failed(M) ctx.Log("cooldowns failed: " .. tostring(err)) end
         return
     end
     if ctx.Horizontal() ~= M.Horizontal then Lay(ctx, ctx.Horizontal()) end   -- the switch changed (F9, Mod Menu, F7)
@@ -247,11 +241,10 @@ function M.Tick(ctx)
         if #items == 0 and editing then items = Samples(ctx) end
     end
     for i, t in ipairs(M.Tiles) do Show(t, items[i]) end
-    -- the gold edge is an outline, which ignores the opacity main.lua sets (F9 dimming, the opacity keys): it takes
-    -- that opacity by its own colour, as runemap.lua ApplyOpacity does.
-    -- In the play test of 03-10-2026 the edge followed the opacity keys at once, with no change of visibility after
-    -- SetBrush. The tool bar's edges were not drawn again after SetBrush alone (see toolbar.lua). The reason for
-    -- the difference is not known.
+    -- the gold edge is an outline, which ignores the opacity apply.lua sets (F9 dimming, the opacity keys): it takes
+    -- that opacity by its own colour, as runemap.lua ApplyOpacity does. Here the edge follows the opacity keys at
+    -- once, with no change of visibility after SetBrush (in game, 03-10-2026). The tool bar's edges are not drawn
+    -- again after SetBrush alone (see toolbar.lua). The reason for the difference is not known.
     local op = M.W:GetRenderOpacity()
     if op ~= M.Op then
         M.Op = op

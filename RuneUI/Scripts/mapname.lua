@@ -1,17 +1,18 @@
--- Your name on the map (1.8; idea and first code by Taylor Powell, tcpowell): the map setting "Player name" (F8, key Name
--- in runemap.lua) off hides the name that the game prints beside your own marker, on RuneMap and on the big map (M). The game draws a marker for each thing on a map, WBP_Dominion_MinimapInternal_Icon_C (the game's files, 1.0.0.5):
+-- Your name on the map: the map setting "Player name" (F8, key Name in runemap.lua) off hides the name that the game
+-- prints beside your own marker, on RuneMap and on the big map (M).
+-- The game draws a marker for each thing on a map, WBP_Dominion_MinimapInternal_Icon_C (the game's files, 1.0.0.5):
 -- its IconLabel shows the text that its MapIconComp gives. Your marker is the one whose component has the picture of the
 -- local player, T_NavIcons_Player_Self (other players get the friend arrow), so in co-op another player's name is never
 -- touched, even under the same name. Seen in the game on 05-10-2026: 4 of 411 markers, size 40, the only ones with a name.
--- Not the owner of the component: it is not your body or your player state (the first build of this file, 0 of 775).
+-- Not the owner of the component: it is not your body or your player state (matching on the owner found 0 of 775).
 -- A marker whose component or picture cannot be read is not yours; one not set up yet is looked at again on the next scan.
 -- Off: each scan finds your markers and gives their label render opacity 0, its own opacity kept (Orig). Opacity, not
 -- visibility: the marker's blueprint sets the label's visibility itself (UpdateLabel, UpdateVisibility). On: nothing is
 -- called; the switch back to on gives each label its opacity once.
--- The marker class comes from main.lua's one widget search (ctx.Find is FindQuiet: runemap.lua adds markers all the time,
--- and a new one must not bring an early scan), and only while the switch is off.
+-- The marker class comes from the mod's one widget search (finder.lua; ctx.Find is FindQuiet: runemap.lua adds markers
+-- all the time, and a new one must not bring an early scan), and only while the switch is off.
 -- A map that opens makes its markers new, and until the next scan (2 s at most) your name showed beside the arrow
--- (playtest, 05-10-2026). So the step also takes the markers that the game reports as made (ctx.Arrived, main.lua's
+-- (seen in the game, 05-10-2026). So the step also takes the markers that the game reports as made (ctx.Arrived, finder.lua's
 -- Arrivals) and looks at them at once. The blueprint sets a marker's component after the widget is made, so one that
 -- cannot be read yet is looked at again every LOOK_EVERY seconds, for LOOK_FOR seconds, MAX_LOOKS markers at a look
 -- (a few small reads a marker, never the owner: see above). The ones not readable yet wait behind the ones not looked at
@@ -33,7 +34,7 @@ local Waiting = {}   -- { W, At }: markers that the game made and that are not l
 local NextLook = 0
 local Looks = 0      -- the first looks that did something are logged, with their cost
 -- the first scans of a round are logged, with their cost: the first one can see only the markers of the last full
--- search, as the class is wanted from then on (main.lua's FindClass)
+-- search, as the class is wanted from then on (finder.lua's FindClass)
 local Scans = 0
 
 -- the address of the player's own picture; nil while the game has not loaded it
@@ -147,7 +148,7 @@ end
 -- only the change of the switch: off looks at once (no wait for the scan), on puts the labels back once
 function M.Tick(ctx)
     local on = ctx.On()
-    local arrived = ctx.Arrived(CLASS)   -- taken at every step, whatever the switch says: main.lua keeps no list for us
+    local arrived = ctx.Arrived(CLASS)   -- taken at every step, whatever the switch says: finder.lua keeps no list for us
     if on ~= WasOn then
         WasOn = on
         if on then Restore(ctx) else Scan(ctx) end

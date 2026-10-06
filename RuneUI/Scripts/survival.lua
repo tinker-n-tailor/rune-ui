@@ -1,4 +1,4 @@
--- Food, water and rest in the style of the map (design sketch, 27-09-2026): a gold rim, a coloured ring
+-- Food, water and rest in the style of the map: a gold rim, a coloured ring
 -- that fills with the value, a dark centre with the game's icon and a diamond under it; no numbers.
 -- The game's own ring stays alive but unseen; ours is drawn from pictures (tools/make-runemap-art.js).
 -- The coloured ring is two half rings, each in a box that cuts it at the middle: turning a half shows as
@@ -9,10 +9,10 @@ local M = {}
 
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING = 68        -- the game's radial bar is 68 units; the pictures cover exactly that
-local ICON = 68        -- twice the 34 that looked too small; the picture has wide empty edges (27-09-2026)
+local ICON = 68        -- the picture has wide empty edges, so the icon is this big
 local DIAMOND = 10
 
--- Unreal takes widget colours as linear light; these are the sketch's screen colours, converted
+-- Unreal takes widget colours as linear light; these are screen colours (sRGB), converted
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
 
@@ -65,6 +65,7 @@ local function Add(ov, w, h, v, pad)
     if pad then s:SetPadding(pad) end
     return s
 end
+M.Picture, M.Sized, M.Add = Picture, Sized, Add   -- the other parts that draw rings and tiles use them too
 
 -- A widget by name, inside game widgets too
 local function Find(W, name, depth)
@@ -87,7 +88,7 @@ local function Find(W, name, depth)
     if okC and c then return Find(c, name, depth + 1) end
 end
 
--- Every text widget under W, the game's own kinds too (the first test found no plain TextBlock there)
+-- Every text widget under W, the game's own kinds too (no plain TextBlock was found there)
 local function TextsUnder(W, list, depth)
     list, depth = list or {}, depth or 0
     if not (W and W:IsValid()) or depth > 8 then return list end
@@ -123,7 +124,7 @@ local function Half(tree, name, tex, colour, right, size)
 end
 
 -- The ring without its icon: the dark back, the coloured ring in two halves, and the centre. art holds the
--- three pictures as Back, Half and Centre. The buffs in main.lua are drawn with it too (1.2).
+-- three pictures as Back, Half and Centre. The buffs in main.lua are drawn with it too.
 function M.Ring(tree, n, size, art, colour)
     local ov = New("Overlay", tree, n .. "Stack")
     Add(ov, Picture(tree, n .. "Back", art.Back, size), 2, 2)
@@ -143,10 +144,10 @@ local function Decorate(ctx, U)
     -- a new name on every build: making an object with the name of a live one can crash the game
     local tag = "RU_Up" .. M.Builds .. "_" .. os.time()
     Built = {}
-    -- the game's dark strip under the numbers: the sketch has none
+    -- the game's dark strip under the numbers
     pcall(function() Find(U.WidgetTree.RootWidget, "TextBackground"):SetRenderOpacity(0.0) end)
     -- the game's line between the rings and the drink buff: the rings have room between them, and in immersive
-    -- mode the line stayed alone (playtest, 01-10-2026: "hide it completely")
+    -- mode the line would stay alone
     pcall(function() Find(U.WidgetTree.RootWidget, "UpkeepBuffDivider"):SetRenderOpacity(0.0) end)
     for i, K in ipairs(KINDS) do
         local ok, err = pcall(function()
@@ -174,20 +175,14 @@ local function Decorate(ctx, U)
             end
             local box = Sized(tree, n, RING, RING, ov)
             -- our ring and diamond from an earlier round (a player restart keeps the game's widget): out first
-            pcall(function()
-                for c = root:GetChildrenCount() - 1, 0, -1 do
-                    local w = root:GetChildAt(c)
-                    if w and string.find(w:GetFName():ToString(), "RU_Up", 1, true) == 1 then w:RemoveFromParent() end
-                end
-            end)
+            ctx.ClearOurs(root, "RU_Up")
             Add(root, box, 2, 1)        -- over the game's ring: centred, at the top of the element
             bar:SetRenderOpacity(0.0)   -- only once ours is in: the game's ring stays alive for the game, unseen
             local diaImg = dia and Picture(tree, n .. "Dia", dia, DIAMOND)
             if diaImg then Add(root, diaImg, 2, 1, { Left = 0, Top = RING - 2 - DIAMOND / 2, Right = 0, Bottom = 0 }) end
-            -- no numbers: the ring shows how full it is (in-game review, 27-09-2026). The game still writes
-            -- them, and the ring reads them.
+            -- no numbers: the ring shows how full it is. The game still writes them, and the ring reads them.
             pcall(function() Find(root, "SizeBox_1"):SetRenderOpacity(0.0) end)
-            Built[i] = { Right = rImg, Left = lImg, Icon = ourIcon, Texts = texts, Value = nil, Name = K.Name, Colour = K.Colour,
+            Built[i] = { Right = rImg, Left = lImg, Icon = ourIcon, Texts = texts, Value = nil, Colour = K.Colour,
                 GameRing = Find(bar, "RadialImage"), GameIcon = icon, Box = box, Dia = diaImg }
             local parts = {}
             for _, T in ipairs(texts) do pcall(function() table.insert(parts, "'" .. T:GetText():ToString() .. "'") end) end
@@ -260,7 +255,7 @@ function M.Tick(ctx)
     local E = ctx.ById("survival")
     local U = E.Instances[1]
     if not (U and U:IsValid()) then return end
-    local name = E.Keys[1]   -- its full name, read by main.lua's search
+    local name = E.Keys[1]   -- its full name, read by finder.lua's search
     -- alive while any ring stands: one ring that failed must not stop the others from turning
     local function Alive()
         for _, b in pairs(Built) do if b.Right and b.Right:IsValid() then return true end end

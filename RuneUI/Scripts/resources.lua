@@ -1,6 +1,6 @@
--- Ore, herbs, rune essence and rare trees on RuneMap (playtest, 29-09-2026). A shape for each group, since the
--- creatures are the diamonds: ore a brown square, herbs a green triangle, essence a blue circle, rare trees a violet
--- triangle pointing down (tools/make-runemap-art.js; gold before 1.5, too close to the brown ore). Common things stay off the map: stone, berries, flax, oak, ash.
+-- Ore, herbs, rune essence and rare trees on RuneMap. A shape for each group, since the creatures are the
+-- diamonds: ore a brown square, herbs a green triangle, essence a blue circle, rare trees a violet triangle pointing
+-- down (tools/make-runemap-art.js). Common things stay off the map: stone, berries, flax, oak, ash.
 -- An ore rock with no chunks left ("depleted" in the game) and a picked plant hide until they grow back. F8
 -- (main.lua) has a switch for each group. runemap.lua calls Scan every few seconds while the map is on screen, the
 -- same way as the creatures, and passes itself (M) for the player, the settings, the shapes and its helpers. What a
@@ -11,18 +11,6 @@ local Icons = {}   -- full name -> { Icon, Shown, Group }
 local Scans = 0   -- the first scans of each world are logged, with their cost
 
 local ADD_PER_SCAN = 12   -- a few new icons per scan, so a full valley does not stall one frame
-
-local function AddIcon(M, A, group)
-    local T = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
-    local icon = A:AddComponentByClass(M.H.Obj(M.H.IconClass), false, T, false)
-    if not (icon and icon:IsValid()) then return nil end
-    pcall(function() icon:SetIconTexture(M.ResTex[group]) end)
-    local def = nil
-    pcall(function() local s = icon.IconSize def = (type(s) == "number") and s or s.X end)
-    local size = (def and def > 0) and def * M.H.Share or 8   -- the creatures' size
-    if not pcall(function() icon:SetIconSize(size, size) end) then pcall(function() icon:SetIconSize(size, true) end) end
-    return icon
-end
 
 function R.Drop()
     for _, c in pairs(Icons) do
@@ -59,7 +47,7 @@ function R.Scan(ctx, M)
             if not c then
                 if not S[group] or not M.ResTex[group] or added >= ADD_PER_SCAN then return end
                 added = added + 1
-                local icon = AddIcon(M, e.A, group)
+                local icon = M.H.MapIcon(e.A, M.ResTex[group])   -- the creatures' size and the same call (runemap.lua)
                 if not icon then return end
                 c = { Icon = icon, Shown = nil, Group = group }
                 Icons[n] = c

@@ -1,16 +1,16 @@
--- The F9 editor's panel and the mark on the selected element (design sketch of 01-10-2026, playtest: "This looks nice
--- honestly"). The bag panel's look: its background with the double gold frame (MI_Menu_PanelBG_Shared), Poppins,
--- the menu buttons' key boxes (keycap.png). A small screen map shows where every element sits, the selected one
--- lit gold; the list is grouped by screen area; X and Y sit next to Size and Opacity. On the game screen, gold
--- corners with a slow pulse and a dark name tag replace the pale gold box. F8's map settings use the same panel.
+-- The F9 editor's panel and the mark on the selected element. The panel looks like the bag's: its background with the
+-- double gold frame (MI_Menu_PanelBG_Shared), Poppins, the menu buttons' key boxes (keycap.png).
+-- A small screen map shows where every element sits, the selected one lit gold. The list is grouped by screen area.
+-- X and Y sit next to Size and Opacity. On the game screen, gold corners with a slow pulse and a dark name tag
+-- mark the selected element. F8's map settings use the same panel.
 -- main.lua builds a plain table of what to show (the view) and calls M.Update only when it changed; this file draws.
 -- Built on the first F9 or F8, when a world exists. main.lua loads this file with pcall.
 
 local M = {}
 
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
-local PANEL_BG = "/Game/Art/UI/ShaderWork/MI_Menu_PanelBG_Shared.MI_Menu_PanelBG_Shared"   -- the bag's panel (probe)
-local WIDTH, PAD = 460, 28   -- 420 left four key boxes and a long name no room (playtest, 01-10-2026)
+local PANEL_BG = "/Game/Art/UI/ShaderWork/MI_Menu_PanelBG_Shared.MI_Menu_PanelBG_Shared"   -- the bag's panel
+local WIDTH, PAD = 460, 28   -- 420 left four key boxes and a long name no room
 local INNER = WIDTH - 2 * PAD
 local MAP_W, MAP_H = INNER, math.floor(INNER * 9 / 16)   -- the screen map: a 16:9 screen
 M.ROWS, M.BOXES, M.KEYS, M.CAPS = 10, 40, 8, 4            -- list lines (group titles too), map boxes, key cells, caps a cell
@@ -20,7 +20,7 @@ local function Hex(h, a)
     local r, g, b = tonumber(h:sub(2, 3), 16) / 255, tonumber(h:sub(4, 5), 16) / 255, tonumber(h:sub(6, 7), 16) / 255
     return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1 }
 end
--- the sketch's colours
+-- colours
 local GOLD, TEXT, MUTED, DIM = Hex("#e3b861"), Hex("#f1ead9"), Hex("#a39a88"), Hex("#6e675b")
 local LINE, MAPBG, MAPBOX = Hex("#6f5a34"), Hex("#12110e"), Hex("#4a4336")
 local SELFILL, ROWSEL, TAGBG = Hex("#e3b861", 0.18), Hex("#e3b861", 0.14), Hex("#14120e", 0.88)
@@ -196,11 +196,11 @@ local function Build(ctx)
         Fill(frame, Nine(Art("edit_frame.png"), 8, 0.25, MAPBOX))
         Fill(frame, B)
         AddH(prof, frame, 4)
-        U.Slots[i] = { B = B, T = T, F = frame }
+        U.Slots[i] = { B = B, T = T }
     end
     AddH(prof, W("Spacer"), 0, true)
     if keyTex then AddH(prof, (Cap(keyTex, ctx.ProfileKey)), 8) end   -- F7, or the key from runeui.txt
-    -- F7 saves before it switches; "Next profile" alone left the player unsure how a profile is saved (01-10-2026)
+    -- F7 saves before it switches, so the label says both
     AddH(prof, Text(12, MUTED, "Save, next profile"))
     U.Profile = prof
     AddV(body, prof, 0, 12)
@@ -231,7 +231,7 @@ local function Build(ctx)
     AddV(body, U.Map, 0, 14)
 
     -- the selected element: its name, then X, Y, size, opacity and step
-    -- the name is a heading: smaller than before and in the heavier weight (Ivan, 05-10-2026); a long name ran past the edge at 16
+    -- the name is a heading in the heavier weight; a long name ran past the edge at size 16
     U.Name = Text(14, TEXT)
     if ctx.FontMedium then pcall(function() local fi = U.Name.Font fi.FontObject = ctx.FontMedium U.Name:SetFont(fi) end) end
     AddV(body, U.Name, 0, 6)
@@ -242,14 +242,14 @@ local function Build(ctx)
         AddH(facts, L, 4) AddH(facts, V, 11)
         U.Facts[i] = { L = L, V = V }
     end
-    -- a fixed height: a switch has no X, Y, size or opacity, so the line was gone and the panel got shorter (playtest, 05-10-2026)
+    -- a fixed height: a switch has no X, Y, size or opacity, so the line was gone and the panel got shorter
     AddV(body, Sized(facts, nil, 20))
     U.Hint = Text(12, MUTED)
     pcall(function() U.Hint:SetAutoWrapText(true) end)
     -- two lines are always reserved: a hint of none, one or two lines changed the panel's height, and with it the place of
-    -- the panel on the screen and of the list in it (playtest, 05-10-2026: "the panel jumps up and down")
+    -- the panel on the screen and of the list in it
     AddV(body, Sized(U.Hint, nil, 36), 6)
-    -- a part that failed is named here, so a player learns it without the log (1.4)
+    -- a part that failed is named here, so a player learns it without the log
     U.Warn = Text(12, WARN)
     pcall(function() U.Warn:SetAutoWrapText(true) end)
     AddV(body, U.Warn, 6)
@@ -278,7 +278,7 @@ local function Build(ctx)
         local hs = cell:AddChildToOverlay(head) hs:SetVerticalAlignment(3) hs:SetPadding({ Left = 0, Top = 8, Right = 0, Bottom = 1 })
         -- every line has the same height, a group title or a row: the panel does not change its height while the list scrolls
         AddV(body, Sized(cell, nil, 30))
-        U.Rows[i] = { B = B, T = T, Note = note, Diamond = ds, Head = head, Row = row }
+        U.Rows[i] = { B = B, T = T, Note = note, Diamond = ds, Head = head }
     end
     Divider(10, 12)
 
@@ -354,7 +354,7 @@ function M.Update(v)
             -- under the box, or above it near the bottom; right-aligned near the right edge
             local ly = (sel.Y + sel.H) * k + 3
             if ly > MAP_H - 16 then ly = sel.Y * k - 17 end
-            -- 7 units a letter at 11 (6 let "Time of day icon (immersive)" run past the edge: playtest, 01-10-2026)
+            -- 7 units a letter at 11 (6 let "Time of day icon (immersive)" run past the edge)
             local tw = #sel.Name * 7
             local lx = sel.X * k
             if lx > MAP_W * 0.55 then lx = (sel.X + sel.W) * k - tw end
@@ -436,7 +436,7 @@ function M.Size()
     return WIDTH, 760
 end
 
--- the corners breathe: solid, then a little under half, 1.6 s a breath (the sketch)
+-- the corners breathe: solid, then a little under half, 1.6 s a breath
 function M.Pulse(now)
     if U.MarkW then U.MarkW:SetRenderOpacity(0.72 + 0.28 * math.cos(now * math.pi * 2 / 1.6)) end
 end

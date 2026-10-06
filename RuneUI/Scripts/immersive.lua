@@ -1,17 +1,19 @@
--- Immersive mode (1.2, the idea of 29-09-2026): with nothing going on, the HUD fades away, and each part comes
--- back when it matters. The bars while health is not full, and a while after; the good buffs with them,
--- and each one when it comes (a debuff never fades); a food, water or rest ring when it runs low or fills; the menu buttons when a chat
--- message comes; the quest tracker when a quest or its step changes; the party panel when a friend's health goes down. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting "In immersive mode" keeps
--- one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens the big map). The tool bar never fades:
--- what matters can sit on it (playtest, 29-09-2026); nor do prompts, notifications, the area effects and warnings.
+-- Immersive mode: with nothing going on, the HUD fades away, and each part comes back when it matters. The bars
+-- come back while health is not full, and a while after; the good buffs with them, and each one when it comes (a
+-- debuff never fades). A food, water or rest ring comes back when it runs low or fills. The menu buttons come back
+-- when a chat message comes, the quest tracker when a quest or its step changes, the party panel when a friend's
+-- health goes down. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting
+-- "In immersive mode" keeps one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens
+-- the big map). The tool bar never fades, because what matters can sit on it. Prompts, notifications, the area
+-- effects and warnings never fade either.
 -- Off at first; its line in F9 turns it on, and + / - there set how long a part stays (main.lua keeps the number).
--- main.lua multiplies an element's opacity by Factor(E). The bars widget also holds the food rings and the area
+-- apply.lua multiplies an element's opacity by Factor(E). The bars widget also holds the food rings and the area
 -- effects, so it is not faded whole: its three rows and the trim line under them are faded here, and each ring too.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
 local M = {}
 
-local FADE_OUT, FADE_IN = 2.5, 0.2   -- seconds from full to gone, and back (out 1.0 was too quick: playtest, 29-09-2026)
+local FADE_OUT, FADE_IN = 2.5, 0.2   -- seconds from full to gone, and back (1.0 out is too quick to read the HUD)
 local LOW = 1 / 3                                            -- a ring shows while its share is under this
 local SHOW_AT_START = 8   -- a new world shows the whole HUD this long first (main.lua waits 3 s of it before the steps)
 -- seconds a part stays after the last reason to show it: the player's setting (F9, + / - on the immersive line)
@@ -20,7 +22,7 @@ local function Hold(ctx) return ctx.Wait() end
 -- the group each element follows; an element not listed never fades. "none": always away.
 -- The buff row is not in it: its good buffs fade one by one (StepBuffs) and a debuff never fades.
 -- "Menu icons" (menuico) is not in it: that widget is the game's full-screen menu, not the icons in the corner
--- (widget dump, 29-09-2026)
+-- (widget dump of 29-09-2026)
 local GROUP = { avatar = "bars", weapon = "bars", compass = "compass", wheel = "none", runemap = "none",
     menubtn = "menu", questtracker = "quest", party = "party" }
 
@@ -80,8 +82,8 @@ local function Read(ctx, now)
         local cur, max = string.match(health, "(%d+)%s*/%s*(%d+)")
         if cur and tonumber(cur) < tonumber(max) then Until.bars = now + Hold(ctx) end
     end
-    -- Stamina does not bring the bars back (04-10-2026): a run uses it too, and the bars are for a fight. The game
-    -- still plays its sound and its flash when the stamina is gone.
+    -- Stamina does not bring the bars back: a run uses it too, and the bars are for a fight. The game still plays
+    -- its sound and its flash when the stamina is gone.
     -- the menu buttons: a new chat message brings them back
     local chat = ctx.ChatCount()
     if chat and LastChat and chat > LastChat then Until.menu = now + Hold(ctx) end
@@ -124,15 +126,24 @@ local function Fade(W, o) if W:IsValid() then W:SetRenderOpacity(o) end end   --
 -- 1 while the group g has a reason to show (or the mode is off), else 0
 local function Target(g, on, now) return (not on or (g ~= "none" and now < (Until[g] or 0))) and 1 or 0 end
 
--- the row of bar i faded to level. The special bar's parent might be the column that holds all the rows (only the
--- first two are proven rows, by SwapRows): then it stays, or the rings and area effects would fade with it
+-- The particles of a bar that fills do not take the opacity of its row, so they are hidden while the row is faded.
+local PARTICLES = { "NS_UI_StaminaBarIncrease", "NS_UI_HealthBarIncrease", "NS_UI_SpecialChargeBarIncrease" }
+local VISIBLE, HIDDEN = 0, 2
+local function FadeParticles(bar, i, faded)
+    local particles = bar[PARTICLES[i]]
+    if particles and particles:IsValid() then particles:SetVisibility(faded and HIDDEN or VISIBLE) end
+end
+
+-- the row of bar i faded to level. The special bar has a row of its own in the game. If its parent is ever the column that
+-- holds all the rows, it stays, or the rings and area effects would fade with it
 local function FadeRow(bars, i, level)
     local row = bars[i]:GetParent()
     if i == 3 and row:GetAddress() == bars[1]:GetParent():GetParent():GetAddress() then return end
     Put("bars", row, level)
+    FadeParticles(bars[i], i, level < 1)
 end
 
--- The good buffs, each on its own (1.7): an entry shows for the wait after its buff arrives (buffs.lua counts the
+-- The good buffs, each on its own: an entry shows for the wait after its buff arrives (buffs.lua counts the
 -- arrivals) and at the start of a world, and fades after. The bars bring all of them back: a fight brings its
 -- effects. A debuff has no level here. An entry seen for the first time takes its target at once: one built again
 -- for a buff that is on must not fade in front of the player. The call goes out only when the level changed.
@@ -163,10 +174,10 @@ function M.Tick(ctx)
     local on = ctx.On() and not ctx.Editing()
     if on and now > NextRead then NextRead = now + 0.25 Read(ctx, now) end
     -- the quest tracker sits under the map and goes with it: while the map stays (its setting "In immersive mode"),
-    -- the tracker stays too (playtest, 04-10-2026: a tracker that shows only at a new step is never seen)
+    -- the tracker stays too: a tracker that shows only at a new step is never seen
     if on and ctx.MapStays() then Until.quest = now + 1 end
     -- the map setting "In immersive mode" at Compass: the game's compass stays, the map and the tracker do not. A
-    -- compass hidden in F9 stays hidden: main.lua's hide comes after this share.
+    -- compass hidden in F9 stays hidden: apply.lua's hide comes after this share.
     if on and ctx.CompassStays() then Until.compass = now + 1 end
     for g in pairs(Level) do Level[g] = Ease(Level[g], Target(g, on, now), dt) end
     StepBuffs(ctx, on, now, dt)
@@ -187,7 +198,7 @@ function M.Tick(ctx)
             pcall(Put, i, b.Dia, o)
         end
     end
-    -- the drink ring sits beside them in the same widget, so it fades on its own (playtest, 01-10-2026: it stayed alone).
+    -- the drink ring sits beside them in the same widget, so it fades on its own.
     -- Its root, not the entry: the entry is an F9 element, and hiding it there sets the entry's opacity.
     for k, d in pairs(ctx.Drinks()) do
         if d.Root then

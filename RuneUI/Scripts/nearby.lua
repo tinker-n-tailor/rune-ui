@@ -1,15 +1,14 @@
 -- The things near the player: creatures, ore, herbs, rune essence and rare trees. One place finds them and decides
 -- what each one is, so the map's icons (runemap.lua, resources.lua) and the compass's marks (compass.lua) agree.
--- The rules came from the map's own scans (playtest, 29-09-2026) and moved here as they were.
 -- Creatures: group "Enemy" or "Calm" (neutral animals). Resources: group "Ore", "Herbs", "Essence" or "Trees".
 -- main.lua loads this file with pcall and gives it to the map and to the compass.
 
 local N = {}
 
-N.CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map (playtest, 29-09-2026)
-N.RESOURCE_RADIUS = 6000    -- 60 m: 100 m showed 41 things at once and crowded the map (playtest, 29-09-2026)
+N.CREATURE_RADIUS = 10000   -- 100 m; 300 m crowded the map
+N.RESOURCE_RADIUS = 6000    -- 60 m: 100 m showed 41 things at once and crowded the map
 
--- the six wild herbs (wiki, 29-09-2026); the game also spells Kwuarm "Kuarm"
+-- the six wild herbs; the game also spells Kwuarm "Kuarm"
 local HERBS = { "Marrentil", "Harralander", "Kwuarm", "Kuarm", "Snapdragon", "Toadflax", "Irit" }
 
 -- ponytail: neutral by the creature's class name; switch to the game's own flag if one is found
@@ -22,7 +21,7 @@ local NEUTRAL = { "Deer", "Stag", "Rabbit", "Hare", "Chicken", "Sheep", "Cow", "
 -- and magic trees are not seen yet, so theirs are a guess
 function N.Decide(cls)
     local ore = string.match(cls, "^BP_OreNode_(%a+)")
-    if ore then return ore ~= "Stone" and "Ore" end   -- stone is everywhere (playtest)
+    if ore then return ore ~= "Stone" and "Ore" end   -- stone is everywhere
     if string.find(cls, "RuneEssence", 1, true) then return "Essence" end
     for _, h in ipairs(HERBS) do if string.find(cls, h, 1, true) then return "Herbs" end end
     if string.find(cls, "AnimaInfusedBark", 1, true) then return "Trees" end
@@ -73,8 +72,8 @@ local function OutActors(out)
     return list
 end
 
--- The creatures near the player (playtest, 29-09-2026: look only around the player). The walk through every object
--- the game holds (FindAllOf) took up to 30 ms (28-09-2026). The game's overlap query gives only the pawns within
+-- The creatures near the player. The walk through every object the game holds (FindAllOf) took up to 30 ms
+-- (28-09-2026). The game's overlap query gives only the pawns within
 -- CREATURE_RADIUS of the player. If UE4SS cannot make that call, the game's own list of creatures, then the walk.
 -- The first way that works stays.
 local CREATURE_WAYS = {
@@ -96,13 +95,32 @@ local CREATURE_WAYS = {
 }
 local Way, WayLogged = nil, nil
 
+-- true when a point is within radius of the origin, in a straight line (the game's units)
+function N.IsNear(origin, at, radius)
+    local dx, dy, dz = at.X - origin.X, at.Y - origin.Y, at.Z - origin.Z
+    return dx * dx + dy * dy + dz * dz <= radius * radius
+end
+
+-- The game's list and the walk give the creatures of the whole world: only the ones within CREATURE_RADIUS stay, as the
+-- overlap query gives. A creature whose place cannot be read is left out.
+local function Near(list, pawn)
+    local origin, out = pawn:K2_GetActorLocation(), {}
+    for _, A in ipairs(list) do
+        local ok, near = pcall(function() return N.IsNear(origin, A:K2_GetActorLocation(), N.CREATURE_RADIUS) end)
+        if ok and near then out[#out + 1] = A end
+    end
+    return out
+end
+
 local function Actors(ctx, pawn)
     local cls = Obj("/Script/Dominion.DominionAICharacter")
     for i = Way or 1, #CREATURE_WAYS do
         local way = CREATURE_WAYS[i]
         local ok, list = pcall(function()
             if i < 3 and not (cls and cls:IsValid()) then error("no creature class") end
-            return way[2](cls, pawn)
+            local found = way[2](cls, pawn)
+            if i > 1 then found = Near(found, pawn) end
+            return found
         end)
         if ok then
             if WayLogged ~= i then WayLogged = i ctx.Log("nearby: creatures found by " .. way[1]) end

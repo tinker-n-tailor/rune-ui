@@ -36,11 +36,11 @@
     { "key": "camera_melee", "type": "slider", "label": "Melee zoom", "min": 100, "max": 1500, "step": 25, "default": 200, "suffix": " cm",
       "tooltip": "The distance in a fight with a melee weapon." },
     { "key": "camera_ranged", "type": "slider", "label": "Ranged zoom", "min": 100, "max": 1500, "step": 25, "default": 500, "suffix": " cm",
-      "tooltip": "The distance while you aim a bow or cast a staff. It holds for a few seconds." },
+      "tooltip": "The distance while you aim a bow or hold a staff. It holds for a few seconds." },
     { "key": "camera_hold", "type": "slider", "label": "Hold after a fight", "min": 0, "max": 30, "step": 1, "default": 8, "suffix": " s",
       "tooltip": "How long the zoom stays after a fight or an aim. Then the camera goes back." },
     { "key": "camera_crosshair", "type": "choice", "label": "Crosshair in immersive mode", "options": ["Show", "Aim only"], "default": "Show",
-      "tooltip": "Aim only: the dot shows only while you aim or cast. Show: the game's crosshair." },
+      "tooltip": "Aim only: a dot only when you aim a bow or hold a staff. Show: the game's crosshair." },
 
     { "type": "header", "label": "XP" },
     { "key": "rune_xp", "type": "toggle", "label": "Rune XP", "default": true,

@@ -2,6 +2,21 @@
 
 All changes to Rune UI, newest first.
 
+## [1.9.1] - 2026-10-06
+
+### Changed
+
+- The tool bar now sits in the bag while the bag is open, also with a mouse and keyboard.
+
+### Fixed
+
+- In the immersive mode, a hidden bar no longer shows gold dust when it fills.
+- The camera no longer turns round and round when a locked-on enemy comes very close: the lock-on view is the game's own again.
+- The name of an enemy shows above its health bar again.
+- The quest tracker, the party panel and the spell cooldown tiles now try again after a failed start.
+- The marks on the compass now show also when the game starts from another folder.
+- The Profile row in Mod Menu no longer changes the profile on a value that is not 1, 2 or 3.
+
 ## [1.9] - 2026-10-06
 
 1.9 holds everything that 1.8 was to bring, and it adds a panel for the health of your friends. It also adds an immersive camera, new enemy health bars and clearer combat text.

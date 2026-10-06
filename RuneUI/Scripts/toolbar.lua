@@ -1,7 +1,6 @@
--- The tool bar as tiles (1.5; sketched live in the game, 02-10-2026: "Style is kinda not the same as everything
--- else"). Each slot looks like a spell cooldown tile: the game's black square see-through, a thin gold edge, the
--- slot number and the stack count in Poppins and cream, the durability bar on a see-through track. The slot in
--- use has a bright edge, 2 wide; the game's orange frame goes unseen.
+-- The tool bar as tiles. Each slot looks like a spell cooldown tile: the game's black square see-through, a thin gold
+-- edge, the slot number and the stack count in Poppins and cream, the durability bar on a see-through track.
+-- The slot in use has a bright edge, 2 wide; the game's orange frame goes unseen.
 -- The bar (probes 12 and 13, 02-10-2026): WBP_Inventory_QuickAccesBar_C > SlotGridContainer > 8 x
 -- WBP_Inventory_QuickAccess_ItemSlot_C: SizeBox_0 > Overlay_31 [InventorySlot, HeaderText (the number)].
 -- InventorySlot (WBP_Inventory_ItemSlot_C, the bag's slots are the same class and stay as they are): button >
@@ -15,8 +14,8 @@
 -- 03-10-2026): the bar went and our edges stayed. So the edge takes the opacity of every widget from the bar up to
 -- the top of the HUD by its own colour, and is hidden at opacity 0.
 -- The game draws the edge again only when a call tells it to, and a brush written in place tells it nothing: the
--- bright edge stayed on the slot of the item before, and the edges stayed with the wheel open (play test and
--- probes 5 to 7, 03-10-2026). So each change of an edge ends with two changes of its visibility.
+-- bright edge stayed on the slot of the item before, and the edges stayed with the wheel open (probes of
+-- 03-10-2026). So each change of an edge ends with two changes of its visibility.
 
 local M = {}
 
@@ -39,11 +38,11 @@ local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ct
 
 local function Nm(w) return w:GetFName():ToString() end
 local function Ok(w) return w and w:IsValid() end
--- a child by its name; nil when there is none
+-- a child by its name, and its index; nil when there is none
 local function Child(panel, name)
     for i = 0, panel:GetChildrenCount() - 1 do
         local c = panel:GetChildAt(i)
-        if Ok(c) and Nm(c) == name then return c end
+        if Ok(c) and Nm(c) == name then return c, i end
     end
 end
 
@@ -99,19 +98,18 @@ local function Opacity(n, bar)
     return op
 end
 
--- The durability bar keeps the game's colours: its pale tan, and its warning colours. A gold fill was in the
--- sketch; the tan was picked in the game (playtest, 02-10-2026: "They are fine as they are"). Only the track behind
+-- The durability bar keeps the game's colours: its pale tan, and its warning colours. Only the track behind
 -- the bar changes.
 
--- One slot, painted whole. W: the slot; ov: its overlay; inv: the game's inner slot. Returns what the steps
--- after it need, or nil while the game has not built the slot's parts yet.
-local function Paint(ctx, W, ov, inv)
+-- One slot, painted whole. W: the slot; ov: its overlay; inv: the game's inner slot, idx its place in ov. Returns
+-- what the steps after it need, or nil while the game has not built the slot's parts yet.
+local function Paint(ctx, W, ov, inv, idx)
     local itree = inv.WidgetTree
     local iroot = Ok(itree) and itree.RootWidget
     local box = Ok(iroot) and iroot:GetChildAt(0)
     local iov = Ok(box) and box:GetChildAt(0)
     if not Ok(iov) then return nil end
-    local S = { WAddr = W:GetAddress(), InvAddr = inv:GetAddress(), Ov = ov }
+    local S = { WAddr = W:GetAddress(), InvAddr = inv:GetAddress(), InvIdx = idx, Ov = ov }
     local bar
     for i = iov:GetChildrenCount() - 1, 0, -1 do
         local c = iov:GetChildAt(i)
@@ -156,7 +154,7 @@ local function Paint(ctx, W, ov, inv)
     s:SetHorizontalAlignment(0)
     s:SetVerticalAlignment(0)
     s:SetPadding({ Left = INSET, Top = INSET, Right = INSET, Bottom = INSET })
-    S.Edge, S.Used, S.Iov = img, false, iov
+    S.Edge, S.Used, S.Iov, S.IovAddr = img, false, iov, iov:GetAddress()
     return S
 end
 
@@ -182,24 +180,28 @@ end
 -- finds a slot whose inner parts the game cleared. A new inner overlay or a new ItemImage alone in a kept slot is
 -- not found until the engine frees the old one, about a minute (which parts the game builds new is not known,
 -- 02-10-2026).
+-- The inner slot is first looked for where it was; only when it is not there does the walk by name run.
 local function Look(ctx, key, W, now, op)
     if not Ok(W) then M.Slots[key] = nil return end
     local S = M.Slots[key]
     local known = false
     if S and S.WAddr == W:GetAddress() and S.Ov:IsValid() then
-        local inv = Child(S.Ov, "InventorySlot")
+        local inv, idx = S.Ov:GetChildAt(S.InvIdx), S.InvIdx
+        if not (Ok(inv) and inv:GetAddress() == S.InvAddr) then inv, idx = Child(S.Ov, "InventorySlot") end
         if inv and inv:GetAddress() == S.InvAddr and S.Item:IsValid() and S.Edge:IsValid()
             and (not S.Eq or S.Eq:IsValid()) then
+            S.InvIdx = idx
             local p = S.Edge:GetParent()
-            known = Ok(p) and p:GetAddress() == S.Iov:GetAddress()
+            known = Ok(p) and p:GetAddress() == S.IovAddr
         end
     end
     if not known then
         local tree = W.WidgetTree
         local root = Ok(tree) and tree.RootWidget
         local ov = Ok(root) and root:GetChildAt(0)
-        local inv = Ok(ov) and Child(ov, "InventorySlot")
-        S = inv and Paint(ctx, W, ov, inv) or nil
+        local inv, idx
+        if Ok(ov) then inv, idx = Child(ov, "InventorySlot") end
+        S = inv and Paint(ctx, W, ov, inv, idx) or nil
         M.Slots[key] = S
         if S then M.Painted = (M.Painted or 0) + 1 end
     end
@@ -227,7 +229,7 @@ function M.Tick(ctx)
             end
         end
     end
-    if M.Painted and not Logged.ready then Once(ctx, "ready", "tool bar: tiles") end
+    if M.Painted then Once(ctx, "ready", "tool bar: tiles") end
 end
 
 return M

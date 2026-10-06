@@ -1,5 +1,4 @@
--- Enemy and boss health bars in the look of the player's bars (1.8; made live in the game with Ivan, 04-10-2026, probes
--- E1 to E7): one colour per bar, and for a normal enemy the player's bar material, with the player's texture.
+-- Enemy and boss health bars in the look of the player's bars (probes of 04-10-2026): one colour per bar, and for a normal enemy the player's bar material, with the player's texture.
 -- The game makes one bar widget for each creature when the creature loads, from the class defaults and a master copy of
 -- the widget. So most of the work is a write to those, once per world:
 --  - the class defaults of both bars: in each entry of HealthBarTypeConfig the shadow colour takes the main colour, so
@@ -15,15 +14,15 @@ local M = {}
 
 local DEFAULTS = { Normal = "/Game/UI/AI/WBP_AI_Healthbar.Default__WBP_AI_Healthbar_C",
     Boss = "/Game/UI/AI/WBP_AI_Boss_Healthbar.Default__WBP_AI_Boss_Healthbar_C" }
-local MASTER = "/Game/UI/AI/WBP_AI_Healthbar.WBP_AI_Healthbar_C:WidgetTree."   -- + ProgressBarImage (the fill), Border_0 (its frame)
+local MASTER = "/Game/UI/AI/WBP_AI_Healthbar.WBP_AI_Healthbar_C:WidgetTree."   -- + ProgressBarImage (the fill)
 local PLAYER_FILL = "/Game/Materials/UI/VitalsBars/MI_Player_Health_bar.MI_Player_Health_bar"
 local PLAYER_NAME = "MI_Player_Health_bar"
 local MAIN, SHADOW, NOISE = "Health Bar Main Color", "Health Bar Shadows Color", "Bar Noise Power"
 -- The game writes "Available health/stamina" = 0.9 into a full bar, and the player's material draws only that share of
--- the width (the enemy material ignores the value). The fill is drawn wider by 1 / 0.9 from its left end, and the
--- frame clips the extra, so a full bar is full (found in the game, 04-10-2026).
+-- the width (the enemy material ignores the value). The fill is drawn wider by 1 / 0.9 from its left end, so a full
+-- bar is full. The material draws nothing in the extra tenth, at full health and on a hurt bar (probes of 06-10-2026).
+-- The frame (Border_0) must not clip: the name sits above it, in the same box as the fill, and is cut with it.
 local AVAILABLE = 0.9
-local CLIP_TO_BOUNDS = 1
 local WIDGETS = { "WBP_AI_Healthbar_C", "WBP_AI_Boss_Healthbar_C" }
 
 -- one entry for each thing done once per world: Done, and Fails and RetryAt for MayTry
@@ -52,11 +51,9 @@ local function Once(ctx, step, name, write)
     end
 end
 
--- The fill's width fix: the pivot at the left end, scaled up, and the frame clipping what is outside it.
-local function WidenFill(fill, frame)
+local function WidenFill(fill)
     fill:SetRenderTransformPivot({ X = 0, Y = 0.5 })
     fill:SetRenderScale({ X = 1 / AVAILABLE, Y = 1 })
-    frame:SetClipping(CLIP_TO_BOUNDS)
 end
 
 local function OneColorDefaults(path)
@@ -72,10 +69,10 @@ local function OneColorDefaults(path)
 end
 
 local function PlayerFill()
-    local fill, frame, mat = Find(MASTER .. "ProgressBarImage"), Find(MASTER .. "Border_0"), Find(PLAYER_FILL)
-    if not (fill and frame and mat) then return false end
+    local fill, mat = Find(MASTER .. "ProgressBarImage"), Find(PLAYER_FILL)
+    if not (fill and mat) then return false end
     fill:SetBrushFromMaterial(mat)
-    WidenFill(fill, frame)
+    WidenFill(fill)
 end
 
 local function Colors(list, into)
@@ -124,12 +121,7 @@ local function Dress(ctx, fill, mat)
     if not ctx.Noise then error("no texture power given") end
     mat:SetScalarParameterValue(FName(NOISE), ctx.Noise)
     -- a bar made before the master copy had its fix is drawn at 90%; one made after it comes with the fix
-    if math.abs(fill.RenderTransform.Scale.X - 1 / AVAILABLE) > 0.01 then
-        local box = fill:GetParent()   -- Overlay_1, then Border_0
-        local frame = box and box:IsValid() and box:GetParent()
-        if not (frame and frame:IsValid()) then error("the fill has no frame") end
-        WidenFill(fill, frame)
-    end
+    if math.abs(fill.RenderTransform.Scale.X - 1 / AVAILABLE) > 0.01 then WidenFill(fill) end
 end
 
 -- Handled is set before the dressing, so a bar that fails is not tried again with the same fill

@@ -1,4 +1,4 @@
--- The farm plots (1.5; picked live in the game, probes 58 to 60, 02-10-2026): the panel over each plot,
+-- The farm plots (probes 58 to 60, 02-10-2026): the panel over each plot,
 -- WBP_FarmPlot_InformationWidget_C. Its need icons (water, compost) are half their size. The clearing panel has no
 -- dark band and no frame: a smaller title with the letters' shadow (letters.lua) over a brown fill on the game's
 -- dark track. The game's fill was red with a gloss.

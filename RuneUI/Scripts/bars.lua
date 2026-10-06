@@ -4,16 +4,15 @@
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, Asset, SetColor, MayTry, Failed, CachedTex, Survival, GoldLine
+local Log, ById, G, ClearOurs, ClassName, FindClass, Asset, MayTry, Failed, CachedTex, Survival, GoldLine
 function M.Init(ctx)
-    Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    Asset, SetColor = ctx.Asset, ctx.SetColor
+    Log, ById, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
+    Asset = ctx.Asset
     MayTry, Failed, CachedTex, Survival, GoldLine = ctx.MayTry, ctx.Failed, ctx.CachedTex, ctx.Survival, ctx.GoldLine
 end
 
--- The gold line of the loading screen under the bars (seen live, 02-10-2026; before: the main menu's trim line,
--- read from the menu and saved), drawn by goldline.lua. It lives in the bars widget like the badge, so it moves and
--- sizes with the bars.
+-- The gold line of the loading screen under the bars, drawn by goldline.lua. It lives in the bars widget like the
+-- badge, so it moves and sizes with the bars.
 local BarTrim = { HostName = nil }
 local function EnsureBarTrim()
     if not MayTry(BarTrim) then return end
@@ -33,7 +32,7 @@ local function EnsureBarTrim()
         ClearOurs(V.WidgetTree.RootWidget, "RU_BarTrimBox")
         local slot = V.WidgetTree.RootWidget:AddChildToOverlay(box)
         -- just under the bars' bottom edge. Centred and at the bottom like the bars and the badge (see
-        -- EnsureAvatar), so it stays under the bars on a wide screen too. Right = 960 - 952; Bottom as seen live.
+        -- EnsureAvatar), so it stays under the bars on a wide screen too. Right = 960 - 952.
         slot:SetHorizontalAlignment(2)
         slot:SetVerticalAlignment(3)
         slot:SetPadding({ Left = 0, Top = 0, Right = 8, Bottom = 63.3 })
@@ -42,7 +41,7 @@ local function EnsureBarTrim()
     if ok then Log("bar trim ready") BarTrim.Fails = 0 else Failed(BarTrim) Log("bar trim failed: " .. tostring(err)) end
 end
 
--- The bars (design sketch without its diamonds, in-game review 27-09-2026): plain boxes: a dark track
+-- The bars: plain boxes: a dark track
 -- behind each bar's fill and nothing else, stamina in green, health on top, and the icons beside
 -- the bars hidden unless the editor shows them. The fill is the game's, in one colour (see OneColorFill).
 -- The track is a picture drawn in nine pieces, one pixel to one unit, in place of the game's gold frame: its
@@ -99,9 +98,9 @@ local function SwapRows()
     Blades.Swapped = key
 end
 
--- One color bars (1.2, the pick from the F7 tests of 29-09-2026, for everyone and with no switch): each bar's
+-- One color bars, for everyone and with no switch: each bar's
 -- shadow colour takes its main colour, so the fill shows one colour, and the texture is stronger. The texture's
--- setting is a power: the game's is 5, a lower one shows more, and 1.5 was his pick. The bubbles stay the game's.
+-- setting is a power: the game's is 5, a lower one shows more, and 1.5 is used. The bubbles stay the game's.
 -- The colours live on the fill's parent material, so the main colour is read there.
 local ONE_COLOR_NOISE = 1.5
 M.OneColorNoise = ONE_COLOR_NOISE   -- enemybars.lua gives the enemy bars the same texture
@@ -158,7 +157,7 @@ local function EnsureBlades()
         end
         -- each part as soon as its bars are there: a missing special bar must not stop the others
         if Blades.Bars[1] and Blades.Bars[2] then SwapRows() end
-        -- no numbers on the health bar (playtest, 30-09-2026): unseen, not collapsed, so the immersive mode still reads them
+        -- no numbers on the health bar: unseen, not collapsed, so the immersive mode still reads them (seen in the game, 30-09-2026)
         if Blades.Bars[2] and Survival and not Blades.NoNumbers then
             local texts = Survival.TextsUnder(Blades.Bars[2])
             for _, T in ipairs(texts) do pcall(function() T:SetRenderOpacity(0.0) end) end
@@ -214,7 +213,7 @@ local function EnsureBlades()
                 if icon:GetVisibility() ~= want then icon:SetVisibility(want) end
             end
         end
-        -- the dark gradient behind the bars (T_Bars_Shadow; playtest, 29-09-2026: it looks ugly): unseen, alive for the
+        -- the dark gradient behind the bars (T_Bars_Shadow): unseen, alive for the
         -- game. Hidden, not collapsed, so nothing moves. On a new character the game showed it again (29-09-2026),
         -- so both the visibility and the opacity are checked on every scan. Found by its name in the bars' widget
         -- tree, once per bars widget: GetWidgetFromName is not open to Lua in UE4SS 3.0.1 (log of 29-09-2026).

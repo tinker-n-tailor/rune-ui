@@ -1,26 +1,23 @@
--- Party panel (1.9; the data came from the probe of 05-10-2026): the other players of a co-op world, one row for each at
--- the top left under the bars: the name, and under it a flat health bar. No numbers. A friend whose character is not
--- loaded on this machine (the game stops sending a character that is about 160 m away) shows a dimmed name and a grey
--- bar. The game has no party frames, so the widgets are ours. With no friend there is nothing on the screen, and the
--- widgets are not even made; F9 shows three made-up rows while the element's row is selected.
--- The data (read only, four times a second at most, each step in a pcall and behind IsValid): the local controller
--- (main.lua's Controller), its world's GameState, PlayerArray (a list of player states, from 1), and for each friend
--- GetPlayerName, GetPawn, and from the pawn GetHealthComponent and GetNormalizedHealth. The game state of the main menu
--- and of the lobby is another class, and their pawns are DefaultPawn: so only a local pawn of the class
--- BP_PlayerCharacter_C counts as a world, and a friend's pawn of another class is not shown. A friend's power level is
--- -1 for us, so it is not read. A game blueprint is never searched for and never changed.
--- main.lua moves and sizes it as the F9 element "party" and loads this file with pcall, so an error here leaves the
--- rest of the mod running.
+-- Party panel: the other players of a co-op world, one row each at the top left under the bars. A row has the name and
+-- a flat health bar, no numbers. The game has no party frames, so the widgets are ours.
+-- A friend whose character is not loaded here (the game stops sending a character about 160 m away) shows a dimmed name
+-- and a grey bar. With no friend, no widget is made. F9 shows three made-up rows while the element's row is selected.
+-- The data (probe of 05-10-2026) is read only, four times a second at most, each step in a pcall and behind IsValid:
+-- the local controller, its GameState and PlayerArray (from 1), and for each friend GetPlayerName, GetPawn,
+-- GetHealthComponent and GetNormalizedHealth. The game state of the main menu and the lobby is another class, and
+-- their pawns are DefaultPawn: so only a local pawn of class BP_PlayerCharacter_C counts as a world, and a friend's
+-- pawn of another class is not shown. A friend's power level is -1 for us, so it is not read.
+-- main.lua loads this file with pcall and moves and sizes it as the F9 element "party".
 
 local M = {}
 
 local MAX = 5                            -- a world holds 4 or 6 players: at most 5 friends
-local NAME_SIZE, EDGE_SIZE = 14, 1       -- the quest tracker's name size; the black edge of the letters
-M.BOX_W = 225                            -- the width of a row and of its bar; the box F9 moves and sizes holds MAX rows
-local BAR_H, ROW_H = 10, 62              -- the bar, and the distance from one row to the next
+local NAME_SIZE, EDGE_SIZE = 14, 1       -- the quest tracker's name size
+M.BOX_W = 225
+local BAR_H, ROW_H = 10, 62
 M.BOX_H = MAX * ROW_H
 local PAWN = "BP_PlayerCharacter_C"
-local EVERY, ALONE = 0.25, 1             -- seconds between two reads: with a friend, and alone
+local EVERY, ALONE = 0.25, 1             -- seconds between reads: with a friend, alone
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r / 255), G = Lin1(g / 255), B = Lin1(b / 255), A = a or 1.0 } end
@@ -131,7 +128,7 @@ local function Row(ctx, tree, i)
     bar:SetHeightOverride(BAR_H)
     local ov = New("Overlay", tree, n .. "Ov")
     bar:SetContent(ov)
-    ov:AddChildToOverlay(Flat(tree, n .. "Track", TRACK))   -- fills the box
+    ov:AddChildToOverlay(Flat(tree, n .. "Track", TRACK))
     local fillBox = New("SizeBox", tree, n .. "FillBox")
     fillBox:SetWidthOverride(M.BOX_W)
     local fill = Flat(tree, n .. "Fill", RED)
@@ -162,8 +159,7 @@ local function Build(ctx)
     local E = ctx.ById("party")
     local slot = canvas:AddChildToCanvas(size)
     slot:SetAutoSize(true)
-    -- tied to the top left corner, so it stays under the bars on a wide screen; the spot is measured on a 16:9 screen,
-    -- 1920 x 1080 units (as cooldowns.lua)
+    -- tied to the top left corner, so it stays under the bars on a wide screen; the spot is measured on a 16:9 screen, 1920 x 1080 units
     slot:SetAnchors({ Minimum = { X = 0, Y = 0 }, Maximum = { X = 0, Y = 0 } })
     slot:SetPosition({ X = E.Center.X - M.BOX_W / 2, Y = E.Center.Y - M.BOX_H / 2 })
     uw:AddToViewport(36)
@@ -189,10 +185,10 @@ local function Show(r, f)
 end
 
 function M.Forget(sameWorld)
-    -- as RuneMap: off the screen only in the same world; after a world change the engine has taken it away
+    -- off the screen only in the same world; after a world change the engine has taken it away
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
     M.W, M.UW, M.Rows, M.Visible = nil, nil, nil, false
-    M.List, M.Seen, M.Hits, M.NextRead, M.Fails, Logged = {}, {}, 0, 0, 0, {}
+    M.List, M.Seen, M.Hits, M.NextRead, M.Fails, M.RetryAt, Logged = {}, {}, 0, 0, 0, 0, {}
 end
 M.Forget(false)
 
@@ -216,12 +212,12 @@ function M.Tick(ctx)
     if #list == 0 and ctx.Preview() then list = SAMPLE end
     if #list == 0 and not M.W then return end   -- alone: no widget is made
     if not (M.W and M.W:IsValid()) then
-        if M.Fails >= 3 then return end
+        if not ctx.MayTry(M) then return end   -- 3 tries at most, 10 s apart
         local V = ctx.ById("vitals").Instances[1]
         if not (V and V:IsValid()) then return end   -- no world yet
         M.W = nil
         local ok, err = pcall(Build, ctx)
-        if not ok then M.Fails = M.Fails + 1 ctx.Log("party panel failed: " .. tostring(err)) end
+        if not ok then ctx.Failed(M) ctx.Log("party panel failed: " .. tostring(err)) end
         return
     end
     for i, r in ipairs(M.Rows) do Show(r, list[i]) end

@@ -1,6 +1,6 @@
--- The settings file (1.4): one file, runeui.txt, next to the game, with named values a player can read and edit.
+-- The settings file: one file, runeui.txt, next to the game, with named values a player can read and edit.
 -- Pure Lua (string, table, io, os), no game calls, so tools/test-settings.js runs it without the game.
--- Before 1.4 the mod wrote six files; Legacy reads them once when runeui.txt is missing, so nobody loses a layout.
+-- The mod once wrote six files; Legacy reads them once when runeui.txt is missing, so nobody loses a layout.
 local M = {}
 M.FILE = "runeui.txt"
 local HEADER = "# Rune UI settings. The mod writes this file. Delete a line to get its default back.\n"
@@ -20,9 +20,9 @@ end
 
 function M.Section(t, name) if type(t[name]) ~= "table" then t[name] = {} end return t[name] end
 
--- What stays in the immersive mode for direction (the map setting "In immersive mode", 1.7). The file holds the
--- number: 0 Nothing, 1 Map, 2 Compass. The first version of the setting was On or Off, saved as 1 and 0: 1 reads as Map
--- and 0 as Nothing. A name typed by hand reads too. Anything else is Nothing.
+-- What stays in the immersive mode for direction (the map setting "In immersive mode"). The file holds the
+-- number: 0 Nothing, 1 Map, 2 Compass. An old On or Off, saved as 1 and 0, reads as Map and Nothing. A name typed
+-- by hand reads too. Anything else is Nothing.
 M.STAY = { "Nothing", "Map", "Compass" }
 function M.StayFrom(v)
     local n = tonumber(v)
@@ -128,6 +128,7 @@ local function ReadFile(path)
     f:close()
     return s
 end
+M.ReadFile = ReadFile
 
 -- a save cut off between the remove and the rename leaves only the .tmp file, so it is read too
 function M.Load(path)
@@ -155,8 +156,8 @@ function M.Save(t, path, order)
     return ok and true or false
 end
 
--- The files before 1.4, in the same table. read(name) gives a file's text or nil. The rules are LoadLayout's
--- (main.lua 1.3) and runemap.lua's, so a layout comes out exactly as the old code read it.
+-- The older files, in the same table. read(name) gives a file's text or nil. The rules are LoadLayout's
+-- (main.lua) and runemap.lua's, so a layout comes out exactly as the old code read it.
 local LAYOUT_FILES = { { "runeui_layout.txt", "hudeditor_layout_v2.txt" }, { "runeui_layout_2.txt" }, { "runeui_layout_3.txt" } }
 local MAP_KEYS = { Map = true, North = true, Mark = true, Smooth = true, Neutral = true, Ore = true, Herbs = true,
     Essence = true, Trees = true }

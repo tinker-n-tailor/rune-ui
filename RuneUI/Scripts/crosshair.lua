@@ -1,10 +1,8 @@
--- The setting "Crosshair in immersive mode" (1.8, F6 and Mod Menu): at Aim only ("Hide" in the 1.9 test builds), the
--- dot of the game's crosshair is unseen while the immersive mode is on (its line in F9), with or without the immersive camera. Out of the immersive mode, and
--- at Show, the game's crosshair as it always is. Ivan's pick: no rule of its own, only the player's setting. After the
--- play test (05-10-2026), the dot only: "if you target something you need a crosshair, even in immersive mode", so
--- the bow's ring and stamina arc, the staff's ring and the lock-on mark stay. After the next play test (05-10-2026), the dot
--- of an aim stays too: without the lock-on, the dot is the only aim of a cast or a bow shot, and Hide took it away.
--- So the value is "Aim only": the dot shows only while you aim a bow or cast a staff.
+-- The setting "Crosshair in immersive mode" (F6 and Mod Menu): at "Aim only", the dot of the game's crosshair is
+-- unseen while the immersive mode is on, with or without the immersive camera. Out of the immersive mode, and at
+-- Show, the game's crosshair stays as it is. The dot shows only while you aim a bow or hold a staff: without the
+-- lock-on, it is the only aim of a cast or a bow shot. The bow's ring and stamina arc, the staff's ring and the
+-- lock-on mark stay.
 -- The marks are the ones aim.lua paints gold, found with its Collect (ctx.Collect), and of those the ones named in DOT
 -- that are not inside an aim's reticle (Aim).
 -- Each is made fully see-through, not collapsed: the game shows and hides them by their visibility, and the arrow and
@@ -47,7 +45,7 @@ local function Marks(ctx, R)
         if DOT[m.Name] then
             if Aim(ctx, m.Key) then
                 kept = kept + 1
-                -- a restart of the mods after a 1.9 test build, which hid the aim dots too, left them at 0: shown again
+                -- an aim dot left at opacity 0 by a restart of the mods is shown again
                 pcall(function() if m.W:GetRenderOpacity() == 0 then m.W:SetRenderOpacity(1) end end)
             else M.Marks[#M.Marks + 1] = m end
         end
