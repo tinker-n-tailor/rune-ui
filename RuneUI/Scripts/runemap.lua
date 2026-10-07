@@ -61,7 +61,7 @@ end
 
 -- The F8 settings. Map: off means the mod does not build the map at all, which hiding it in F9 still does
 -- (seen in the game, 29-09-2026). North: the map faces north instead of turning with the camera. Mark: the north mark on
--- the ring. Smooth: the map draws every frame instead of every second one. Neutral: the green diamonds of neutral
+-- the ring. Smooth: the map draws every frame instead of every second one; Fastest: every fourth. Neutral: the green diamonds of neutral
 -- creatures. Ore, Herbs, Essence, Trees: the resource icons (resources.lua). Name: the
 -- name the game prints beside your own marker, on this map and the big map (mapname.lua hides it while off).
 -- The key handlers in main.lua only flip these and set Dirty; Tick applies and saves them. They and the zoom are kept
@@ -70,7 +70,7 @@ end
 -- reads it for the map's fade and for the compass). It starts at Nothing: the immersive mode hid the map,
 -- and a player could not get it back.
 -- neutral creatures start hidden: they take room on the map
-local SETTING_START = { Map = true, North = false, Mark = true, Name = true, Smooth = false, Neutral = false, Ore = true,
+local SETTING_START = { Map = true, North = false, Mark = true, Name = true, Smooth = false, Fastest = false, Neutral = false, Ore = true,
     Herbs = true, Essence = true, Trees = true, Immersive = "Nothing" }
 M.Set = {}
 for k, v in pairs(SETTING_START) do M.Set[k] = v end
@@ -384,7 +384,7 @@ local function BuildRing(ctx, tree, map)
     mb:SetHeightOverride(D)
     -- The game's map widget cost about 20 FPS at any zoom (28-09-2026). A retainer box draws it into a picture
     -- every second frame and shows that picture in between: about 10 FPS back, a little less smooth (the default).
-    -- F8 "Smooth" turns the retainer off, so the map draws every frame again (see ApplySettings).
+    -- F8 "Smooth" turns the retainer off, so the map draws every frame again; "Fastest" draws every fourth (see ApplySettings).
     local okRB, errRB = pcall(function()
         local rb = StaticConstructObject(Obj("/Script/UMG.RetainerBox"), tree, FName("RU_MapRetainer"))
         rb:SetRenderingPhase(0, 2)
@@ -392,7 +392,7 @@ local function BuildRing(ctx, tree, map)
         mb:SetContent(rb)
         M.Retainer = rb
     end)
-    if okRB then ctx.Log("runemap: drawn every second frame") else
+    if okRB then ctx.Log("runemap: drawn through a retainer box") else
         ctx.Log("runemap: retainer box failed, drawn every frame: " .. tostring(errRB))
         mb:SetContent(map)
     end
@@ -480,17 +480,17 @@ end
 -- the F8 settings onto the live map: when one changed, and once after each build
 local function ApplySettings(ctx)
     local S = M.Set
-    local key = (S.North and 1 or 0) + (S.Mark and 2 or 0) + (S.Smooth and 4 or 0)
+    local key = (S.North and 1 or 0) + (S.Mark and 2 or 0) + (S.Smooth and 4 or 0) + (S.Fastest and 8 or 0)
     if key == M.Applied then return end
     M.Applied = key
     local okV = pcall(function() M.View.RotationMode = S.North and 0 or 1 M.Map:BroadcastMapView() end)
     -- smooth: no retainer, the map draws every frame; the older call if this UE has no switch
-    local okR = M.Retainer and pcall(function() M.Retainer:SetRetainRendering(not S.Smooth) end)
-    if M.Retainer and not okR then pcall(function() M.Retainer:SetRenderingPhase(0, S.Smooth and 1 or 2) end) end
+    local okR = M.Retainer and pcall(function() M.Retainer:SetRetainRendering(not S.Smooth) M.Retainer:SetRenderingPhase(0, S.Fastest and 4 or 2) end)
+    if M.Retainer and not okR then pcall(function() M.Retainer:SetRenderingPhase(0, S.Smooth and 1 or (S.Fastest and 4 or 2)) end) end
     if M.NorthImg then pcall(function() M.NorthImg:SetVisibility(S.Mark and 3 or 1) end) end
     M.LastNorth = nil
     ctx.Log(string.format("runemap: faces north %s%s, north mark %s, %s", tostring(S.North), okV and "" or " (not set)",
-        tostring(S.Mark), S.Smooth and "drawn every frame" or "drawn every second frame"))
+        tostring(S.Mark), S.Smooth and "drawn every frame" or (S.Fastest and "drawn every fourth frame" or "drawn every second frame")))
 end
 
 -- The mark slides round the ring as the camera turns, and turns with its place, so it points out: the view sits on the camera arm, so its yaw is the
@@ -576,7 +576,7 @@ local function Build(ctx)
     M.Builds = (M.Builds or 0) + 1
     M.Shown, M.Visible, M.LastDeg, M.NeedleSlot, M.NeedleImg = nil, nil, nil, nil, nil
     DropParts()
-    local step = "player"
+    local step, t0 = "player", os.clock()
     local view = nil
     local ok, err = pcall(function()
         local PC = LocalController()
@@ -608,12 +608,12 @@ local function Build(ctx)
         slot:SetPosition({ X = E.Center.X - BOX / 2 - 1920, Y = E.Center.Y - BOX / 2 })
         step = "screen"
         uw:AddToViewport(40)
-        uw:SetVisibility(3)
+        uw:SetVisibility(1) ctx.Scan()   -- collapsed for one step: the scan gives this box to the layout, and Tick shows the map in its place
         M.W, M.UW, M.Map, M.Pawn, M.View = size, uw, map, pawn, view
         M.SetUpAt = os.clock() + 1
     end)
     if ok then
-        ctx.Log("runemap ready")
+        ctx.Log(string.format("runemap ready in %.1f ms", (os.clock() - t0) * 1000))
         M.Fails = 0
     else
         -- tried again 10 s later, 3 times at most in one round (as main.lua does for its parts). The view on the
@@ -768,10 +768,10 @@ local function TakeOff()
             pcall(function() if M.View and M.View:IsValid() then M.View:K2_DestroyComponent(M.View) end end)
         end
         M.View = nil
-        DropCreatureIcons()
-        if M.Res then pcall(M.Res.Drop) end
+        -- a new map after a menu: the body and the world are the same, so the icons stay on their creatures and things
+        if not M.Renew then DropCreatureIcons() if M.Res then pcall(M.Res.Drop) end end
     end
-    M.UW, M.W = nil, nil
+    M.UW, M.W, M.Renew = nil, nil, nil
 end
 
 function M.Tick(ctx)
@@ -795,8 +795,8 @@ function M.Tick(ctx)
         M.NextPawnCheck = os.clock() + 2
         if PawnChanged() then ctx.Log("runemap: the player has a new body, building again") M.Pawn = nil end
     end
-    if not (M.W and M.W:IsValid() and M.Pawn and M.Pawn:IsValid()) then
-        if os.clock() < (M.NextBuild or 0) then return end
+    if M.Renew or not (M.W and M.W:IsValid() and M.Pawn and M.Pawn:IsValid()) then
+        if not M.Renew and os.clock() < (M.NextBuild or 0) then return end   -- a menu's new map does not wait
         M.NextBuild = os.clock() + 2
         TakeOff()
         local okR, ready = pcall(Ready, ctx)
@@ -830,14 +830,11 @@ function M.Tick(ctx)
         local V = ctx.ById("vitals").Instances[1]
         local shown = V and V:IsValid() and V:IsVisible()
         if shown ~= M.Shown then
-            -- back from the big map: it had taken the map view over, and ours stayed empty (27-09-2026).
-            -- Give our view back and set the map up again.
-            if shown and M.Shown == false then
-                local t0 = os.clock()
-                pcall(function() M.Map:SetMapView(M.View) M.Map:BroadcastMapView() end)
-                M.SetUpAt = os.clock() + 0.3
-                ctx.Log(string.format("runemap: back from a menu, view given back in %.1f ms", (os.clock() - t0) * 1000))
-            end
+            -- Back from a menu: the big map takes the map view over, and ours stays empty. Giving the view back
+            -- (SetMapView, BroadcastMapView) made the map draw a marker for each thing again on top of the old ones:
+            -- 142 markers became 2322 after 29 menus, 72 fps became 34 (measured in the game, 07-10-2026). So the map is
+            -- built new after every menu. The icons were hidden with the HUD: both scans run at once, not 2 and 10 s later.
+            if shown and M.Shown == false then M.Renew, M.NextCreatures, M.NextRes = true, 0, 0 end
             M.Shown = shown
             -- the creature icons at once, not at the next scan: the big map must never show them
             if not shown then
@@ -851,9 +848,9 @@ function M.Tick(ctx)
     end)
     -- Hidden in the editor: off the screen, not only see-through. The gold rings are outlines, and the game draws
     -- outlines at full strength inside a see-through parent: the rings stayed on screen (28-09-2026).
-    -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans;
-    -- it fades through its colour only on the way out and back in.
-    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0
+    -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans; it fades through its colour only on the way out and back in.
+    -- A map that is about to be built new stays off: it would show for one step and go again, which reads as a flash.
+    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0 and not M.Renew
     if visible ~= M.Visible then
         -- shown again after a hidden stretch: set the map up again, as after the big map (the set-up needs a map on
         -- screen, and a collapsed one is not)

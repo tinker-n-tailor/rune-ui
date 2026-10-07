@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
 -- F9 opens the editor, F8 the map settings, F6 the camera settings. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.9.1"
+local VERSION = "1.9.2"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
@@ -368,7 +368,7 @@ local function MapValue(i)
         return S.Neutral and "All" or "Enemies only"
     end
     if row == "Zoom" then return RuneMap and string.format("%d%%", math.floor(200 / RuneMap.ZoomLevel() + 0.5)) or "-" end
-    if row == "Drawing" then return S.Smooth and "Smooth" or "Faster" end
+    if row == "Drawing" then return S.Smooth and "Smooth" or (S.Fastest and "Fastest" or "Faster") end
     if row == "In immersive mode" then return S.Immersive or "Nothing" end
     return S[MAP_SWITCH[row]] and "On" or "Off"
 end
@@ -386,7 +386,7 @@ local MAP_HINTS = {
     ["In immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
         Map = "The map and the quest tracker stay in the immersive mode. The compass is away." },   -- Compass: MapHint
     Drawing = { Smooth = "The map draws every frame. Switching might decrease performance.",
-        Faster = "The map draws every second frame. A bit choppy when you turn." },
+        Faster = "The map draws every second frame. A bit choppy when you turn.", Fastest = "The map draws every fourth frame. The lightest, and the choppiest." },
 }
 local function MapHint(i, v)
     local row = MAP_ROWS[i]
@@ -615,7 +615,7 @@ end
 Camera = LoadPart("camerarules")
 if Camera then Camera.Attach(Settings.Section(Cfg, "camera"), SaveCfg) end
 -- Editing: the map shows while F9 or F8 is open, even when it is hidden
-local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end,
+local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end, Scan = function() LastScan = 0 end,
     -- the immersive mode's share: the map fades itself, its gold rings too (runemap.lua ApplyOpacity)
     -- with the map setting "In immersive mode" at Map, the map stays
     Fade = function()
@@ -1082,8 +1082,8 @@ do   -- a block: its names are not top-level locals
                 function(v) S.Immersive = Settings.StayFrom(v) RuneMap.Dirty = true end)
             Row("map_creatures", function() return (not C.Visible) and "Off" or (S.Neutral and "All" or "Enemies only") end,
                 function(v) C.Visible, S.Neutral = v ~= "Off", v == "All" RuneMap.Dirty = true SaveRequested = true end)
-            Row("map_drawing", function() return S.Smooth and "Smooth" or "Faster" end,
-                function(v) S.Smooth = v == "Smooth" RuneMap.Dirty = true end)
+            Row("map_drawing", function() return S.Smooth and "Smooth" or (S.Fastest and "Fastest" or "Faster") end,
+                function(v) S.Smooth, S.Fastest = v == "Smooth", v == "Fastest" RuneMap.Dirty = true end)
         end
         if Camera then   -- the camera rows, one per row of the F6 panel (camerarules.lua ROWS)
             for _, r in ipairs(Camera.ROWS) do
@@ -1139,14 +1139,14 @@ local function MapPick(d)
     if MapSel < 1 then MapSel = #MAP_ROWS end
     if MapSel > #MAP_ROWS then MapSel = 1 end
 end
--- left and right: the zoom row zooms, Creatures steps through All, Enemies only and Off, In immersive mode through
--- Nothing, Map and Compass, every other row switches
+-- left and right: the zoom row zooms; Creatures, In immersive mode and Drawing step through their values; every other row switches
 local function MapChange(d)
     if not RuneMap then return end
     local S = RuneMap.Set
     local row = MAP_ROWS[MapSel]
     if row == "Zoom" then RuneMap.ZoomBy(d > 0 and 1 / 1.25 or 1.25)
-    elseif row == "Drawing" then S.Smooth = not S.Smooth
+    elseif row == "Drawing" then   -- Smooth, Faster, Fastest
+        local st = ((S.Smooth and 1 or (S.Fastest and 3 or 2)) - 1 + (d > 0 and 1 or -1)) % 3 + 1 S.Smooth, S.Fastest = st == 1, st == 3
     elseif row == "In immersive mode" then
         local st = 1   -- the place of the value in Settings.STAY
         for i, name in ipairs(Settings.STAY) do if name == S.Immersive then st = i end end

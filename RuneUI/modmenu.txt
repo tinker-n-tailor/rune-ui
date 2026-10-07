@@ -86,8 +86,8 @@
       "tooltip": "What stays while the immersive mode is on. Nothing: the map and the compass are hidden. Map: the map stays, and the quest tracker with it. Compass: the game's compass stays. It has a gold line, and it shows the marks of the map. A compass hidden in the editor stays hidden." },
     { "key": "map_creatures", "type": "choice", "label": "Creatures", "options": ["All", "Enemies only", "Off"], "default": "Enemies only",
       "tooltip": "All: red diamonds for enemies, green for neutral animals. Enemies only: neutral animals are not shown." },
-    { "key": "map_drawing", "type": "choice", "label": "Drawing", "options": ["Smooth", "Faster"], "default": "Faster",
-      "tooltip": "Smooth: the map draws every frame, which might decrease performance. Faster: every second frame, a bit choppy when you turn." },
+    { "key": "map_drawing", "type": "choice", "label": "Drawing", "options": ["Smooth", "Faster", "Fastest"], "default": "Faster",
+      "tooltip": "Smooth: the map draws every frame, which might decrease performance. Faster: every second frame, a bit choppy when you turn. Fastest: every fourth frame, the lightest and the choppiest." },
 
     { "type": "header", "label": "Layout" },
     { "key": "profile", "type": "choice", "label": "Profile", "options": ["1", "2", "3"], "default": "1",

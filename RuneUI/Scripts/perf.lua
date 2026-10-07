@@ -12,13 +12,13 @@ local Perf = { From = os.clock(), Ticks = 0, Sum = 0, Max = 0, Watch = 0, Scans 
 -- The game's frame rate beside it, by what RuneMap does. The engine's frame counter
 -- against the clock counts every frame, not a sample. Only while the HUD is on screen: menus and loading screens
 -- are left out, and so is a step where the state changed.
-local FPS_STATES = { "no map", "map every frame", "map every 2nd" }
+local FPS_STATES = { "no map", "map every frame", "map every 2nd", "map every 4th" }
 local Fps = { By = {} }   -- By: state -> { F = frames, T = seconds }. Frames, At, State: at the last read. Next: when the counter is read next. KSL, GPS: the engine's libraries.
 local function FpsState()
     local V = ById("vitals").Instances[1]
     if not (V and V:IsValid() and V:IsVisible()) then return nil end
     if not (RuneMap and RuneMap.Visible) then return FPS_STATES[1] end
-    return FPS_STATES[RuneMap.Set.Smooth and 2 or 3]
+    return FPS_STATES[RuneMap.Set.Smooth and 2 or (RuneMap.Set.Fastest and 4 or 3)]
 end
 local function AddFrames(state, frames, seconds)
     local b = Fps.By[state]

@@ -55,7 +55,7 @@ Creatures                         All, Enemies only (at first), Off.
 Ore, Herbs, Essence, Rare trees   A map mark for each. On at first.
 In immersive mode                 What stays: Nothing (at first), Map or Compass.
 Zoom                              Same as [ and ].
-Drawing                           Faster (at first): every second frame. Smooth: every frame.
+Drawing                           Faster (at first): every second frame. Smooth: every frame. Fastest: every fourth frame.
 
 Immersive camera                  On: a closer camera, only in immersive mode. Off at first.
 Walk distance                     100 to 1500 cm, 300 at first.

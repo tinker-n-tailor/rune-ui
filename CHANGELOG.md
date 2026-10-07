@@ -2,6 +2,20 @@
 
 All changes to Rune UI, newest first.
 
+## [1.9.2] - 2026-10-07
+
+### Added
+
+- Map setting "Drawing: Fastest".
+
+### Changed
+
+- RuneMap is more responsive with ore, herbs and other resources.
+
+### Fixed
+
+- The FPS no longer drops over time with RuneMap on.
+
 ## [1.9.1] - 2026-10-06
 
 ### Changed
