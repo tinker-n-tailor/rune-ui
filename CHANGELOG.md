@@ -2,6 +2,43 @@
 
 All changes to Rune UI, newest first.
 
+## [1.10] - 2026-10-08
+
+1.10 gives the wheels and the notices the look of Rune UI.
+
+### Added
+
+- The spell, quick access and emote wheels have the look of Rune UI: each slot is a ring with a faint pattern.
+- New switch "Wheels" turns the look of the three wheels off.
+- On the spell wheel, a spell that recovers has a gold arc on its ring.
+- On the spell wheel, the name of a spell always shows whole.
+- On the spell wheel, four diamonds under the name of the spellbook show the book in use in gold.
+- The middle of the spell wheel has no divider lines.
+- On the quick access wheel, a thin half ring inside each slot shows how worn the item is.
+- The quick access and emote wheels have sparks around the middle ring, as the spell wheel has.
+- Rune Skin panel on F5: one switch for each look of Rune UI that you can turn off.
+- Mod Menu has the F5 key and switches for the gold crosshair and for the game icons beside the bars.
+
+### Changed
+
+- The F9 list holds only parts that have a place on the screen, in groups by what the part is.
+- The switches of the looks moved from the F9 list to Rune Skin, with clearer names.
+- "Immersive mode" and its wait moved from the F9 list to the F6 panel, now named Immersion mode.
+- The immersive camera works with or without the immersive mode.
+- "Creatures" is only in the Rune Map panel (F8), and "Rune Map" is written in two words.
+- The row "All notices (group)" is gone from the F9 list, and a saved layout keeps the place of the group.
+- Five F9 rows have shorter names: Survival rings, Food, water and potion buffs, Rune Map, Party panel and Survival warning.
+- The head of each panel names the other three panels and their keys.
+- In immersive mode, a survival ring shows only while its need is orange or red, and only the ring of that need.
+- The new area banner has no round symbol, no sparkles and no dark shadow.
+- The status line and the hunger, thirst and rest warning have a band and two gold lines of the same width, one above and one under the band, and the ring of the warning sits a little above the band.
+- A tutorial tip has a band and a gold progress line on the bottom edge of the band.
+- The event, vendor level, new skill, milestone and fish notices are in the font of Rune UI.
+- The hunger, thirst and rest warning shows the HUD ring of that need, with the same fill and colours.
+- Every ring has a see-through back and centre, and the survival rings have no diamond.
+- The "new item" rows of the pick-up list and the unlock notices have no loose sparks, and the two streaks stay.
+- On the death screen, "You Died" is red, bigger, and above the banner, and the two gold lines have no sparks.
+
 ## [1.9.2] - 2026-10-07
 
 ### Added

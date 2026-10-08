@@ -1,8 +1,8 @@
--- The immersive camera: its settings, its rules and its panel (F6). Pure Lua, no game calls, so
--- tools/test-camera.js runs it without the game. camera.lua reads the game and writes what Step gives back;
--- crosshair.lua asks HideCrosshair; main.lua draws the panel from View and saves through Attach.
--- The camera works only while the immersive mode is on: its line in F9, the switch, not the moment the HUD is faded
--- (the fade comes and goes with every hit, and the camera would jump with it). Out of it, the game's camera.
+-- The immersive camera: its settings and its rules, and the Immersion mode panel (F6), which also holds the two rows of
+-- the immersive mode itself. Pure Lua, no game calls, so tools/test-camera.js runs it without the game. camera.lua reads
+-- the game and writes what Step gives back; crosshair.lua asks HideCrosshair; main.lua draws the panel from View and
+-- saves through Attach.
+-- The camera has its own switch and works with or without the immersive mode. Off, the game's camera.
 -- The views: walking close with the character on the left, a sprint far (the game moves the camera in and out of a
 -- sprint itself), and a fight's distance held a while after it ends (the game's combat switch drops the moment the
 -- enemy dies). The walk distance holds with a tool, empty hands or a weapon out of a fight; a fight changes it, closer
@@ -12,9 +12,12 @@
 -- about 0.5 to 0.7 s (seen in the game, 05-10-2026).
 local M = {}
 
--- the rows of the panel, of Mod Menu (camera_<Key>) and of the [camera] section of runeui.txt, in this order.
+-- the camera's rows in the panel, in Mod Menu (camera_<Key>) and in the [camera] section of runeui.txt, in this order.
 -- Distances in the game's units, which are cm.
 M.ROWS = {
+    -- "Aim only" was "Hide" in older files: an old file or Mod Menu value reads as "Aim only" (Old)
+    { Key = "crosshair", Label = "Crosshair in immersive mode", Kind = "choice", Options = { "Show", "Aim only" }, Default = "Show",
+        Old = { hide = "Aim only" } },
     { Key = "on", Label = "Immersive camera", Kind = "switch", Default = false },
     { Key = "walk", Label = "Walk distance", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 300 },
     { Key = "side", Label = "Side offset", Kind = "number", Min = 0, Max = 200, Step = 10, Unit = "cm", Default = 90 },
@@ -22,16 +25,30 @@ M.ROWS = {
     { Key = "melee", Label = "Melee zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 200 },
     { Key = "ranged", Label = "Ranged zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 500 },
     { Key = "hold", Label = "Hold after a fight", Kind = "number", Min = 0, Max = 30, Step = 1, Unit = "s", Default = 8 },
-    -- "Aim only" was "Hide" in older files: an old file or Mod Menu value reads as "Aim only" (Old)
-    { Key = "crosshair", Label = "Crosshair in immersive mode", Kind = "choice", Options = { "Show", "Aim only" }, Default = "Show",
-        Old = { hide = "Aim only" } },
 }
 local BY_KEY = {}
-for i, r in ipairs(M.ROWS) do BY_KEY[r.Key] = r r.Index = i end
+for _, r in ipairs(M.ROWS) do BY_KEY[r.Key] = r end
+
+-- The two rows of the immersive mode itself, first in the panel. They are not in ROWS: their values live in the layout,
+-- so each profile has its own and a file of an older version keeps them. Field: the field of Mode that holds the value.
+local MODE_ROWS = {
+    { Key = "immersive", Label = "Immersive mode", Kind = "switch", Field = "Visible" },
+    { Key = "wait", Label = "Wait before the fade", Kind = "number", Min = 3, Max = 30, Step = 1, Unit = "s", Field = "Wait" },
+}
+-- Mode: the layout's immersive element. ModeDefault: its starting values. main.lua gives both (AttachMode); these
+-- stand in until then, and in the tests.
+M.Mode, M.ModeDefault = { Visible = false, Wait = 8 }, { Visible = false, Wait = 8 }
+function M.AttachMode(element, default) M.Mode, M.ModeDefault = element, default end
+-- the rows of the panel in its order, and the group title above a row
+M.PANEL = {}
+for _, r in ipairs(MODE_ROWS) do M.PANEL[#M.PANEL + 1] = r end
+for _, r in ipairs(M.ROWS) do M.PANEL[#M.PANEL + 1] = r end
+local HEADS = { immersive = "Immersive mode", on = "Immersive camera" }
 
 -- The panel's state and the key flags. Key handlers run on UE4SS's own thread: they only change these and the
--- numbers in Set, never add a key (false, never nil), and the step saves (Commit).
-M.Open, M.Sel, M.Dirty, M.ResetWanted = false, 1, false, false
+-- numbers in Set and in Mode, never add a key (false, never nil), and the step saves (Commit). LayoutDirty: a mode row
+-- changed, and main.lua saves the layout.
+M.Open, M.Sel, M.Dirty, M.ResetWanted, M.LayoutDirty = false, 1, false, false, false
 M.Set = {}
 for _, r in ipairs(M.ROWS) do M.Set[r.Key] = r.Default end
 M.Store, M.Save = {}, function() end
@@ -80,7 +97,8 @@ function M.Commit()
     if M.ResetWanted then
         M.ResetWanted = false
         for _, r in ipairs(M.ROWS) do M.Set[r.Key] = r.Default end
-        M.Dirty = true
+        for _, r in ipairs(MODE_ROWS) do M.Mode[r.Field] = M.ModeDefault[r.Field] end
+        M.Dirty, M.LayoutDirty = true, true
     end
     if M.Dirty then
         M.Dirty = false
@@ -143,13 +161,13 @@ function M.NewMemory() return { FightUntil = -1, FightView = nil, Out = {} } end
 
 local MIN_DISTANCE, MAX_DISTANCE = BY_KEY.walk.Min, BY_KEY.walk.Max
 
--- s: Immersive (the switch), Combat (the combat switch), Aiming (an aim reticle shows), Right, Left (class names).
+-- s: Combat (the combat switch), Aiming (an aim reticle shows), Right, Left (class names).
 -- now: seconds. Gives back Active false (the game's camera: every value goes back), or Active with Walk (the walking
 -- profile's distance, set at once: the game blends the camera there), Sprint (the sprinting profile's), Side (both
 -- profiles' side offset), View ("walk", "melee", "ranged") and Kind (what is in the hands, as Classify).
 function M.Step(mem, s, now)
     local set, out = M.Set, mem.Out
-    if not (set.on and s.Immersive) then
+    if not set.on then
         mem.FightUntil, mem.FightView = -1, nil
         out.Active = false
         return out
@@ -172,14 +190,19 @@ function M.HideCrosshair(immersive) return M.Set.crosshair == "Aim only" and imm
 
 ---------------------------------------------------------------- the panel (F6)
 
+local function Get(r) if r.Field then return M.Mode[r.Field] end return M.Set[r.Key] end
+local function Put(r, v)
+    if r.Field then M.Mode[r.Field], M.LayoutDirty = v, true else M.Set[r.Key], M.Dirty = v, true end
+end
 local function Text(r, v)
     if r.Kind == "switch" then return v and "On" or "Off" end
     if r.Kind == "number" then return string.format("%d", v) .. (r.Unit and " " .. r.Unit or "") end
     return v
 end
-function M.Value(i) local r = M.ROWS[i] return Text(r, M.Set[r.Key]) end
+function M.Value(i) local r = M.PANEL[i] return Text(r, Get(r)) end
 
 local HINTS = {
+    wait = "Seconds with nothing happening before the HUD fades.",
     walk = "How far the camera is when you walk. The game's own camera is at 700 cm.",
     side = "How far right the camera sits, so you stand on the left. 0 is the middle.",
     sprint = "How far the camera goes out in a sprint. The game brings it back after you stop.",
@@ -187,13 +210,15 @@ local HINTS = {
     ranged = "The distance while you aim a bow or hold a staff. It holds for a few seconds.",
     hold = "How long the zoom stays after a fight or an aim. Then the camera goes back.",
 }
--- keys: main.lua's key names (editor, camera); immersive: the immersive mode's switch
-function M.Hint(i, keys, immersive)
-    local r = M.ROWS[i]
+function M.Hint(i)
+    local r = M.PANEL[i]
+    if r.Key == "immersive" then
+        if M.Mode.Visible then return "The HUD fades when nothing happens, and comes back when something does." end
+        return "The whole HUD stays on the screen."
+    end
     if r.Key == "on" then
-        if not M.Set.on then return "The game's own camera. On: closer, your character on the left, in immersive mode." end
-        if not immersive then return "On, but the immersive mode is off. Turn it on in " .. keys.editor .. "." end
-        return "On while the immersive mode is on. Out of it, the game's camera is back."
+        if not M.Set.on then return "The game's own camera. On: closer, your character on the left." end
+        return "Closer, your character on the left. With or without the immersive mode."
     end
     if r.Key == "crosshair" then
         if M.Set.crosshair == "Aim only" then return "No crosshair dot, except while you aim a bow or hold a staff." end
@@ -203,39 +228,41 @@ function M.Hint(i, keys, immersive)
 end
 
 -- what the panel shows now, as one string: a new view only when it changed
-function M.State(immersive)
-    local parts = { "camera", M.Sel, tostring(immersive) }
-    for i = 1, #M.ROWS do parts[#parts + 1] = M.Value(i) end
+function M.State()
+    local parts = { "camera", M.Sel }
+    for i = 1, #M.PANEL do parts[#parts + 1] = M.Value(i) end
     return table.concat(parts, "|")
 end
 
--- the view for editor.lua (see main.lua MapView): every row fits the panel's lines, so the list does not scroll
-function M.View(keys, immersive, warn)
-    local v = { Mode = "camera", Title = "RUNE CAMERA", SubA = "Layout on", SubB = keys.editor, Warn = warn,
+-- the view for editor.lua: every row, with the group titles. main.lua shows the lines that fit (panels.lua Window).
+-- keys: main.lua's key names (editor, camera).
+function M.View(keys, warn)
+    local v = { Mode = "camera", Title = "IMMERSION MODE", Warn = warn,
         Keys = { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { "Backspace" }, "Reset" },
             { { keys.editor }, "Layout" }, { { keys.camera }, "Save, close" } },
-        Name = M.ROWS[M.Sel].Label .. ":  " .. M.Value(M.Sel), Hint = M.Hint(M.Sel, keys, immersive), Rows = {} }
-    for i, r in ipairs(M.ROWS) do
+        Name = M.PANEL[M.Sel].Label .. ":  " .. M.Value(M.Sel), Hint = M.Hint(M.Sel), Rows = {} }
+    for i, r in ipairs(M.PANEL) do
+        if HEADS[r.Key] then v.Rows[#v.Rows + 1] = { Head = true, Text = HEADS[r.Key] } end
         local val = M.Value(i)
         -- a number has many values: "< 300 cm >", as the map settings show a row with more than two
-        v.Rows[i] = { Text = r.Label, Note = r.Kind == "number" and ("< " .. val .. " >") or val, Sel = i == M.Sel }
+        v.Rows[#v.Rows + 1] = { Text = r.Label, Note = r.Kind == "number" and ("< " .. val .. " >") or val, Sel = i == M.Sel }
     end
     return v
 end
 
--- the keys (UE4SS's thread): up and down pick a row, left and right change it
-function M.Pick(d) M.Sel = (M.Sel - 1 + d) % #M.ROWS + 1 end
+-- the keys (UE4SS's thread): up and down pick a row, left and right change it, Backspace asks the step for a reset
+function M.Pick(d) M.Sel = (M.Sel - 1 + d) % #M.PANEL + 1 end
 function M.Change(d)
-    local r = M.ROWS[M.Sel]
-    local v = M.Set[r.Key]
-    if r.Kind == "switch" then M.Set[r.Key] = not v
-    elseif r.Kind == "number" then M.Set[r.Key] = Snap(r, v + (d > 0 and r.Step or -r.Step))
+    local r = M.PANEL[M.Sel]
+    local v = Get(r)
+    if r.Kind == "switch" then Put(r, not v)
+    elseif r.Kind == "number" then Put(r, Snap(r, v + (d > 0 and r.Step or -r.Step)))
     else
         local at = 1
         for i, o in ipairs(r.Options) do if o == v then at = i end end
-        M.Set[r.Key] = r.Options[(at - 1 + (d > 0 and 1 or -1)) % #r.Options + 1]
+        Put(r, r.Options[(at - 1 + (d > 0 and 1 or -1)) % #r.Options + 1])
     end
-    M.Dirty = true
 end
+function M.Reset() M.ResetWanted = true end
 
 return M

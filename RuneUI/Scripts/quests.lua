@@ -6,6 +6,8 @@
 -- the font, so a new row has it from the start. Every 5 s, every text under the panel is also styled, once each, so
 -- the entry, its key rows and anything the master copy missed get it too: the walk of letters.lua (ctx.Collect),
 -- which leaves out the key letters (KeyText).
+-- An unlock row ("New recipes unlocked") has the sparks of a new item: on each look every live row gets its loose
+-- sparks switched off (embers.lua), once for each row. A row is born with all of them: the first look can come late.
 -- main.lua moves the panel as "quests" and loads this file with pcall, so an error here leaves the rest running.
 
 local M = {}
@@ -38,12 +40,23 @@ local function Style(W, rich, font)
 end
 
 -- a new world: everything is styled again, and its first error is logged again
-function M.Forget() M.Done, M.Master, M.Logged, M.Walk = {}, nil, nil, nil end
+function M.Forget() M.Done, M.Master, M.Logged, M.Walk, M.Embers = {}, nil, nil, nil, nil end
+
+-- the rows that the game made new for a notice: the loose sparks off
+local function QuietRows(ctx)
+    if not ctx.Embers then return end
+    M.Embers = M.Embers or ctx.Embers.New()
+    local rows, keys = ctx.Find("WBP_QuestAndUnlocks_Item_Slot_C")
+    for i, row in ipairs(rows) do
+        if Ok(row) then ctx.Embers.Quiet(ctx, M.Embers, "unlocks", row, keys[i]) end
+    end
+end
 
 function M.Tick(ctx)
     local now = os.clock()
     if now < (M.Next or 0) then return end
     M.Next = now + EVERY
+    pcall(QuietRows, ctx)
     local font = ctx.Font()
     if not font then return end
     if not M.Master then

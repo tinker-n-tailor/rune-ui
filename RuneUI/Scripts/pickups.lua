@@ -6,8 +6,9 @@
 -- [ItemText, Spacer, ItemCountText], NewItemText]]. The texts are WBP_DomTextBlock_C.
 -- The game keeps a few rows and uses them again, so a row is styled once, by its full name. The count's colour is
 -- looked at on every step: the game may write its red again.
--- A new item: its row matches the others. The sparks' box is unseen (render opacity 0, as the band: the game starts
--- the sparks by code). "NEW MATERIAL !" gets a little room under the name. The game's animation for a new item
+-- A new item: its row matches the others. The sparks (SizeBox_2) keep only the two streaks: embers.lua switches the
+-- loose sparks off on the row's Niagara component; render opacity does not touch them (proven in the game). The
+-- row is tried on each look until that is done. "NEW MATERIAL !" gets a little room under the name. The game's animation for a new item
 -- (InAnimationNewMaterial) tints that word near black for 2.4 s, then light (the game's files). Its colour keys all
 -- get the last one, once, in the animation itself (probe 54), so the word is light from the start. Its alpha keys
 -- too: the word does not fade in late and does not blink.
@@ -26,7 +27,7 @@ M.Rows = {}   -- full name -> { W, Count }
 
 local function Ok(w) return w and w:IsValid() end
 
--- the row's band and sparks unseen, its texts in the HUD font with the shadow; returns the count's text
+-- the row's band unseen, its texts in the HUD font with the shadow; returns the count's text
 local function Style(ctx, W)
     local ov = W.WidgetTree.RootWidget:GetChildAt(0)
     local count
@@ -53,7 +54,7 @@ local function Style(ctx, W)
     end
     for i = 0, ov:GetChildrenCount() - 1 do
         local c = ov:GetChildAt(i)
-        if Ok(c) and (c:GetClass():GetFName():ToString() == "CommonLazyImage" or c:GetFName():ToString() == "SizeBox_2") then
+        if Ok(c) and c:GetClass():GetFName():ToString() == "CommonLazyImage" then
             c:SetRenderOpacity(0.0)
         else Walk(c, 1) end
     end
@@ -80,7 +81,7 @@ local function Gold(T)
 end
 
 -- a new world can load the animation anew; its first error is logged again
-function M.Forget() M.Rows, M.Lit, M.Logged = {}, nil, nil end
+function M.Forget() M.Rows, M.Lit, M.Logged, M.Embers = {}, nil, nil, nil end
 
 function M.Tick(ctx)
     local now = os.clock()
@@ -99,6 +100,10 @@ function M.Tick(ctx)
         if not M.Lit then
             local okL, lit = pcall(LightNewWord)
             if okL then M.Lit = lit elseif not M.Logged then M.Logged = true ctx.Log("pick-ups: new word not lit: " .. tostring(lit)) end
+        end
+        if r and Ok(W) and ctx.Embers then
+            M.Embers = M.Embers or ctx.Embers.New()
+            ctx.Embers.Quiet(ctx, M.Embers, "pick-ups", W, k)
         end
         if r and Ok(r.Count) then pcall(Gold, r.Count) end
     end

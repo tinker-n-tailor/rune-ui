@@ -23,7 +23,7 @@ Open Win64\ue4ss\UE4SS.log. If it says "Fatal Error" or "timer: old UE4SS", do s
 
 KEYS
 
-F9 opens the editor.
+F9 opens the layout editor. It moves, resizes and hides the parts of the HUD.
 
 PgUp, PgDn                        select an element
 Arrows                            move it
@@ -33,21 +33,33 @@ Home, End                         change the move step (1 to 100)
 Delete, Insert                    hide, show it
 Backspace                         reset it
 F7                                save, go to the next profile (1, 2, 3)
-F8                                map settings
-F6                                camera settings
+F5                                Rune Skin
+F8                                Rune Map settings
+F6                                immersion mode settings
 F9                                save and close
-] / [                             zoom RuneMap in / out (also outside it)
+] / [                             zoom Rune Map in / out (also outside it)
 
-Map settings (F8) and camera settings (F6):
+A layout that hid the group of all notices in an older version has the row "All notices (group)". Press Insert on it to show the notices again.
+
+Rune Skin (F5), Rune Map settings (F8) and immersion mode settings (F6):
 
 Up, Down                          select a setting
 Left, Right                       change it
-Backspace                         reset the settings
-] / [                             zoom RuneMap
-F9                                go to the editor
-F8, F6                            save and close
+Backspace                         reset the settings of the panel
+] / [                             zoom Rune Map
+F9                                go to the layout editor
+F5, F8, F6                        save and close
 
-RuneMap                           Off: no map.
+Wheels                            Spell, item and emote wheels as rings. Off: the game's wheels. On at first.
+Combat text                       Bigger damage numbers. On at first.
+XP under the bars                 XP bar under the bars. Off: the game's XP circle. On at first.
+Small level up notice             Level up under the bars. Off: the game's banner. On at first.
+Gold crosshair and lock-on        Gold aim marks. On at first.
+Game icons beside the bars        Shows them. Off at first.
+Spell cooldowns in a row          Tiles in a row. Off at first.
+Next quest steps                  Up to three next steps in the quest tracker. Off at first.
+
+Rune Map                          Off: no map.
 Faces north                       On: north stays at the top.
 North mark                        A mark shows north.
 Player name                       Off: hides your name on the maps.
@@ -57,33 +69,29 @@ In immersive mode                 What stays: Nothing (at first), Map or Compass
 Zoom                              Same as [ and ].
 Drawing                           Faster (at first): every second frame. Smooth: every frame. Fastest: every fourth frame.
 
-Immersive camera                  On: a closer camera, only in immersive mode. Off at first.
+Immersive mode                    On: the HUD fades when nothing happens. Off at first.
+Wait before the fade              3 to 30 s, 8 at first.
+Crosshair in immersive mode       Show (at first) or Aim only: no dot except while you aim.
+Immersive camera                  On: a closer camera, with or without immersive mode. Off at first.
 Walk distance                     100 to 1500 cm, 300 at first.
 Side offset                       0 to 200 cm, 90 at first.
 Sprint distance                   100 to 1500 cm, 900 at first.
 Melee zoom                        100 to 1500 cm, 200 at first.
 Ranged zoom                       100 to 1500 cm, 500 at first.
 Hold after a fight                0 to 30 s, 8 at first.
-Crosshair in immersive mode       Show (at first) or Aim only: no dot except while you aim.
 
-These editor rows switch on or off (Delete, Insert):
+In immersive mode, a survival ring shows while its need is orange or red, and for a moment when it fills.
 
-Rune XP                           XP bar under the bars.
-Slim level up                     Level up under the bars. On at first.
+Other parts:
+
 Enemy and boss bars               One colour. Always on.
-Combat text                       Bigger damage numbers. On at first.
-Quest tracker                     Under the minimap.
-Quest tracker: next steps         Up to three next steps. Off at first.
-Spell cooldowns, horizontal       Tiles in a row. Off at first.
+Quest tracker                     Under Rune Map.
 Party panel                       Friends in co-op. On at first.
 Arrow and rune count              The count only. The crosshair stays.
 Level badge and avatar.png        Put avatar.png in the RuneUI folder for your picture.
-Icons beside the bars             Show them. Hidden at first.
 Gamepad                           Buttons in menus.
 
-The row Immersive mode (fades when idle) is off at first. + / - set its wait: 3 to 30 s, 8 at first.
-
-Mod Menu page: press Esc, MODS, Rune UI. It holds the keys, the switches, the camera and the map settings.
+Mod Menu page: press Esc, MODS, Rune UI. It holds the keys and the settings of the four panels.
 
 FILES THAT THE MOD WRITES (IN WIN64)
 
@@ -91,7 +99,7 @@ runeui.txt                    Every setting; delete a line to get its default
 ue4ss/Mods/RuneUI/Art         The pictures, written when one is missing or changed
 ue4ss/Mods/RuneUI/config.txt  With Mod Menu, the copy of the page settings; do not edit it
 
-Change six keys in the [keys] part of runeui.txt: editor (F9), map (F8), camera (F6), profile (F7), zoomin (]) and zoomout ([). A key is F1 to F12, a letter, a digit, Insert, Delete, Home, End, PgUp, PgDn, [ or ]. A changed key works after a restart.
+Change seven keys in the [keys] part of runeui.txt: editor (F9), skin (F5), map (F8), camera (F6), profile (F7), zoomin (]) and zoomout ([). A key is F1 to F12, a letter, a digit, Insert, Delete, Home, End, PgUp, PgDn, [ or ]. A changed key works after a restart.
 
 The mod does not use the network and does not start other programs.
 

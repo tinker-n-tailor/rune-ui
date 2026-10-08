@@ -2,7 +2,7 @@
 -- the clock. The middle of the night is at the top and noon at the bottom; the ring keeps the game's own
 -- share of night (about a fifth), so dawn sits near 1 o'clock and dusk near 11.
 -- A gold arrow between the two gold rings points at the time of day, and a bigger arrow with an N shows north.
--- The F8 menu in main.lua sets the map, north, the creatures, the resources, the zoom and the draw rate.
+-- The F8 panel (mappanel.lua) sets the map, north, the creatures, the resources, the zoom and the draw rate.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
 -- Dirty, ResetWanted and PendingZoom are set by key handlers: kept in the table as false, never nil, so
@@ -660,7 +660,7 @@ local function ScanCreatures(ctx)
     if not (M.EnemyTex and M.NeutralTex and M.Near) then return end
     local cls = Obj(ICON_CLASS)
     if not (cls and cls:IsValid()) then Once(ctx, "iconclass", "runemap: no map icon class, no creatures") return end
-    -- the editor's switch (they show at every zoom, also the farthest). Hidden while
+    -- the layout's switch, the F8 row Creatures (they show at every zoom, also the farthest). Hidden while
     -- the game's HUD is hidden: the big map (M) draws every map icon too, and there it showed every creature in
     -- the world, which reads like a radar (28-09-2026).
     local show = ctx.ById("creatures").Visible ~= false and M.Shown == true

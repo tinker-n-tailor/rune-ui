@@ -1,12 +1,13 @@
 -- Immersive mode: with nothing going on, the HUD fades away, and each part comes back when it matters. The bars
 -- come back while health is not full, and a while after; the good buffs with them, and each one when it comes (a
--- debuff never fades). A food, water or rest ring comes back when it runs low or fills. The menu buttons come back
+-- debuff never fades). A food, water or rest ring shows while its need is in orange or red, and for a while when it
+-- fills; only the ring of that need. The menu buttons come back
 -- when a chat message comes, the quest tracker when a quest or its step changes, the party panel when a friend's
 -- health goes down. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting
 -- "In immersive mode" keeps one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens
 -- the big map). The tool bar never fades, because what matters can sit on it. Prompts, notifications, the area
 -- effects and warnings never fade either.
--- Off at first; its line in F9 turns it on, and + / - there set how long a part stays (main.lua keeps the number).
+-- Off at first; the F6 panel turns it on and sets how long a part stays (the layout keeps both, main.lua).
 -- apply.lua multiplies an element's opacity by Factor(E). The bars widget also holds the food rings and the area
 -- effects, so it is not faded whole: its three rows and the trim line under them are faded here, and each ring too.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
@@ -14,9 +15,9 @@
 local M = {}
 
 local FADE_OUT, FADE_IN = 2.5, 0.2   -- seconds from full to gone, and back (1.0 out is too quick to read the HUD)
-local LOW = 1 / 3                                            -- a ring shows while its share is under this
+local DRINK_LOW = 1 / 3   -- a drink, food or potion ring shows while its share is under this (the game has no low colour for it)
 local SHOW_AT_START = 8   -- a new world shows the whole HUD this long first (main.lua waits 3 s of it before the steps)
--- seconds a part stays after the last reason to show it: the player's setting (F9, + / - on the immersive line)
+-- seconds a part stays after the last reason to show it: the player's setting (F6, "Wait before the fade")
 local function Hold(ctx) return ctx.Wait() end
 
 -- the group each element follows; an element not listed never fades. "none": always away.
@@ -96,16 +97,18 @@ local function Read(ctx, now)
     local hits = ctx.PartyHits()
     if hits and LastHits and hits > LastHits then Until.party = now + Hold(ctx) end
     LastHits = hits
+    -- a survival ring: low (orange or red, as survival.lua reads it from the game) keeps it, and a share that goes up
+    -- (eating, drinking, sleeping) brings it for the wait
     for i, b in pairs(ctx.Rings()) do
         local v = b.Value
-        if v and (v < LOW or (RingLast[i] and v > RingLast[i] + 0.001)) then RingUntil[i] = now + Hold(ctx) end
+        if b.Low or (v and RingLast[i] and v > RingLast[i] + 0.001) then RingUntil[i] = now + Hold(ctx) end
         RingLast[i] = v
     end
     -- a drink ring: a new entry or a new drink in it (the share jumps up) brings it, and it comes back when it runs
-    -- low, like a food ring
+    -- low (DRINK_LOW)
     for k, d in pairs(ctx.Drinks()) do
         local v = d.Value
-        if d.Root and v and (DrinkLast[k] == nil or v < LOW or v > DrinkLast[k] + 0.001) then DrinkUntil[k] = now + Hold(ctx) end
+        if d.Root and v and (DrinkLast[k] == nil or v < DRINK_LOW or v > DrinkLast[k] + 0.001) then DrinkUntil[k] = now + Hold(ctx) end
         DrinkLast[k] = v
     end
 end
@@ -195,7 +198,6 @@ function M.Tick(ctx)
         local o = RingLevel[i]
         if o < 1 or Applied[i] ~= 1 then
             pcall(Put, i, b.Box, o)
-            pcall(Put, i, b.Dia, o)
         end
     end
     -- the drink ring sits beside them in the same widget, so it fades on its own.

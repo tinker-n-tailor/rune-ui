@@ -19,8 +19,6 @@ M.Elements = {}
 -- the game's HUD scale, so the HUD is the viewport over that scale. RuneMap is on the viewport.
 -- W, H: the HUD. VW, VH: the viewport. S: the HUD scale. 1920x1080 until main.lua reads the screen.
 M.Hud = { W = 1920, H = 1080, S = 1, VW = 1920, VH = 1080 }
--- the ninths of the screen, for the F9 list: row by row
-M.AREAS = { "Top left", "Top", "Top right", "Left", "Center", "Right", "Bottom left", "Bottom", "Bottom right" }
 
 function M.Init(elements) M.Elements = elements end
 
@@ -30,7 +28,7 @@ end
 
 -- Elements with no widget of their own: they only switch something on or off
 local SWITCH = { creatures = true, baricons = true, immersive = true, aim = true, runexp = true, questnext = true, cdhoriz = true,
-    slimlevel = true, combattext = true }
+    slimlevel = true, combattext = true, wheels = true }
 function M.IsSwitch(E) return SWITCH[E.Custom] == true end
 -- The box of E: width and height swap while the switch named in E.Turn is on (the spell cooldowns, as a row). It
 -- keeps its left edge and its middle height, see ScreenBox.
@@ -132,15 +130,6 @@ function M.Spot(E)
     local P = M.ById(E.Follows)
     return P.Center.X + P.X + P.Scale * (E.Center.X - P.Center.X) + E.X,
         P.Center.Y + P.Y + P.Scale * (E.Center.Y - P.Center.Y) + E.Y, E.Scale * P.Scale
-end
-
--- The F9 list by screen area: the ninth of the screen an element sits in
-function M.Area(E)
-    if E.Follows then return M.Area(M.ById(E.Follows)) end   -- listed with the part it follows
-    local hx, hy = M.Home(E)
-    local ox, oy = M.Offset(E)
-    local dW, dH = M.Grow(E)
-    return M.AREAS[M.Third(hy + oy, 1080 + dH) * 6 + M.Third(hx + ox, 1920 + dW) * 2 + 1]
 end
 
 return M

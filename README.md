@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/title.gif" alt="Rune UI"></p>
 
-A big overhaul of the vanilla UI, built in the game's own style. Move, resize, fade or hide 36 HUD parts and switch between 3 profiles, all in the game with no files to edit. The minimap, bars, buffs and party panel are redesigned too.
+A big overhaul of the vanilla UI, built in the game's own style. Move, resize, fade or hide 35 HUD parts and switch between 3 profiles, all in the game with no files to edit. The minimap, bars, buffs, party panel, wheels and notices are redesigned too.
 
 Rune UI is a UE4SS Lua mod for RuneScape: Dragonwilds.
 
@@ -15,7 +15,7 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 <table>
 <tr>
 <td width="50%" valign="top"><img src="docs/immersive-mode.jpg" alt="Immersive mode"><br><b>Immersive mode</b><br>The HUD fades away when nothing happens, and comes back when you need it.</td>
-<td width="50%" valign="top"><img src="docs/immersive-camera.jpg" alt="Immersive camera"><br><b>Immersive camera</b><br>A closer, over-the-shoulder camera for immersive mode.</td>
+<td width="50%" valign="top"><img src="docs/immersive-camera.jpg" alt="Immersive camera"><br><b>Immersive camera</b><br>A closer, over-the-shoulder camera, with or without immersive mode.</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><img src="docs/combat.jpg" alt="Combat text, enemy and boss bars"><br><b>Combat text, enemy and boss bars</b></td>
@@ -39,8 +39,9 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 
 - **F9** opens the editor. Pick a part, then move it, resize it, fade it or hide it. The editor lists its keys. The mod saves your layout.
 - **F7** in the editor saves the layout and goes to the next of three profiles.
-- **F8** opens the map settings.
-- **F6** opens the camera settings.
+- **F5** opens Rune Skin: the switches of the looks.
+- **F8** opens the Rune Map settings.
+- **F6** opens the immersion mode settings, with the camera.
 
 Every key and setting is in `README.txt` in the mod folder.
 

@@ -1,5 +1,5 @@
 -- Food, water and rest in the style of the map: a gold rim, a coloured ring
--- that fills with the value, a dark centre with the game's icon and a diamond under it; no numbers.
+-- that fills with the value, a see-through dark centre with the game's icon; no numbers.
 -- The game's own ring stays alive but unseen; ours is drawn from pictures (tools/make-runemap-art.js).
 -- The coloured ring is two half rings, each in a box that cuts it at the middle: turning a half shows as
 -- much of it as the value, so the ring fills clockwise from the top like a clock hand.
@@ -10,18 +10,26 @@ local M = {}
 local ART_DIR = (RUNEUI_DIR or "ue4ss/Mods/RuneUI/") .. "Art/"
 local RING = 68        -- the game's radial bar is 68 units; the pictures cover exactly that
 local ICON = 68        -- the picture has wide empty edges, so the icon is this big
-local DIAMOND = 10
 
 -- Unreal takes widget colours as linear light; these are screen colours (sRGB), converted
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
 
+-- Icon: the end of the icon texture's name; the warning's glyph has the same texture (read in game, 07-10-2026)
 local KINDS = {
-    { Prop = "WBP_SurvivalCore_Upkeep_Hydration",  Name = "water", Colour = Lin(0.373, 0.698, 0.863) },   -- #5fb2dc
-    { Prop = "WBP_SurvivalCore_Upkeep_Sustenance", Name = "food",  Colour = Lin(0.471, 0.761, 0.396) },   -- #78c265
-    { Prop = "WBP_SurvivalCore_Upkeep_Endurance",  Name = "rest",  Colour = Lin(0.914, 0.886, 0.800) },   -- #e9e2cc
+    { Prop = "WBP_SurvivalCore_Upkeep_Hydration",  Name = "water", Icon = "T_Icon_Upkeep_Hydration",  Colour = Lin(0.373, 0.698, 0.863) },   -- #5fb2dc
+    { Prop = "WBP_SurvivalCore_Upkeep_Sustenance", Name = "food",  Icon = "T_Icon_Upkeep_Sustenance", Colour = Lin(0.471, 0.761, 0.396) },   -- #78c265
+    { Prop = "WBP_SurvivalCore_Upkeep_Endurance",  Name = "rest",  Icon = "T_Icon_Upkeep_Endurance",  Colour = Lin(0.914, 0.886, 0.800) },   -- #e9e2cc
 }
 local ICON_TINT = Lin(0.945, 0.902, 0.784)   -- #f1e6c8
+M.ICON_TINT = ICON_TINT   -- the ring in the warning starts with it (noticering.lua)
+
+-- The need ("water", "food" or "rest") of an icon texture, by its full name; nil for another texture
+function M.KindOf(texName)
+    for _, K in ipairs(KINDS) do
+        if string.find(texName, K.Icon, 1, true) then return K.Name end
+    end
+end
 
 local function Obj(path) return StaticFindObject(path) end
 local function New(cls, outer, name) return StaticConstructObject(Obj("/Script/UMG." .. cls), outer, FName(name)) end
@@ -49,6 +57,16 @@ local function Picture(tree, name, tex, size)
     img:SetBrush(b)
     return img
 end
+
+-- The dark back and the dark centre of every ring are see-through: the owner approved it in the game (07-10-2026). This is
+-- the one place for the two values. The rings of M.Ring (the HUD, the menu icons, the drinks, the warning) take them there;
+-- the ammo disk and the cooldown tiles, which draw a back without M.Ring, call Faint with BACK_ALPHA.
+local BACK_ALPHA, CENTRE_ALPHA = 0.40, 0.25
+local function Faint(img, a)
+    img:SetColorAndOpacity({ R = 1, G = 1, B = 1, A = a })
+    return img
+end
+M.BACK_ALPHA, M.Faint = BACK_ALPHA, Faint
 
 local function Sized(tree, name, w, h, content)
     local box = New("SizeBox", tree, name)
@@ -127,12 +145,12 @@ end
 -- three pictures as Back, Half and Centre. The buffs in main.lua are drawn with it too.
 function M.Ring(tree, n, size, art, colour)
     local ov = New("Overlay", tree, n .. "Stack")
-    Add(ov, Picture(tree, n .. "Back", art.Back, size), 2, 2)
+    Add(ov, Faint(Picture(tree, n .. "Back", art.Back, size), BACK_ALPHA), 2, 2)
     local right, rImg = Half(tree, n .. "R", art.Half, colour, true, size)
     local left, lImg = Half(tree, n .. "L", art.Half, colour, false, size)
     Add(ov, right, 3, 0)
     Add(ov, left, 1, 0)
-    Add(ov, Picture(tree, n .. "Centre", art.Centre, size), 2, 2)
+    Add(ov, Faint(Picture(tree, n .. "Centre", art.Centre, size), CENTRE_ALPHA), 2, 2)
     return ov, rImg, lImg
 end
 
@@ -160,7 +178,6 @@ local function Decorate(ctx, U)
             local back = LoadArt(ctx, tree, "upkeep_back.png")
             local half = LoadArt(ctx, tree, "upkeep_half.png")
             local centre = LoadArt(ctx, tree, "upkeep_centre.png")
-            local dia = LoadArt(ctx, tree, "runemap_diamond.png")
             if not (bar and back and half and centre) then error("missing part: bar=" .. tostring(bar ~= nil)) end
             local n = tag .. "_" .. i
             local ov, rImg, lImg = M.Ring(tree, n, RING, { Back = back, Half = half, Centre = centre }, K.Colour)
@@ -174,16 +191,14 @@ local function Decorate(ctx, U)
                 end)
             end
             local box = Sized(tree, n, RING, RING, ov)
-            -- our ring and diamond from an earlier round (a player restart keeps the game's widget): out first
+            -- our ring from an earlier round (a player restart keeps the game's widget): out first
             ctx.ClearOurs(root, "RU_Up")
             Add(root, box, 2, 1)        -- over the game's ring: centred, at the top of the element
             bar:SetRenderOpacity(0.0)   -- only once ours is in: the game's ring stays alive for the game, unseen
-            local diaImg = dia and Picture(tree, n .. "Dia", dia, DIAMOND)
-            if diaImg then Add(root, diaImg, 2, 1, { Left = 0, Top = RING - 2 - DIAMOND / 2, Right = 0, Bottom = 0 }) end
             -- no numbers: the ring shows how full it is. The game still writes them, and the ring reads them.
             pcall(function() Find(root, "SizeBox_1"):SetRenderOpacity(0.0) end)
-            Built[i] = { Right = rImg, Left = lImg, Icon = ourIcon, Texts = texts, Value = nil, Colour = K.Colour,
-                GameRing = Find(bar, "RadialImage"), GameIcon = icon, Box = box, Dia = diaImg }
+            Built[i] = { Right = rImg, Left = lImg, Icon = ourIcon, Texts = texts, Value = nil, Colour = K.Colour, Name = K.Name,
+                GameRing = Find(bar, "RadialImage"), GameIcon = icon, Box = box }
             local parts = {}
             for _, T in ipairs(texts) do pcall(function() table.insert(parts, "'" .. T:GetText():ToString() .. "'") end) end
             ctx.Log(string.format("survival: %s ring ready (numbers %s; low colours %s)", K.Name, table.concat(parts, " "), (icon and Built[i].GameRing) and "followed" or "not found"))
@@ -206,6 +221,8 @@ end
 -- Low water, food or rest: the game turns its icon red and its ring orange (25 or less) or dark red (10 or
 -- less); read in game, 27-09-2026. Ours follows: while the game's icon is not white, our ring and icon take
 -- the game's colours, lifted to at least half brightness so the dark red still reads on the dark ring.
+-- b.Low says that the need is in orange or red. The immersive mode shows a ring while it is low (immersive.lua), so
+-- this is the one place that knows it.
 local function Lift(c)
     local m = math.max(c.R, c.G, c.B)
     local k = (m > 0 and m < 0.5) and 0.5 / m or 1
@@ -215,9 +232,9 @@ end
 local function Warn(b)
     local ring, icon = b.Colour, ICON_TINT
     local c = b.GameIcon.ColorAndOpacity
-    if c.R < 0.99 or c.G < 0.99 or c.B < 0.99 then
-        ring, icon = Lift(b.GameRing.ColorAndOpacity), Lift(c)
-    end
+    b.Low = c.R < 0.99 or c.G < 0.99 or c.B < 0.99
+    if b.Low then ring, icon = Lift(b.GameRing.ColorAndOpacity), Lift(c) end
+    b.Shown = { Ring = ring, Icon = icon }
     local key = string.format("%.2f %.2f %.2f %.2f %.2f %.2f", ring.R, ring.G, ring.B, icon.R, icon.G, icon.B)
     if key == b.Tint then return end
     b.Tint = key
@@ -240,7 +257,14 @@ local function Turn(b, p)
 end
 M.Turn = Turn
 
--- The rings as built, by kind: Value is the share full (nil until read), Box and Dia the ring and its diamond
+-- What the ring b shows now: the colour of its ring, the colour of its icon and the share full (nil until read).
+-- The ring in the warning (noticering.lua) draws the same.
+function M.Look(b)
+    local shown = b.Shown
+    return shown and shown.Ring or b.Colour, shown and shown.Icon or ICON_TINT, b.Value
+end
+
+-- The rings as built, by kind: Value is the share full (nil until read), Box the ring, Low true in orange or red
 function M.Rings() return Built end
 
 -- Leaving the world: drop the handles into it before the engine frees them (see main.lua)

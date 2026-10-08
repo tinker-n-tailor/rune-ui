@@ -55,7 +55,7 @@ function M.Look(dx, dy, yaw)
     return Round(px, 10), Round(size, 10), Round(opacity, 100)
 end
 
--- The groups the map settings switch on: set is RuneMap's settings, creatures the editor's switch for the creatures.
+-- The groups the map settings switch on: set is RuneMap's settings, creatures the layout's switch for them (the F8 row Creatures).
 -- "Creatures" has three values: Off, Enemies only (set.Neutral false) and All.
 function M.Groups(set, creatures)
     return { Enemy = creatures, Calm = creatures and set.Neutral == true, Ore = set.Ore == true, Herbs = set.Herbs == true,

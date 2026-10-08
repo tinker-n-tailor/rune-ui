@@ -32,7 +32,7 @@ local function WriteArt(LoadPart, Log, dir)
         end
     end
     Log("pictures written: " .. written)
-    -- the base64 text (about 400 KB) is not read again: let Lua free it
+    -- the base64 text (about 650 KB) is not read again: let Lua free it
     if package and package.loaded then package.loaded.art = nil end
 end
 

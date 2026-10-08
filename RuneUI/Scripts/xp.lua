@@ -9,7 +9,7 @@
 -- opacity. Our parts live in the bars widget, so they move and size with the bars.
 -- With two skills at the same instant the game shows two circles. Ours show one after the other, TURN seconds each.
 -- The skill's name comes from the name of its icon, so it is English in every language: the game's notice has no name.
--- "Rune XP" in F9 turns it off: the game's circle is back. main.lua loads this file with pcall.
+-- "XP under the bars" in Rune Skin (F5) turns it off: the game's circle is back. main.lua loads this file with pcall.
 
 local M = {}
 

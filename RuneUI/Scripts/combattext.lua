@@ -74,10 +74,7 @@ local function Fresh(keep)
 end
 S = Fresh()
 
-local function Find(path)
-    local o = StaticFindObject(path)
-    if o and o:IsValid() then return o end
-end
+local function Find(path) local o = StaticFindObject(path) if o and o:IsValid() then return o end end
 local function CdoPath(name) return STYLES .. name .. ".Default__CUIS_DamageFloatie_" .. name .. "_C" end
 local function ClassPath(name) return STYLES .. name .. ".CUIS_DamageFloatie_" .. name .. "_C" end
 
@@ -87,6 +84,7 @@ local function PathOf(o)
 end
 local function Rgba(c) return { R = c.R, G = c.G, B = c.B, A = c.A } end
 local function Xy(v) return { X = v.X, Y = v.Y } end
+M.Find, M.PathOf, M.Rgba = Find, PathOf, Rgba   -- deathlook.lua writes a style the same way
 
 -- the pop's size after elapsed seconds: 1 + BIG at the start, exactly 1 from POP on, an ease-out in between
 function M.Scale(elapsed)

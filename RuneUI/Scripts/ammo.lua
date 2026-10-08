@@ -58,7 +58,7 @@ local function Build(ctx, box, key)
     -- the disk: the ring's back alone (dark, the gold rim)
     local Picture, Sized, Add = ctx.Survival.Picture, ctx.Survival.Sized, ctx.Survival.Add
     local stack = New("Overlay", tree, n .. "Stack")
-    Add(stack, Picture(tree, n .. "Back", LoadArt(tree, "upkeep_back.png"), RING), 2, 2)
+    Add(stack, ctx.Survival.Faint(Picture(tree, n .. "Back", LoadArt(tree, "upkeep_back.png"), RING), ctx.Survival.BACK_ALPHA), 2, 2)
     local img = New("Image", tree, n .. "Icon")
     Add(stack, img, 2, 2)
     local disk = Sized(tree, n .. "Disk", RING, RING, stack)

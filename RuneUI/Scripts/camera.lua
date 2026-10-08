@@ -2,8 +2,8 @@
 -- the settings are in camerarules.lua (ctx.Rules); this file only talks to the game.
 -- A write to the player's own camera arm is undone every frame, but the camera
 -- follows the profile data assets, so the walking and the sprinting profile are written (probe of 05-10-2026). The assets are shared in
--- memory and nothing goes to disk: the game's values are kept and put back when the camera goes off, when the immersive
--- mode goes off and on a new world. The lock-on view is its own camera and stays the game's.
+-- memory and nothing goes to disk: the game's values are kept and put back when the camera goes off
+-- and on a new world. The lock-on view is its own camera and stays the game's.
 -- A new distance is written once, as it is: the game blends the camera to it by itself in about 0.5 to 0.7 s, as it does
 -- between its own profiles (seen in the game, 05-10-2026). A write on every frame looks choppy beside that.
 -- The signals: the combat switch, the actors in the hands, and the HUD reticle (a bow's aim or a staff's cast: the
@@ -28,7 +28,7 @@ local Hands = {}         -- the last class name read for each hand's actor, by a
 local Ret = { Names = {} }
 local ReticleLines = 0   -- not reset by a new world: the cap is per game start
 local Orig = {}          -- the game's values by name (walk, sprint): { Arm, X, Y, Z }
-local State = { Immersive = true }   -- the readings of a step, one table for the whole session
+local State = {}   -- the readings of a step, one table for the whole session
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
 local function Ok(o) return o ~= nil and o:IsValid() end
@@ -180,12 +180,12 @@ local function Restore(ctx)
     pcall(Back, Asset(WALK), Orig.walk)
     pcall(Back, Asset(SPRINT), Orig.sprint)
     M.Applied, M.View, M.Perf, M.Checked = false, nil, NewPerf(0), true
-    if Mem then ctx.Rules.Step(Mem, { Immersive = false }, os.clock()) end   -- forgets the fight
+    Mem = nil   -- forgets the fight
     ctx.Log("camera: the game's camera back")
 end
 
 -- A run that started while the assets still held the values of an earlier run (a restart of the mods) and does not
--- apply (camera or immersive mode off): the game's values saved by that run are written back, once. True when done.
+-- apply (camera off): the game's values saved by that run are written back, once. True when done.
 local function Leftover(ctx)
     local done = true
     for name, path in pairs({ walk = WALK, sprint = SPRINT }) do
@@ -210,8 +210,7 @@ end
 function M.Tick(ctx)
     M.Ctx = ctx
     local R = ctx.Rules
-    local immersive = ctx.Immersive()
-    if not (R.Set.on and immersive) then
+    if not R.Set.on then
         if M.Applied then Restore(ctx)
         elseif not M.Checked then M.Checked = Leftover(ctx) end
         return

@@ -1,12 +1,14 @@
 -- The element list of the mod and its starting layout: plain data, no game calls. main.lua loads this file, gives the
 -- list to layout.lua and adds the working fields of each element (its move, its size, its widgets).
 -- List: the elements, in the order of the rows in the settings file. Defaults: the starting layout, by element id.
+-- Groups: the rows of the F9 list. A name is what a player reads. An id is what the settings file holds: do not change one.
 
 -- One entry per movable thing. A widget belongs to one entry only, so nothing moves twice. The position math and
 -- the meaning of Center, Size, A, Full, Inside and Follows are in layout.lua. Positions are in HUD units, as on a
 -- 16:9 screen (1920x1080 units at any resolution).
 -- Center, Size: measured 27-09-2026 from screenshots and slots. A: from the slots (probe of 29-09-2026).
 -- Custom: an element the mod draws itself ("avatar", "map", "cooldowns", "questtracker", "party") or a plain switch (IsSwitch).
+-- A switch has no row in F9: the Rune Skin panel (skinpanel.lua), F8 (creatures) or F6 (immersive) shows it.
 -- PathEnds/UseParent: for shared classes, keep only widgets whose path matches, then climb N parents.
 -- Child: move only this named child of the widget's root, not the whole widget.
 local Elements = {
@@ -20,13 +22,13 @@ local Elements = {
     -- screen that row is off screen, so they move on their own. Centre read from in-game screenshot, 27-09-2026.
     { Id="region",   Name="Area effects (Scorch, Imarus)",  Classes={"WBP_ImarusGazeRadial_C", "WBP_RegionEffectRadial_C"},
       Inside="vitals", A={0.5,1}, Center={X=952, Y=911}, Size={X=44, Y=44} },
-    { Id="survival", Name="Food, water and rest rings",          Classes={"WBP_SurvivalCore_Upkeep_C"},
+    { Id="survival", Name="Survival rings",                  Classes={"WBP_SurvivalCore_Upkeep_C"},
       Inside="vitals", A={0,1}, Center={X=158, Y=968}, Size={X=215, Y=95} },
     -- the drink ring, inside the food rings' widget. Follows: it stays beside the rings wherever they go (with Inside
     -- it stayed at its own default spot, far from moved rings; seen 01-10-2026). Centre: right of the rest ring, level
     -- with the rings (243 units right of the water ring).
     -- It also holds the food and potion buffs: the same kind of entry, in lists beside the drink's (buffs.lua).
-    { Id="drink",    Name="Buff rings (drink, food, potion)",  Classes={"WBP_HUD_DrinkBuffListEntry_C", "WBP_HUD_FoodBuffListEntry_C", "WBP_HUD_PotionBuffListEntry_C"},
+    { Id="drink",    Name="Food, water and potion buffs",  Classes={"WBP_HUD_DrinkBuffListEntry_C", "WBP_HUD_FoodBuffListEntry_C", "WBP_HUD_PotionBuffListEntry_C"},
       Follows="survival", A={0,1}, Center={X=328, Y=958}, Size={X=50, Y=50} },
     { Id="toolbar",  Name="Tool bar",                       Classes={"WBP_Inventory_QuickAccesBar_C"},
       A={0,0}, Center={X=330, Y=110}, Size={X=545, Y=62} },
@@ -36,41 +38,48 @@ local Elements = {
       Full=true, A={0.5,0}, Center={X=960, Y=86}, Size={X=600, Y=120}, Redraw="CompassRetainerBox" },
     -- no element for the MiniMap addon's map: the big map (M) and RuneMap's own map are of the same class,
     -- so hiding that element would hide both
-    { Id="runemap",  Name="Minimap (RuneMap)",                      Custom="map",
+    { Id="runemap",  Name="Rune Map",                       Custom="map",
       A={1,0}, Center={X=1792, Y=128}, Size={X=224, Y=224} },
-    -- no widget of its own: hiding it in the editor turns the creature diamonds on RuneMap off
-    { Id="creatures", Name="Creatures on the minimap",         Custom="creatures",
+    -- no widget of its own: off, the creature diamonds on the map are off. The F8 row "Creatures" switches it.
+    { Id="creatures", Name="Creatures",                      Custom="creatures",
       A={1,0}, Center={X=1792, Y=128}, Size={X=40, Y=40} },
     -- no widget of its own either: showing it shows the game's icons beside the bars (hidden at first)
-    { Id="baricons", Name="Icons beside the bars",          Custom="baricons",
+    { Id="baricons", Name="Game icons beside the bars",     Custom="baricons",
       A={0,0}, Center={X=110, Y=60}, Size={X=30, Y=70} },
-    -- no widget of its own either: shown, the HUD fades when nothing happens (immersive.lua; off at first)
-    { Id="immersive", Name="Immersive mode (fades when idle)", Custom="immersive",
+    -- no widget of its own either: shown, the HUD fades when nothing happens (immersive.lua; off at first). The F6
+    -- panel switches it and sets its Wait.
+    { Id="immersive", Name="Immersive mode",                 Custom="immersive",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     -- no widget of its own either: shown, the aim marks are gold and the lock-on orb is our diamond (aim.lua)
-    { Id="aim",      Name="Crosshair and lock-on",          Custom="aim",
+    { Id="aim",      Name="Gold crosshair and lock-on",     Custom="aim",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     { Id="daynight", Name="Day and night dial",          Classes={"WBP_HUD_DayAndNight_C"},
       NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
     { Id="buffs",    Name="Buffs and debuffs",                         Classes={"WBP_HUD_EffectsDisplayLists_C"},
       Full=true, A={0,1}, Center={X=151, Y=871}, Size={X=200, Y=85}, Sample="Buffs and debuffs" },
+    -- NoRow: no row in the F9 list, as every notice in it has its own row. A saved layout that moved, sized or faded
+    -- the group keeps that. A layout that hid the group shows the row, so the player can show the notices again.
     { Id="notify",   Name="All notices (group)",                 Classes={"WBP_HUD_Notifications_C"},
-      Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=400, Y=200} },
+      NoRow=true, Full=true, A={0.5,0.5}, Center={X=960, Y=540}, Size={X=400, Y=200} },
     { Id="xp",       Name="XP circle",                      Classes={"WBP_Notifications_ExperienceProgressContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=960, Y=130}, Size={X=120, Y=95} },
     -- no widget of its own: shown, the XP is under the bars (xp.lua); hidden, the game's circle is back
-    { Id="runexp",   Name="Rune XP (XP under the bars)",    Custom="runexp",
+    { Id="runexp",   Name="XP under the bars",              Custom="runexp",
       A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18} },
     -- no widget of its own: shown, a level up shows under the bars in Rune XP's row and the game's banner is unseen
-    -- (xp.lua); hidden, the game's banner is back. On at first. Off too while "Rune XP" is hidden.
+    -- (xp.lua); hidden, the game's banner is back. On at first. Off too while "XP under the bars" is off.
     -- Sample: a text that the editor draws inside the mark of an element that shows nothing while F9 is open
-    { Id="slimlevel", Name="Slim level up (under the bars)", Custom="slimlevel",
+    { Id="slimlevel", Name="Small level up notice",          Custom="slimlevel",
       A={0,0}, Center={X=265, Y=125}, Size={X=330, Y=18}, Sample="Level up" },
     -- no widget of its own: shown, the damage numbers over enemies have the mod's look and a critical hit pops (combattext.lua);
     -- hidden, the game's numbers are back. On at first.
-    { Id="combattext", Name="Combat text (damage numbers)", Custom="combattext",
+    { Id="combattext", Name="Combat text",                  Custom="combattext",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
-    { Id="xpfloat",  Name="XP numbers",                    Classes={"WBP_FloatingExperienceContainer_C"},
+    -- no widget of its own: shown, the spell, quick access and emote wheels have the mod's look (wheels.lua);
+    -- hidden, the game's wheels are back. On at first.
+    { Id="wheels",   Name="Wheels",                         Custom="wheels",
+      A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
+    { Id="xpfloat", Name="XP numbers",                    Classes={"WBP_FloatingExperienceContainer_C"},
       Inside="notify", A={0.5,0}, Center={X=860, Y=551}, Size={X=110, Y=40} },
     -- Idle: its render opacity when no notice shows, 0 (README, the slim level up). The slim row reads any opacity above 0.02 as a notice.
     { Id="levelup",  Name="Level up notice",                      Classes={"WBP_LevelUpNotification_C"}, Idle=0,
@@ -85,7 +94,7 @@ local Elements = {
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=390}, Size={X=520, Y=200} },
     -- Two more queues of the notices widget. The warning: 70 above the middle in a box of 775 x 152 (the game's
     -- files). The tip: its centre and size come from a screenshot of the shown tip, not from the slot.
-    { Id="upkeep",   Name="Hunger, thirst and rest warning",      Classes={"WBP_PlayerUpkeepNotification_C"},
+    { Id="upkeep",   Name="Survival warning",                     Classes={"WBP_PlayerUpkeepNotification_C"},
       Inside="notify", A={0.5,0.5}, Center={X=960, Y=470}, Size={X=775, Y=152} },
     { Id="tips",     Name="Tutorial tips",                        Classes={"WBP_TutorialNotifications_C"},
       Inside="notify", A={0,0.6}, Center={X=405, Y=600}, Size={X=700, Y=150} },
@@ -134,21 +143,20 @@ local Elements = {
     { Id="cooldowns", Name="Spell cooldowns",               Custom="cooldowns", Turn="cdhoriz",
       A={0,0.5}, Center={X=70, Y=540}, Size={X=60, Y=400} },
     -- no widget of its own: shown, the cooldown tiles are in a row, the newest at the right end (cooldowns.lua; off at
-    -- first). It sits in the same list group as the tiles.
-    { Id="cdhoriz",  Name="Spell cooldowns: horizontal",   Custom="cdhoriz",
-      Hint="Ins and Del turn it on and off. To move or resize the tiles, select Spell cooldowns.",
+    -- first).
+    { Id="cdhoriz",  Name="Spell cooldowns in a row",      Custom="cdhoriz",
       A={0,0.5}, Center={X=70, Y=540}, Size={X=40, Y=40} },
     -- our own text under the minimap, at the top right (questtracker.lua): the main quest and the tracked one. Size:
     -- its box. Centre: its right edge on the minimap's right edge (1904), its top 12 units under the minimap's box.
     { Id="questtracker", Name="Quest tracker",              Custom="questtracker",
       A={1,0}, Center={X=1754, Y=307}, Size={X=300, Y=110} },
     -- no widget of its own: shown, the tracker also lists the next steps of a quest with a clean list (off at first)
-    { Id="questnext", Name="Quest tracker: next steps",     Custom="questnext",
+    { Id="questnext", Name="Next quest steps",              Custom="questnext",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
     -- our own rows for the other players of a co-op world, top left under the bars (party.lua): the name and a health
     -- bar for each. Size: its box of five rows. Centre: its left edge at 42 units, its top at 146, under the bars and
     -- clear of the row of Rune XP (a level up grows that row to about 145).
-    { Id="party",    Name="Party panel (friends' health)",  Custom="party",
+    { Id="party",    Name="Party panel",                    Custom="party",
       A={0,0}, Center={X=154.5, Y=301}, Size={X=225, Y=310} },
     { Id="wheel",    Name="Tool wheel hint",                Classes={"WBP_DomInputIconWidget_C"},
       PathEnds={"WBP_Inventory_MainPanel_C_%d+%.WidgetTree_%d+%.RadialKBM$"}, UseParent=3,
@@ -187,4 +195,15 @@ local Defaults = {
     questnext={Visible=false}, cdhoriz={Visible=false},
 }
 
-return { List = Elements, Defaults = Defaults }
+-- The F9 list: the rows by what the part is, in this order. Every element with a place on the screen is in one group.
+local Groups = {
+    { Name = "Bars and status", Ids = { "vitals", "avatar", "weapon", "region", "survival", "drink", "buffs", "ammo", "xp", "xpfloat" } },
+    { Name = "Combat", Ids = { "toolbar", "cooldowns", "legend", "wheel" } },
+    { Name = "Map and time", Ids = { "runemap", "compass", "daynight" } },
+    { Name = "Quests and friends", Ids = { "questtracker", "party" } },
+    { Name = "Notices", Ids = { "notify", "levelup", "area", "banners", "quests", "pickups", "tips", "status", "upkeep", "armor",
+        "itembrk", "banner", "saving", "death" } },
+    { Name = "Menus and prompts", Ids = { "menuico", "menubtn", "prompts" } },
+}
+
+return { List = Elements, Defaults = Defaults, Groups = Groups }

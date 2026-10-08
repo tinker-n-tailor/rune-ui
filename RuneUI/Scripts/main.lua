@@ -1,7 +1,7 @@
 -- Rune UI: move, resize and hide parts of the Dragonwilds HUD, with a new minimap, survival rings and bars.
--- F9 opens the editor, F8 the map settings, F6 the camera settings. A timer applies the layout; gold corners mark the selected element.
+-- F9 opens the layout editor, F5 Rune Skin, F8 Rune Map, F6 the immersion mode. A timer applies the layout; gold corners mark the selected element.
 
-local VERSION = "1.9.2"
+local VERSION = "1.10"
 
 local function Log(msg) print("[RuneUI] " .. msg .. "\n") end
 Log("starting " .. VERSION)
@@ -68,11 +68,11 @@ local function ClearOurs(panel, prefix)
 end
 
 -- One entry per movable thing, and the starting layout: the list and what each field means are in elements.lua.
-local Elements, Defaults
+local Elements, Defaults, Groups
 do
     local Data = LoadPart("elements")
     if not Data then error("elements.lua is missing or broken, see the log") end
-    Elements, Defaults = Data.List, Data.Defaults
+    Elements, Defaults, Groups = Data.List, Data.Defaults, Data.Groups
 end
 
 -- The position math lives in layout.lua (tested without the game); these are its names, used all over this file.
@@ -81,15 +81,14 @@ if not Layout then error("layout.lua is missing or broken, see the log") end
 Layout.Init(Elements)
 local Hud, ById, Third, IsSwitch = Layout.Hud, Layout.ById, Layout.Third, Layout.IsSwitch
 local FinalCenter = Layout.FinalCenter
-local Retarget, TargetFromSpot, ScreenBox, Spot, Area = Layout.Retarget, Layout.TargetFromSpot, Layout.ScreenBox, Layout.Spot, Layout.Area
-local AREAS = Layout.AREAS
+local Retarget, TargetFromSpot, ScreenBox, Spot = Layout.Retarget, Layout.TargetFromSpot, Layout.ScreenBox, Layout.Spot
 
 for _, E in ipairs(Elements) do
     local d = Defaults[E.Id] or {}
     E.X, E.Y, E.Scale = d.X or 0, d.Y or 0, d.Scale or 1.0
     E.Visible = (d.Visible ~= false)
     E.Opacity = 1.0   -- every default is fully solid; F9 comma and period change it
-    E.Wait = d.Wait   -- the immersive line only: seconds a part stays before it fades (+ / - there)
+    E.Wait = d.Wait   -- the immersive switch only: seconds a part stays before it fades (F6 sets it)
     E.Instances, E.Keys = {}, {}
     E.PartsOp, E.PartsW = {}, {}   -- by widget name: its parts and the opacity last given to them (Parts elements)
     E.Last = {}                    -- by widget name: the move, size and pivot last written to it (ApplyOne)
@@ -212,6 +211,12 @@ local Toolbar = nil   -- the tool bar as tiles, from toolbar.lua
 -- the immersive camera's settings, rules and F6 panel, from camerarules.lua. camera.lua and
 -- crosshair.lua use it. Its Open is the F6 panel, as MapMode is F8.
 local Camera = nil
+-- What the panels share (panels.lua), and the panels with a list of settings: Rune Skin on F5 (skinpanel.lua) and
+-- Rune Map on F8 (mappanel.lua). A list panel has Sel, State, View, Pick, Change and Reset; the camera rules are the third.
+local Panels = LoadPart("panels")
+if not Panels then error("panels.lua is missing or broken, see the log") end
+local Skin, MapPanel = LoadPart("skinpanel"), LoadPart("mappanel")
+if Skin then Skin.Attach(ById, Defaults) end
 
 -- The widget search lives in finder.lua (tested without the game), with its state: what its Forget drops and what the
 -- perf line reads. These are its names, used all over this file.
@@ -223,8 +228,7 @@ local ClassName, FindClass, FindQuiet, Reports = Finder.ClassName, Finder.FindCl
 ---------------------------------------------------------------- applying the layout
 
 local EditMode = false
-local MapMode = false    -- F8: RuneMap's own settings, in the same panel as the editor
-local MapSel = 1         -- the selected line of the map settings
+local MapMode = false    -- F8: the map's own settings, in the same panel as the editor
 local Selected = 1
 local Step = 10
 -- The layout is written into the widgets in apply.lua. The editor's state above stays here: the keys write it on
@@ -308,26 +312,19 @@ local function CachedTex(cache, key, outer, file)
     if not (tex and tex:IsValid()) then
         local f = io.open(file, "rb")   -- for the log: the file is not there, or the engine did not take it
         if f then f:close() end
-        error((f and "picture not loaded: " or "picture missing: ") .. file)
+        error((f and "picture not loaded: " or "picture missing: ") .. file, 0)
     end
     cache[key] = tex
     return tex
 end
 
--- The F9 list by screen area: the ninth of the screen an element sits in (Layout.Area). Read when
--- the editor opens, so a row does not jump to another group while it moves; PgUp and PgDn go down this list.
+-- The F9 list by what the part is: the groups of elements.lua, in their order (Panels.Order). Read when the editor
+-- opens: the group of all notices has a row only while it is hidden. PgUp and PgDn go down this list.
 local Order = {}   -- element indexes in list order
-local AreaOf = {}   -- element index -> its area, from the last SortOrder
+local GroupOf = {}   -- element index -> the name of its group, from the last SortOrder
 local function SortOrder()
-    local byArea = {}
-    for i, E in ipairs(Elements) do
-        local a = Area(E)
-        AreaOf[i] = a
-        byArea[a] = byArea[a] or {}
-        table.insert(byArea[a], i)
-    end
-    Order = {}
-    for _, a in ipairs(AREAS) do for _, i in ipairs(byArea[a] or {}) do Order[#Order + 1] = i end end
+    Order, GroupOf = Panels.Order(Elements, Groups)
+    if not GroupOf[Selected] then Selected = Order[1] end   -- the selected element has no row any more
 end
 
 -- moved, resized or faded from its default: a gold diamond on its row
@@ -337,68 +334,15 @@ local function Changed(E)
         or E.Opacity < 1
 end
 
--- The keys each panel lists. KEY: the names of the six keys a player can change, as bound
--- (KeyCode, at the keys below, writes them at load). So the lists are made when a panel is filled, not at load.
+-- The keys the editor lists. KEY: the names of the seven keys a player can change, as bound
+-- (KeyCode, at the keys below, writes them at load). So the list is made when the panel is filled, not at load.
 local KEY = {}
 local function EditKeys()
     return { { { "PgUp", "PgDn" }, "Select" }, { { "←", "→", "↑", "↓" }, "Move" }, { { "+", "-" }, "Size" },
         { { ",", "." }, "Opacity" }, { { "Home", "End" }, "Step" }, { { "Del", "Ins" }, "Hide, show" },
         { { "Backspace" }, "Reset" }, { { KEY.editor }, "Save, close" } }
 end
-local function MapKeys()
-    return { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { KEY.zoomout, KEY.zoomin }, "Zoom" },
-        { { "Backspace" }, "Reset" }, { { KEY.editor }, "Layout" }, { { KEY.map }, "Save, close" } }
-end
-local MAP_ROWS = { "RuneMap", "Faces north", "North mark", "Player name", "Creatures", "Ore", "Herbs", "Essence", "Rare trees",
-    "In immersive mode", "Zoom", "Drawing" }
--- the lines that are a plain On / Off, and the setting in runemap.lua each one flips. "In immersive mode" steps
--- through Nothing, Map and Compass (Settings.STAY), Creatures through three values: MapValue and MapChange have them.
-local MAP_SWITCH = { RuneMap = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", ["Player name"] = "Name", Ore = "Ore",
-    Herbs = "Herbs", Essence = "Essence", ["Rare trees"] = "Trees" }
--- the lines with more than two values: the list shows "< value >", so a player sees that Left and Right give more
--- than what is shown
-local MAP_CHOICE = { Creatures = true, ["In immersive mode"] = true, Zoom = true }
-
--- The F8 lines: the value of each, and a hint for the selected one
-local function MapValue(i)
-    local S = RuneMap and RuneMap.Set or {}
-    local row = MAP_ROWS[i]
-    if row == "Creatures" then
-        if not ById("creatures").Visible then return "Off" end
-        return S.Neutral and "All" or "Enemies only"
-    end
-    if row == "Zoom" then return RuneMap and string.format("%d%%", math.floor(200 / RuneMap.ZoomLevel() + 0.5)) or "-" end
-    if row == "Drawing" then return S.Smooth and "Smooth" or (S.Fastest and "Fastest" or "Faster") end
-    if row == "In immersive mode" then return S.Immersive or "Nothing" end
-    return S[MAP_SWITCH[row]] and "On" or "Off"
-end
-local MAP_HINTS = {
-    RuneMap = { Off = "The map is off. The mod does not build it at all." },   -- On names the editor's key: MapHint
-    ["Faces north"] = { On = "North stays at the top of the map.", Off = "The map turns with the camera." },
-    ["North mark"] = { On = "The mark on the gold ring shows where north is.", Off = "No north mark on the ring." },
-    ["Player name"] = { On = "Your player name shows beside your arrow on the map.", Off = "Your player name does not show on the map. The names of other players stay." },
-    Creatures = { All = "Red diamonds for enemies, green for neutral animals.", ["Enemies only"] = "Only enemies. Neutral animals are not shown.",
-        Off = "No creature diamonds on the map." },
-    Ore = { On = "Ore rocks near you. Empty rocks hide until they grow back.", Off = "No ore on the map." },
-    Herbs = { On = "Wild herbs near you. A picked herb goes off the map.", Off = "No herbs on the map." },
-    Essence = { On = "Rune essence near you.", Off = "No rune essence on the map." },
-    ["Rare trees"] = { On = "Dead trees, yew, magic trees and anima bark near you.", Off = "No rare trees on the map." },
-    ["In immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
-        Map = "The map and the quest tracker stay in the immersive mode. The compass is away." },   -- Compass: MapHint
-    Drawing = { Smooth = "The map draws every frame. Switching might decrease performance.",
-        Faster = "The map draws every second frame. A bit choppy when you turn.", Fastest = "The map draws every fourth frame. The lightest, and the choppiest." },
-}
-local function MapHint(i, v)
-    local row = MAP_ROWS[i]
-    if row == "Zoom" then return "Closer or farther. The " .. KEY.zoomout .. " and " .. KEY.zoomin .. " keys do the same at any time." end
-    if row == "In immersive mode" and v == "Compass" then
-        return "Only the compass stays, with the map marks. The map is away."
-    end
-    if row == "RuneMap" and v == "On" then return "The map is on. To only hide it, use Delete in " .. KEY.editor .. "." end
-    return MAP_HINTS[row] and MAP_HINTS[row][v] or ""
-end
-
--- The parts that failed, for a line on the F9 and F8 panel: a part whose step or scan threw (Parts), or that gave
+-- The parts that failed, for a line on every panel: a part whose step or scan threw (Parts), or that gave
 -- up building (Fails, see MayTry; a part with several builds says so itself with Problem).
 local function Problems()
     local out = {}
@@ -409,73 +353,43 @@ local function Problems()
     return "Failed: " .. table.concat(out, ", ") .. ". See UE4SS.log in Win64."
 end
 
--- the second line of the panel's head: the camera settings' key, where the camera settings exist
-local function CameraLink(v)
-    if KEY.camera then v.SubC, v.SubD = "Camera settings on", KEY.camera end
-    return v
+-- The list panel that is open (F6, F8 or F5), nil for none. The arrows and Backspace go to it, and the step draws it.
+local function ListPanel()
+    if Camera and Camera.Open then return Camera end
+    if MapMode then return MapPanel end
+    if Skin and Skin.Open then return Skin end
 end
 
+-- The F9 view. Rows holds every line of the list; UpdateOverlay shows the lines that fit.
 local function EditView()
     local E = Elements[Selected]
-    local v = { Mode = "edit", Title = "RUNE UI", SubA = "Map settings on", SubB = KEY.map, Profile = Prof.N,
-        Keys = EditKeys(), Name = E.Name, Map = {}, Warn = Problems() }
+    local v = { Mode = "edit", Title = "LAYOUT", Profile = Prof.N, Keys = EditKeys(), Name = E.Name, Map = {}, Warn = Problems(), Rows = {} }
     local cx, cy = Spot(E)
     local sx, sy = math.floor(cx + 0.5), math.floor(cy + 0.5)   -- on a 1920 x 1080 screen
-    if E.Wait then   -- the immersive line: + and - set the wait
-        v.Facts = { { "State", E.Visible and "On" or "Off" }, { "Waits", E.Wait .. " s" } }
-        v.Hint = "+ and - set the wait before the HUD fades. Ins and Del turn it on and off."
-    elseif IsSwitch(E) then
-        v.Facts = { { "State", E.Visible and "On" or "Off" } }
-        v.Hint = E.Hint or "Ins and Del turn it on and off."
-    else
-        v.Facts = { { "X", tostring(sx) }, { "Y", tostring(sy) }, { "Size", math.floor(E.Scale * 100 + 0.5) .. "%" },
-            { "Opacity", math.floor(E.Opacity * 100 + 0.5) .. "%" }, { "Step", tostring(Step) } }
-        if not E.Visible then v.Hint = "Hidden. Ins shows it again."
-        elseif #E.Instances == 0 then v.Hint = "Not on the screen right now. It still moves." end
-        local x, y, w, h = ScreenBox(E)
-        v.Mark = { X = x, Y = y, W = w, H = h, Name = E.Name, XY = "X " .. sx .. "   Y " .. sy, Sample = E.Visible and E.Sample or nil }
-    end
+    v.Facts = { { "X", tostring(sx) }, { "Y", tostring(sy) }, { "Size", math.floor(E.Scale * 100 + 0.5) .. "%" },
+        { "Opacity", math.floor(E.Opacity * 100 + 0.5) .. "%" }, { "Step", tostring(Step) } }
+    if not E.Visible then v.Hint = "Hidden. Ins shows it again."
+    elseif #E.Instances == 0 then v.Hint = "Not on the screen right now. It still moves." end
+    local x, y, w, h = ScreenBox(E)
+    v.Mark = { X = x, Y = y, W = w, H = h, Name = E.Name, XY = "X " .. sx .. "   Y " .. sy, Sample = E.Visible and E.Sample or nil }
     -- the screen map: every element with a place, in 1920 x 1080 units
     for i, El in ipairs(Elements) do
         if not IsSwitch(El) and #v.Map < Editor.BOXES then
-            local x, y, s = Spot(El)
+            local ex, ey, s = Spot(El)
             local bw, bh = Layout.Box(El)
-            local w, h = bw * s, bh * s
-            v.Map[#v.Map + 1] = { X = x - El.Size.X * s / 2, Y = y - h / 2, W = w, H = h,
+            v.Map[#v.Map + 1] = { X = ex - El.Size.X * s / 2, Y = ey - bh * s / 2, W = bw * s, H = bh * s,
                 Sel = i == Selected, Hidden = not El.Visible, Name = El.Name }
         end
     end
-    -- the list: Editor.ROWS lines of group titles and rows, the selected row in the middle when it can be
-    local lines, at = {}, 1
     local last
     for _, i in ipairs(Order) do
         local El = Elements[i]
-        local a = AreaOf[i]
-        if a ~= last then lines[#lines + 1] = { Head = true, Text = a } last = a end
-        local gone = #El.Instances == 0 and not IsSwitch(El)
-        lines[#lines + 1] = { Text = El.Name, Sel = i == Selected, Moved = Changed(El), Dim = gone or not El.Visible,
+        if GroupOf[i] ~= last then last = GroupOf[i] v.Rows[#v.Rows + 1] = { Head = true, Text = last } end
+        local gone = #El.Instances == 0
+        v.Rows[#v.Rows + 1] = { Text = El.Name, Sel = i == Selected, Moved = Changed(El), Dim = gone or not El.Visible,
             Note = not El.Visible and "hidden" or gone and "not on screen" or nil }
-        if i == Selected then at = #lines end
     end
-    local first = math.max(1, math.min(at - math.floor(Editor.ROWS / 2), #lines - Editor.ROWS + 1))
-    v.Rows = {}
-    for n = first, math.min(#lines, first + Editor.ROWS - 1) do v.Rows[#v.Rows + 1] = lines[n] end
-    -- a group title on the last line has its rows cut off below: "CENTER" with nothing under it
-    if v.Rows[#v.Rows].Head then v.Rows[#v.Rows] = nil end
-    return CameraLink(v)
-end
-
-local function MapView()
-    local vals = {}
-    for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
-    local v = { Mode = "map", Title = "RUNE MAP", SubA = "Layout on", SubB = KEY.editor, Keys = MapKeys(), Warn = Problems(),
-        Name = MAP_ROWS[MapSel] .. ":  " .. vals[MapSel], Hint = MapHint(MapSel, vals[MapSel]), Rows = {} }
-    -- the panel has Editor.ROWS lines: a longer list moves with the selected row, as the F9 list does
-    local first = math.max(1, math.min(MapSel - math.floor(Editor.ROWS / 2), #MAP_ROWS - Editor.ROWS + 1))
-    for r = first, math.min(#MAP_ROWS, first + Editor.ROWS - 1) do
-        v.Rows[#v.Rows + 1] = { Text = MAP_ROWS[r], Note = MAP_CHOICE[MAP_ROWS[r]] and ("< " .. vals[r] .. " >") or vals[r], Sel = r == MapSel }
-    end
-    return CameraLink(v)
+    return v
 end
 
 -- F9: the panel stays on its side of the screen and moves to the other only when it would cover the selected
@@ -511,8 +425,8 @@ end
 -- 50 ms: each text is logged once, and 10 texts at most in a world, as a text may change from step to step.
 local Panel = { State = "", View = nil, Logged = {}, Lines = 0 }
 local function UpdateOverlay(now)
-    local cam = Camera ~= nil and Camera.Open   -- F6: the camera settings, in the same panel
-    local open = EditMode or MapMode or cam
+    local P = ListPanel()   -- F6, F8 or F5: a list of settings, in the same panel
+    local open = EditMode or P ~= nil
     if not Editor then return end
     if not open and not Editor.Shown then return end   -- closed, and nothing of the panel on screen to take away
     if open and not Editor.Ready() and MayTry(Editor) and os.clock() > SettleUntil and LastController ~= "" then
@@ -528,17 +442,13 @@ local function UpdateOverlay(now)
         end
         -- a new view only when something it shows changed: the numbers of every element, the step, the screen
         local state
-        if cam then
-            state = Camera.State(ById("immersive").Visible) .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
-        elseif MapMode then
-            local vals = {}
-            for i = 1, #MAP_ROWS do vals[i] = MapValue(i) end
-            state = "map|" .. MapSel .. "|" .. table.concat(vals, "|") .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
+        if P then
+            state = P.State() .. "|" .. Hud.VW .. "|" .. Hud.VH .. "|" .. (Problems() or "")
         else
             local parts = { "edit", Selected, Step, Prof.N, Hud.VW, Hud.VH, Hud.S, Problems() or "" }
             for _, El in ipairs(Elements) do
-                parts[#parts + 1] = string.format("%.1f,%.1f,%.2f,%.1f,%s,%d,%s", El.X, El.Y, El.Scale, El.Opacity,
-                    El.Visible and "1" or "0", #El.Instances, tostring(El.Wait))
+                parts[#parts + 1] = string.format("%.1f,%.1f,%.2f,%.1f,%s,%d", El.X, El.Y, El.Scale, El.Opacity,
+                    El.Visible and "1" or "0", #El.Instances)
             end
             state = table.concat(parts, "|")
         end
@@ -546,14 +456,9 @@ local function UpdateOverlay(now)
         -- on the first open), not no panel
         if not Editor.Shown then Editor.Open(true) Editor.Shown = true end
         if state ~= Panel.State then
-            local v
-            if cam then
-                v = Camera.View(KEY, ById("immersive").Visible, Problems())
-                v.SubC, v.SubD = "Map settings on", KEY.map
-            else
-                v = MapMode and MapView() or EditView()
-            end
-            Editor.Update(v)
+            local v = P and P.View(KEY, Problems()) or EditView()
+            v.Rows = Panels.Window(v.Rows, Editor.ROWS)
+            Editor.Update(Panels.Links(v, KEY))
             Panel.State, Panel.View = state, v
         end
         -- placed every step: the panel knows its new size one frame after its content changed
@@ -613,7 +518,11 @@ if RuneMap then
     RuneMap.Res = LoadPart("resources")   -- ore, herbs, essence and rare trees on the map
 end
 Camera = LoadPart("camerarules")
-if Camera then Camera.Attach(Settings.Section(Cfg, "camera"), SaveCfg) end
+if Camera then
+    Camera.Attach(Settings.Section(Cfg, "camera"), SaveCfg)
+    Camera.AttachMode(ById("immersive"), Defaults.immersive)   -- the two rows of the immersive mode in F6 are the layout's
+end
+if MapPanel then MapPanel.Attach({ RuneMap = RuneMap, Creatures = ById("creatures"), Stay = Settings.STAY }) end
 -- Editing: the map shows while F9 or F8 is open, even when it is hidden
 local MapCtx = { Log = Log, ById = ById, Asset = Asset, Editing = function() return EditMode or MapMode end, Scan = function() LastScan = 0 end,
     -- the immersive mode's share: the map fades itself, its gold rings too (runemap.lua ApplyOpacity)
@@ -690,23 +599,22 @@ AddPart("letters", Letters, { Log = Log, Find = FindClass })
 Toolbar = LoadPart("toolbar")
 AddPart("toolbar", Toolbar, { Log = Log, ById = ById, G = G, Font = FindPoppins })
 do   -- a block: its names are not top-level locals
-    local P = LoadPart("pickups")
-    if P then AddPart("pickups", P, { Log = Log, Find = FindClass, Font = FindPoppins }) end
-    P = LoadPart("farmplot")
-    if P then AddPart("farm plots", P, { Log = Log, Find = FindClass }) end
+    local P, Embers = LoadPart("pickups"), LoadPart("embers")   -- embers.lua: the new item sparks, for the pick-ups and the unlock rows
+    if P then AddPart("pickups", P, { Log = Log, Find = FindClass, Font = FindPoppins, Embers = Embers }) end
+    P = LoadPart("farmplot") if P then AddPart("farm plots", P, { Log = Log, Find = FindClass }) end
     -- the enemy bars take the look of the player's bars; no switch, like the player's bars (enemybars.lua)
     P = LoadPart("enemybars")
     if P then AddPart("enemy bars", P, { Log = Log, Find = FindQuiet, MayTry = MayTry, Failed = Failed, Noise = Bars and Bars.OneColorNoise }) end
     P = LoadPart("combattext")
-    if P then
-        AddPart("combat text", P, { Log = Log, Find = FindClass, MayTry = MayTry, Failed = Failed, Chain = Util.Chain,
-            Soon = ExecuteInGameThreadWithDelay,   -- nil in an old UE4SS: no pop, the look still works
-            On = function() return ById("combattext").Visible end })
-    end
-    P = LoadPart("quests")
-    if P then
-        AddPart("quests", P, { Log = Log, Find = FindClass, Font = FindPoppins, Collect = Letters and Letters.Collect })
-    end
+    if P then AddPart("combat text", P, { Log = Log, Find = FindClass, MayTry = MayTry, Failed = Failed, Chain = Util.Chain,
+        Soon = ExecuteInGameThreadWithDelay,   -- nil in an old UE4SS: no pop, the look still works
+        On = function() return ById("combattext").Visible end }) end
+    AddPart("death look", LoadPart("deathlook"), { Log = Log, Find = FindClass, MayTry = MayTry, Failed = Failed, Combat = P })   -- "You Died": red, bigger, above the band
+    P = LoadPart("noticelook")   -- the look of the game's notices; noticestyle.lua holds its writes
+    if P then AddPart("notice look", P, { Log = Log, Find = FindClass, Font = FindPoppinsMedium, Uniq = Uniq, CachedTex = CachedTex, Style = LoadPart("noticestyle"), Reads = LoadPart("noticeread"), Hud = ImmersiveCtx.Rings, Survival = Survival, Ring = LoadPart("noticering") }) end
+    P = LoadPart("quests") if P then AddPart("quests", P, { Log = Log, Find = FindClass, Font = FindPoppins, Collect = Letters and Letters.Collect, Embers = Embers }) end
+    local WP = LoadPart("wheelparts")   -- the writes that can be put back: the wheels
+    P = LoadPart("wheels") if P then AddPart("wheels", P, { Log = Log, Find = FindClass, Font = FindPoppinsMedium, CachedTex = CachedTex, Parts = WP, Spells = LoadPart("wheelspells"), Meters = LoadPart("wheelmeters"), Books = LoadPart("wheelbooks"), G = G, On = function() return ById("wheels").Visible end }) end
     -- the id of the selected row while F9 is open; nil with the editor closed or F8 open
     local function SelectedId()
         local E = EditMode and not MapMode and Elements[Selected]
@@ -782,11 +690,11 @@ do   -- a block: its names are not top-level locals
         AddPart("bed names", P, { Log = Log, Hook = RegisterHook, Text = FText,
             Find = function(path) local o = Cls(path) if o ~= nil and o:IsValid() then return o:GetAddress() end end })
     end
-    -- the immersive camera and the crosshair setting: "immersive mode on" is its line in F9, the switch
+    -- the crosshair setting: "immersive mode on" is its row in F6, the switch
     local function ImmersiveOn() return ById("immersive").Visible end
     P = Camera and LoadPart("camera")
     if P then
-        AddPart("camera", P, { Log = Log, Rules = Camera, Controller = Controller, Immersive = ImmersiveOn,
+        AddPart("camera", P, { Log = Log, Rules = Camera, Controller = Controller,
             -- the HUD reticle: a bow's aim or a staff's cast starts the ranged zoom (camera.lua Aiming)
             Reticle = AimCtx.Reticle, Find = Survival and Survival.Find, MayTry = MayTry, Failed = Failed,
             -- the game's camera values, kept where a restart of the mods does not lose them (camera.lua Keep)
@@ -956,8 +864,11 @@ local function TickBody()
     local okApply, errApply = pcall(Apply.All, scanned, EditMode, MapMode, Selected)   -- a scan step writes every move and size again (ApplyOne)
     if not okApply and not ApplyErrorLogged then ApplyErrorLogged = true Log("apply failed: " .. tostring(errApply)) end
 
-    if SaveRequested then SaveRequested = false SaveLayout() end
     if Camera then pcall(Camera.Commit) end   -- the camera settings are saved here, whatever camera.lua's step does
+    -- a row of F6 or F5 that the layout holds was changed: the flag goes down first, so a change during the save is saved next
+    if Camera and Camera.LayoutDirty then Camera.LayoutDirty = false SaveRequested = true end
+    if Skin and Skin.LayoutDirty then Skin.LayoutDirty = false SaveRequested = true end
+    if SaveRequested then SaveRequested = false SaveLayout() end
     if Prof.Wanted then Prof.Wanted = false pcall(Prof.Next) end
 
     UpdateOverlay(now)
@@ -1015,15 +926,16 @@ end)
 -- Key binds run on UE4SS's own thread, beside the game thread's step: they only change numbers and flags, and
 -- make nothing new (no text, no tables), so they cannot start Lua's memory cleanup under the step (28-09-2026).
 -- The step logs the editor opening and closing.
--- Windows key codes by name. The six keys in KEY_DEFAULT can be changed in the [keys] section of runeui.txt;
--- the others are fixed, as the F9 panel lists them.
+-- Windows key codes by name. The seven keys in KEY_DEFAULT can be changed in the [keys] section of runeui.txt;
+-- the others are fixed, as the F9 panel lists them. skin: no use of F5 by the game was found (08-10-2026), but its
+-- own key list is packed and could not be read.
 local VK = { Backspace = 8, PgUp = 33, PgDn = 34, End = 35, Home = 36, Left = 37, Up = 38, Right = 39, Down = 40,
     Insert = 45, Delete = 46, Plus = 107, Minus = 109, Equals = 187, Dash = 189, Comma = 188, Period = 190,
     ["["] = 219, ["]"] = 221 }
 for i = 1, 12 do VK["F" .. i] = 111 + i end
 for i = 0, 9 do VK[tostring(i)] = 48 + i end
 for i = 0, 25 do VK[string.char(65 + i)] = 65 + i end
-local KEY_DEFAULT = { editor = "F9", map = "F8", profile = "F7", zoomin = "]", zoomout = "[", camera = "F6" }
+local KEY_DEFAULT = { editor = "F9", map = "F8", profile = "F7", zoomin = "]", zoomout = "[", camera = "F6", skin = "F5" }
 local function KeyCode(what)
     local keys = Settings.Section(Cfg, "keys")
     if keys[what] == nil then keys[what] = KEY_DEFAULT[what] end   -- written on the next save, so the player sees the line
@@ -1054,7 +966,7 @@ do   -- a block: its names are not top-level locals
                 for _ = 1, 2 do if Prof.N ~= n then Prof.Next() end end
             end)
         local keys = Settings.Section(Cfg, "keys")
-        for _, what in ipairs({ "editor", "map", "camera", "profile", "zoomin", "zoomout" }) do
+        for _, what in ipairs({ "editor", "skin", "map", "camera", "profile", "zoomin", "zoomout" }) do
             Row("key_" .. what, function() return MM.KeyToMenu(keys[what]) or MM.KeyToMenu(KEY_DEFAULT[what]) end,
                 function(v)
                     local name = MM.KeyFromMenu(v)
@@ -1067,7 +979,7 @@ do   -- a block: its names are not top-level locals
         local I, C = ById("immersive"), ById("creatures")
         for _, r in ipairs({ { "immersive", "immersive" }, { "rune_xp", "runexp" }, { "slim_level_up", "slimlevel" },
             { "combat_text", "combattext" }, { "quest_next", "questnext" }, { "horizontal_cooldowns", "cdhoriz" },
-            { "party_panel", "party" } }) do
+            { "party_panel", "party" }, { "wheels", "wheels" }, { "gold_crosshair", "aim" }, { "bar_icons", "baricons" } }) do
             local El = ById(r[2])
             Row(r[1], function() return El.Visible end, function(v) El.Visible = v == true SaveRequested = true end)
         end
@@ -1085,7 +997,7 @@ do   -- a block: its names are not top-level locals
             Row("map_drawing", function() return S.Smooth and "Smooth" or (S.Fastest and "Fastest" or "Faster") end,
                 function(v) S.Smooth, S.Fastest = v == "Smooth", v == "Fastest" RuneMap.Dirty = true end)
         end
-        if Camera then   -- the camera rows, one per row of the F6 panel (camerarules.lua ROWS)
+        if Camera then   -- the camera rows of the F6 panel (camerarules.lua ROWS)
             for _, r in ipairs(Camera.ROWS) do
                 Row("camera_" .. r.Key, function() return Camera.MenuGet(r.Key) end, function(v) Camera.MenuSet(r.Key, v) end)
             end
@@ -1105,66 +1017,35 @@ do   -- a block: its names are not top-level locals
             -- The step sorts the editor's list when it sees the editor open at its start. This opens it in the middle
             -- of a step, and the panel is filled at the end of the same step: with no list yet, the first fill
             -- failed and the panel stayed blank.
-            OpenEditor = function() MapMode = false EditMode = true if Camera then Camera.Open = false end pcall(SortOrder) end }, true)
+            OpenEditor = function()
+                MapMode, EditMode = false, true
+                if Camera then Camera.Open = false end
+                if Skin then Skin.Open = false end
+                pcall(SortOrder)
+            end }, true)
     end
 end
 
-RegisterKeyBind(KeyCode("editor"), function()
-    MapMode = false   -- F9 inside F8: from the map settings into the editor
-    if Camera then Camera.Open = false end   -- and from the camera settings
-    EditMode = not EditMode
-    if not EditMode then
-        SaveRequested = true
-    end
-end)
+-- One panel at a time: the key of a panel closes it, or opens it and closes the one that was open. Leaving the editor
+-- or the map settings saves the layout, which holds the creatures switch. The other two panels save as they change.
+local function Toggle(which)
+    local P = which == "camera" and Camera or which == "skin" and Skin   -- a panel that holds its own Open
+    local was = (which == "edit" and EditMode) or (which == "map" and MapMode) or (P and P.Open)
+    if EditMode or MapMode then SaveRequested = true end
+    EditMode, MapMode = which == "edit" and not was, which == "map" and not was
+    if Camera then Camera.Open = which == "camera" and not was end
+    if Skin then Skin.Open = which == "skin" and not was end
+end
+RegisterKeyBind(KeyCode("editor"), function() Toggle("edit") end)
+if Skin then RegisterKeyBind(KeyCode("skin"), function() Toggle("skin") end) end
+if MapPanel then RegisterKeyBind(KeyCode("map"), function() Toggle("map") end) end
+if Camera then RegisterKeyBind(KeyCode("camera"), function() Toggle("camera") end) end
 
--- F8: RuneMap's own settings. F8 inside F9 goes from the editor to the map settings. Closing saves the
--- layout, which holds the creatures switch; runemap.lua saves the other settings as they change.
-RegisterKeyBind(KeyCode("map"), function()
-    if EditMode then EditMode = false end
-    if Camera then Camera.Open = false end
-    MapMode = not MapMode
-    SaveRequested = true
-end)
--- F6: the camera settings, in the same panel; from F9 or F8 it goes there. camerarules.lua saves as they change.
-if Camera then
-    RegisterKeyBind(KeyCode("camera"), function()
-        if EditMode then EditMode = false SaveRequested = true end
-        if MapMode then MapMode = false SaveRequested = true end
-        Camera.Open = not Camera.Open
-    end)
-end
-local function MapPick(d)
-    MapSel = MapSel + d
-    if MapSel < 1 then MapSel = #MAP_ROWS end
-    if MapSel > #MAP_ROWS then MapSel = 1 end
-end
--- left and right: the zoom row zooms; Creatures, In immersive mode and Drawing step through their values; every other row switches
-local function MapChange(d)
-    if not RuneMap then return end
-    local S = RuneMap.Set
-    local row = MAP_ROWS[MapSel]
-    if row == "Zoom" then RuneMap.ZoomBy(d > 0 and 1 / 1.25 or 1.25)
-    elseif row == "Drawing" then   -- Smooth, Faster, Fastest
-        local st = ((S.Smooth and 1 or (S.Fastest and 3 or 2)) - 1 + (d > 0 and 1 or -1)) % 3 + 1 S.Smooth, S.Fastest = st == 1, st == 3
-    elseif row == "In immersive mode" then
-        local st = 1   -- the place of the value in Settings.STAY
-        for i, name in ipairs(Settings.STAY) do if name == S.Immersive then st = i end end
-        S.Immersive = Settings.STAY[(st - 1 + (d > 0 and 1 or -1)) % #Settings.STAY + 1]
-    elseif row == "Creatures" then
-        local C = ById("creatures")
-        local st = (not C.Visible) and 3 or (S.Neutral and 1 or 2)
-        st = (st - 1 + (d > 0 and 1 or -1)) % 3 + 1
-        C.Visible, S.Neutral = st ~= 3, st == 1
-    else local k = MAP_SWITCH[row] S[k] = not S[k] end
-    RuneMap.Dirty = true
-end
-
--- RuneMap zoom, any time: ] closer, [ farther (Windows codes 221 and 219). The game has no buttons to click.
+-- The map's zoom, any time: ] closer, [ farther (Windows codes 221 and 219). The game has no buttons to click.
 RegisterKeyBind(KeyCode("zoomin"), function() if RuneMap then RuneMap.ZoomBy(1 / 1.25) end end)
 RegisterKeyBind(KeyCode("zoomout"), function() if RuneMap then RuneMap.ZoomBy(1.25) end end)
 
--- PgUp and PgDn go up and down the list as the panel shows it, by screen area (Order)
+-- PgUp and PgDn go up and down the list as the panel shows it, group by group (Order)
 local function Sel(d)
     if not EditMode or #Order == 0 then return end
     local at = 1
@@ -1174,11 +1055,15 @@ end
 RegisterKeyBind(VK.PgUp, function() Sel(-1) end)
 RegisterKeyBind(VK.PgDn, function() Sel(1) end)
 
-local function CamOpen() return Camera ~= nil and Camera.Open end
-RegisterKeyBind(VK.Up, function() if CamOpen() then Camera.Pick(-1) elseif MapMode then MapPick(-1) else Move(0, -1) end end)
-RegisterKeyBind(VK.Down, function() if CamOpen() then Camera.Pick(1) elseif MapMode then MapPick(1) else Move(0, 1) end end)
-RegisterKeyBind(VK.Left, function() if CamOpen() then Camera.Change(-1) elseif MapMode then MapChange(-1) else Move(-1, 0) end end)
-RegisterKeyBind(VK.Right, function() if CamOpen() then Camera.Change(1) elseif MapMode then MapChange(1) else Move(1, 0) end end)
+-- the arrows: in a list panel up and down pick a row and left and right change it; in the editor they move the element
+local function Arrow(dx, dy)
+    local P = ListPanel()
+    if not P then Move(dx, dy) elseif dy ~= 0 then P.Pick(dy) else P.Change(dx) end
+end
+RegisterKeyBind(VK.Up, function() Arrow(0, -1) end)
+RegisterKeyBind(VK.Down, function() Arrow(0, 1) end)
+RegisterKeyBind(VK.Left, function() Arrow(-1, 0) end)
+RegisterKeyBind(VK.Right, function() Arrow(1, 0) end)
 
 local Steps = { 1, 5, 10, 25, 50, 100 }
 local function ChangeStep(d)
@@ -1193,10 +1078,7 @@ RegisterKeyBind(VK.End, function() ChangeStep(-1) end)
 
 local function Resize(d)
     local E = Elements[Selected]
-    if not EditMode then return end
-    -- on the immersive line + / - set the wait before fading, 3 to 30 s; numbers only here
-    if E.Wait then E.Wait = math.max(3, math.min(30, E.Wait + (d > 0 and 1 or -1))) return end
-    if IsSwitch(E) or E.OnlyY then return end
+    if not EditMode or IsSwitch(E) or E.OnlyY then return end
     E.Scale = math.max(0.3, math.min(4.0, math.floor((E.Scale + d) * 100 + 0.5) / 100))   -- up to 400%
 end
 RegisterKeyBind(VK.Plus, function() Resize(0.05) end)     -- the number pad
@@ -1220,15 +1102,18 @@ RegisterKeyBind(VK.Delete, function() if EditMode and not Elements[Selected].NoH
 RegisterKeyBind(VK.Insert, function() if EditMode then Elements[Selected].Visible = true end end)
 local NoDefaults = {}
 RegisterKeyBind(VK.Backspace, function()
-    if CamOpen() then Camera.ResetWanted = true return end   -- every camera row back to its default
-    if MapMode and RuneMap then RuneMap.Reset() ById("creatures").Visible = true return end
+    local P = ListPanel()
+    if P then P.Reset() return end   -- every row of that panel back to its starting value
     if not EditMode then return end
     local E = Elements[Selected]
     local d = Defaults[E.Id] or NoDefaults
     E.X, E.Y, E.Scale, E.Visible, E.Opacity = d.X or 0, d.Y or 0, d.Scale or 1.0, (d.Visible ~= false), 1.0
-    if E.Wait then E.Wait = d.Wait end
     E.Moved = false
     TargetFromSpot(E)
 end)
 
-Log("loaded, press " .. KEY.editor .. " in game for the layout, " .. KEY.map .. " for the map" .. (KEY.camera and (", " .. KEY.camera .. " for the camera") or ""))
+do
+    local keys = {}
+    for _, p in ipairs(Panels.LIST) do if KEY[p.Key] then keys[#keys + 1] = p.Name .. " " .. KEY[p.Key] end end
+    Log("loaded, the panels in game: " .. table.concat(keys, ", "))
+end

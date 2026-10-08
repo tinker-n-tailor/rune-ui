@@ -1,10 +1,10 @@
 -- The F9 editor's panel and the mark on the selected element. The panel looks like the bag's: its background with the
 -- double gold frame (MI_Menu_PanelBG_Shared), Poppins, the menu buttons' key boxes (keycap.png).
--- A small screen map shows where every element sits, the selected one lit gold. The list is grouped by screen area.
+-- A small screen map shows where every element sits, the selected one lit gold. The list is grouped by kind of part.
 -- X and Y sit next to Size and Opacity. On the game screen, gold corners with a slow pulse and a dark name tag
--- mark the selected element. F8's map settings use the same panel.
+-- mark the selected element. The panels of F5, F8 and F6 use the same panel.
 -- main.lua builds a plain table of what to show (the view) and calls M.Update only when it changed; this file draws.
--- Built on the first F9 or F8, when a world exists. main.lua loads this file with pcall.
+-- Built when a panel first opens, when a world exists. main.lua loads this file with pcall.
 
 local M = {}
 
@@ -169,18 +169,18 @@ local function Build(ctx)
     local head = W("HorizontalBox")
     U.Title = Text(17, TEXT, "RUNE UI", 180)
     AddH(head, U.Title, 12, true)
-    -- right of the title, two lines: the panel's own key, and the keys of the other two (F8, F9, F6). A fixed height, so the
-    -- panel is as tall with one line as with two, in every panel
+    -- right of the title, a line for each of the other panels: its name and its key. A fixed height, so the panel is as
+    -- tall with one line as with three, in every panel
     local subs = W("VerticalBox")
     local function SubLine(a, b)
         local line = W("HorizontalBox")
         AddH(line, a, 4) AddH(line, b)
         AddV(subs, line):SetHorizontalAlignment(3)   -- the right edge
     end
-    U.SubA, U.SubB, U.SubC, U.SubD = Text(12, MUTED), Text(12, GOLD), Text(12, MUTED), Text(12, GOLD)
-    SubLine(U.SubA, U.SubB) SubLine(U.SubC, U.SubD)
+    U.Links = {}
+    for i = 1, 3 do U.Links[i] = { Name = Text(12, MUTED), Key = Text(12, GOLD) } SubLine(U.Links[i].Name, U.Links[i].Key) end
     AddH(head, subs)
-    AddV(body, Sized(head, nil, 38))
+    AddV(body, Sized(head, nil, 57))   -- 19 a line, as two lines had 38
     Divider(14, 14)
 
     -- the profiles (F9 only)
@@ -312,14 +312,14 @@ end
 local function Show(w, on) w:SetVisibility(on and 3 or 1) end
 local function Color(T, c) T:SetColorAndOpacity({ SpecifiedColor = c, ColorUseRule = 0 }) end
 
--- the whole view: see main.lua EditView and MapView for its fields
+-- the whole view: see main.lua EditView for its fields
 function M.Update(v)
     local edit = v.Mode == "edit"
     U.Title:SetText(FText(v.Title))
-    U.SubA:SetText(FText(v.SubA or ""))
-    U.SubB:SetText(FText(v.SubB or ""))
-    U.SubC:SetText(FText(v.SubC or ""))
-    U.SubD:SetText(FText(v.SubD or ""))
+    for i, l in ipairs(U.Links) do   -- v.Links: { name, key } of each other panel
+        local e = v.Links and v.Links[i]
+        l.Name:SetText(FText(e and e[1] or "")) l.Key:SetText(FText(e and e[2] or ""))
+    end
     Show(U.Profile, edit)
     if edit then
         for i, s in ipairs(U.Slots) do
