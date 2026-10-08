@@ -26,6 +26,18 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 <td width="50%" valign="top"><img src="docs/minimap-quests.jpg" alt="Minimap and quest log"><br><b>Minimap and quest log</b><br>Each with its own options.</td>
 </tr>
 <tr>
+<td width="50%" valign="top"><img src="docs/wheel-spell.jpg" alt="Spell wheel"><br><b>Spell wheel</b></td>
+<td width="50%" valign="top"><img src="docs/wheel-quick.jpg" alt="Quick access wheel"><br><b>Quick access wheel</b></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/wheel-emote.jpg" alt="Emote wheel"><br><b>Emote wheel</b></td>
+<td width="50%" valign="top"><img src="docs/death-screen.jpg" alt="Death screen"><br><b>Death screen</b></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/notice-area.jpg" alt="New area notice"><br><b>New area notice</b></td>
+<td width="50%" valign="top"><img src="docs/notice-quest.jpg" alt="Quest notice"><br><b>Quest notice</b></td>
+</tr>
+<tr>
 <td width="50%" valign="top"><img src="docs/farming.jpg" alt="Farming and XP"><br><b>Farming and XP</b><br>Smaller, redesigned farm plot icons, and a new XP bar.</td>
 <td width="50%" valign="top"><img src="docs/editor.jpg" alt="The editor, F9"><br><b>The editor</b><br>Press F9. Pick a part, then move it, resize it, fade it or hide it.</td>
 </tr>
