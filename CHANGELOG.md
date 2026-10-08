@@ -4,8 +4,6 @@ All changes to Rune UI, newest first.
 
 ## [1.10] - 2026-10-08
 
-1.10 gives the wheels and the notices the look of Rune UI.
-
 ### Added
 
 - The spell, quick access and emote wheels have the look of Rune UI: each slot is a ring with a faint pattern.
