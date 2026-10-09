@@ -1,4 +1,4 @@
--- The immersive camera: its settings and its rules, and the Immersion mode panel (F6), which also holds the two rows of
+-- The immersive camera: its settings and its rules, and the Immersive mode panel (F6), which also holds the two rows of
 -- the immersive mode itself. Pure Lua, no game calls, so tools/test-camera.js runs it without the game. camera.lua reads
 -- the game and writes what Step gives back; crosshair.lua asks HideCrosshair; main.lua draws the panel from View and
 -- saves through Attach.
@@ -22,8 +22,8 @@ M.ROWS = {
     { Key = "walk", Label = "Walk distance", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 300 },
     { Key = "side", Label = "Side offset", Kind = "number", Min = 0, Max = 200, Step = 10, Unit = "cm", Default = 90 },
     { Key = "sprint", Label = "Sprint distance", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 900 },
-    { Key = "melee", Label = "Melee zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 200 },
-    { Key = "ranged", Label = "Ranged zoom", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 500 },
+    { Key = "melee", Label = "Melee distance", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 200 },
+    { Key = "ranged", Label = "Ranged distance", Kind = "number", Min = 100, Max = 1500, Step = 25, Unit = "cm", Default = 500 },
     { Key = "hold", Label = "Hold after a fight", Kind = "number", Min = 0, Max = 30, Step = 1, Unit = "s", Default = 8 },
 }
 local BY_KEY = {}
@@ -237,7 +237,7 @@ end
 -- the view for editor.lua: every row, with the group titles. main.lua shows the lines that fit (panels.lua Window).
 -- keys: main.lua's key names (editor, camera).
 function M.View(keys, warn)
-    local v = { Mode = "camera", Title = "IMMERSION MODE", Warn = warn,
+    local v = { Mode = "camera", Title = "IMMERSIVE MODE", Warn = warn,
         Keys = { { { "↑", "↓" }, "Select" }, { { "←", "→" }, "Change" }, { { "Backspace" }, "Reset" },
             { { keys.editor }, "Layout" }, { { keys.camera }, "Save, close" } },
         Name = M.PANEL[M.Sel].Label .. ":  " .. M.Value(M.Sel), Hint = M.Hint(M.Sel), Rows = {} }

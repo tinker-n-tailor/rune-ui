@@ -69,7 +69,7 @@ local Lib   -- chain.lua, given by main.lua
 
 -- Orig and Seen are kept over a world change (see Forget and Record); the rest starts again
 local function Fresh(keep)
-    return { Orig = keep and keep.Orig or {}, Seen = keep and keep.Seen or {}, Done = {}, List = {}, Chain = {},
+    return { Orig = keep and keep.Orig or {}, Seen = keep and keep.Seen or {}, Done = {}, List = {}, Chain = { Name = "combat text chain" },
         Defaults = {}, Widgets = {}, Pool = {}, Next = 0, Played = -STOP_AFTER }
 end
 S = Fresh()

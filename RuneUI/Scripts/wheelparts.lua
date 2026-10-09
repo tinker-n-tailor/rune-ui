@@ -18,6 +18,8 @@ local PANEL = PANEL_NAME .. "%.WidgetTree_%d+%."
 -- Solid: the game draws the middle ring faint until it is enabled. Icon: the render scale of a slot's icon.
 -- Spells: the wheel also gets what wheelspells.lua does. Hand: the picture for the slot of the item in hand.
 -- Sparks: the wheel gets sparks around its middle ring (wheelmeters.lua), at this scale of the ones on Q.
+-- Wrap: the name in the middle and the width in units at which it goes to a second line. The game wraps the item
+-- name at 220, wider than the ring: "Wooden Watering Can" wants 218 (probe of 09-10-2026). At 160 it is two lines.
 -- Page: Q and H keep visibility 4 closed or open. Their panel is collapsed while both are closed, and the page of its
 -- switcher (this number) says which of the two is open (probe of 07-10-2026). R tells by its own visibility.
 M.WHEELS = {
@@ -27,7 +29,7 @@ M.WHEELS = {
       Centre = "wheel_c_q.png", Solid = true, Shade = "wheel_q_shade.png", Spells = true, Page = 0 },
     { Key = "R", Class = "WBP_QuickAccess_RadialSelector_C",
       Slice = { Background = "wheel_r_ring.png", Highlight = "wheel_r_on.png" }, Hand = "wheel_r_hand.png",
-      Centre = "wheel_c_r.png", Full = true, Sparks = 0.82 },
+      Centre = "wheel_c_r.png", Full = true, Sparks = 0.82, Wrap = { "ItemName", 160 } },
     { Key = "H", Class = "WBP_Emotes_RadialSelector_C", Path = { PANEL .. "EmoteRadialWidget$" },
       Slice = { Background = "wheel_h_ring.png", Highlight = "wheel_h_on.png" }, Icon = 0.58, Name = { "EmoteName", 14 },
       Centre = "wheel_c_h.png", Full = true, Sparks = 0.70, Page = 1 },
@@ -126,6 +128,7 @@ local PROPS = {
     Visibility = { Read = function(W) return W:GetVisibility() end, Write = function(W, v) W:SetVisibility(v) end },
     Opacity = { Read = function(W) return W:GetRenderOpacity() end, Write = function(W, v) W:SetRenderOpacity(v) end },
     Scale = { Read = function(W) return Point(W.RenderTransform.Scale) end, Write = function(W, v) W:SetRenderScale(v) end },
+    Wrap = { Read = function(W) return W.WrapTextAt end, Write = function(W, v) W:SetWrapTextWidth(v) end },
     Move = { Read = function(W) return Point(W.RenderTransform.Translation) end, Write = function(W, v) W:SetRenderTranslation(v) end },
     Pivot = { Read = function(W) return Point(W.RenderTransformPivot) end, Write = function(W, v) W:SetRenderTransformPivot(v) end },
     -- the width of a size box; false: no width of its own, so the box is as wide as what it holds
@@ -297,18 +300,20 @@ function M.Sparks(ctx, tree, parent, k, vis, name, kept)
     end
     return made
 end
--- One of our pictures, size units square, from the Art folder. The statement that loads the texture puts it on a
--- brush, with tree as its owner: the engine frees a texture that only Lua holds. kept (file -> Hold of its texture)
--- gives a later picture the same texture, only while the first one still holds it.
+-- One of our pictures from the Art folder as a texture. kept (file -> Hold of its texture) gives the same texture
+-- again while a brush still holds it, so the file is read and decoded once. The caller puts the texture on a brush
+-- in the same statement: the engine frees a texture that only Lua holds, and a freed one is read again here.
+function M.Tex(ctx, kept, owner, file)
+    local have = kept[file]
+    if M.Mine(have) then return have.W end
+    local tex = ctx.CachedTex({}, file, owner, ART_DIR .. file)
+    kept[file] = M.Hold(tex)
+    return tex
+end
+-- One of our pictures, size units square, with tree as its owner. kept: see Tex.
 function M.Image(ctx, tree, name, file, size, kept)
     local img = M.New(ctx, "Image", tree, name)
-    local have = kept[file]
-    if M.Mine(have) then
-        img:SetBrushFromTexture(have.W, false)
-    else
-        img:SetBrushFromTexture(ctx.CachedTex({}, file, tree, ART_DIR .. file), false)
-        kept[file] = M.Hold(img.Brush.ResourceObject)
-    end
+    img:SetBrushFromTexture(M.Tex(ctx, kept, tree, file), false)
     local b = img.Brush
     b.ImageSize = { X = size, Y = size }
     img:SetBrush(b)

@@ -448,9 +448,13 @@ end
 
 ---------------------------------------------------------------- the time of day, read from the game's own dial
 
+-- The one reader of the clock: the ring here and the day and night icon (dial.lua) both ask every half second, and a
+-- read within CLOCK_SHARE of the last one gives that one's answer.
+local CLOCK_SHARE = 0.4
 function M.ReadClock(ctx)
     local DN = ctx.ById("daynight").Instances[1]   -- finder.lua finds it; no scan of our own
     if not (DN and DN:IsValid()) then return nil end
+    if os.clock() - (M.ClockAt or -1) < CLOCK_SHARE then return M.ClockFill, M.ClockNs end
     local root = DN.WidgetTree.RootWidget
     local bar, cursor = root:GetChildAt(0), root:GetChildAt(1)
     local angle = cursor.RenderTransform.Angle
@@ -464,7 +468,8 @@ function M.ReadClock(ctx)
     -- the share of the day gone; the pointer's angle is the same share of 360 degrees
     local fill = vals["Fill Amount"] or (angle / 360)
     local ns = math.max(0.15, math.min(0.9, vals["Night Start"] or NIGHT_START))
-    return fill % 1, ns
+    M.ClockAt, M.ClockFill, M.ClockNs = os.clock(), fill % 1, ns
+    return M.ClockFill, M.ClockNs
 end
 
 ---------------------------------------------------------------- F8 settings, the north mark and the opacity
@@ -716,6 +721,7 @@ function M.Forget(sameWorld)
     if sameWorld and M.UW then pcall(function() M.UW:RemoveFromParent() end) end
     M.W, M.UW, M.Map, M.Pawn, M.View, M.PC = nil, nil, nil, nil, nil, nil
     M.Fails = 0
+    M.ClockAt = nil   -- the next world's dial is read anew
     M.EnemyTex, M.NeutralTex, M.ResTex = nil, nil, nil
     M.SetUpAt, M.NeedleSlot, M.NeedleImg, M.NextRes = nil, nil, nil, 0   -- a new world scans for resources at once
     DropParts()
@@ -774,6 +780,12 @@ local function TakeOff()
     M.UW, M.W, M.Renew = nil, nil, nil
 end
 
+-- true when the map is to be on screen: the HUD is shown, the map is not hidden in the editor and not fully faded by
+-- the immersive mode
+local function Wanted(ctx)
+    return M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0
+end
+
 function M.Tick(ctx)
     if M.ResetWanted then
         M.ResetWanted = false
@@ -795,7 +807,9 @@ function M.Tick(ctx)
         M.NextPawnCheck = os.clock() + 2
         if PawnChanged() then ctx.Log("runemap: the player has a new body, building again") M.Pawn = nil end
     end
-    if M.Renew or not (M.W and M.W:IsValid() and M.Pawn and M.Pawn:IsValid()) then
+    -- A menu's new map waits until the map is to be on screen: a build takes 12 to 17 ms, and a player with the map
+    -- faded out or hidden paid that after every menu for a map nobody saw (measured 09-10-2026).
+    if (M.Renew and Wanted(ctx)) or not (M.W and M.W:IsValid() and M.Pawn and M.Pawn:IsValid()) then
         if not M.Renew and os.clock() < (M.NextBuild or 0) then return end   -- a menu's new map does not wait
         M.NextBuild = os.clock() + 2
         TakeOff()
@@ -850,7 +864,7 @@ function M.Tick(ctx)
     -- outlines at full strength inside a see-through parent: the rings stayed on screen (28-09-2026).
     -- Fully faded by the immersive mode: off the screen too, so the map costs no drawing and no scans; it fades through its colour only on the way out and back in.
     -- A map that is about to be built new stays off: it would show for one step and go again, which reads as a flash.
-    local visible = M.Shown == true and (ctx.ById("runemap").Visible or ctx.Editing()) and ctx.Fade() > 0 and not M.Renew
+    local visible = Wanted(ctx) and not M.Renew
     if visible ~= M.Visible then
         -- shown again after a hidden stretch: set the map up again, as after the big map (the set-up needs a map on
         -- screen, and a collapsed one is not)

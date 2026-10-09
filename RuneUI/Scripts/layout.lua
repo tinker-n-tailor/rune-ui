@@ -28,7 +28,7 @@ end
 
 -- Elements with no widget of their own: they only switch something on or off
 local SWITCH = { creatures = true, baricons = true, immersive = true, aim = true, runexp = true, questnext = true, cdhoriz = true,
-    slimlevel = true, combattext = true, wheels = true }
+    slimlevel = true, combattext = true, wheels = true, dialskin = true }
 function M.IsSwitch(E) return SWITCH[E.Custom] == true end
 -- The box of E: width and height swap while the switch named in E.Turn is on (the spell cooldowns, as a row). It
 -- keeps its left edge and its middle height, see ScreenBox.

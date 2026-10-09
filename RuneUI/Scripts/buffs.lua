@@ -5,11 +5,16 @@
 
 local M = {}
 -- main.lua's helpers, bound once by Init (see Util in main.lua)
-local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, CachedTex, Survival
+local Log, ById, Uniq, G, ClearOurs, ClassName, FindClass, CachedTex, Survival, MayTry, Failed
 function M.Init(ctx)
     Log, ById, Uniq, G, ClearOurs, ClassName, FindClass = ctx.Log, ctx.ById, ctx.Uniq, ctx.G, ctx.ClearOurs, ctx.ClassName, ctx.FindClass
-    CachedTex, Survival = ctx.CachedTex, ctx.Survival
+    CachedTex, Survival, MayTry, Failed = ctx.CachedTex, ctx.Survival, ctx.MayTry, ctx.Failed
 end
+
+-- The retry rule (MayTry, Failed) of each build, by the full name of the row, entry or drink: a build that fails is
+-- tried again 10 s later, 3 times at most in one round. Dropped in Forget.
+local BuildTries = {}
+local function Tries(k) BuildTries[k] = BuildTries[k] or {} return BuildTries[k] end
 
 ---------------------------------------------------------------- the buff count
 
@@ -74,8 +79,7 @@ local function EnsureBuffRow()
     local B = ById("buffs")
     for n, W in ipairs(B.Instances) do
         local k = B.Keys[n]
-        if not BuffRowDone[k] then
-            BuffRowDone[k] = true
+        if not BuffRowDone[k] and MayTry(Tries(k)) then
             local ok, err = pcall(function()
                 local ov = W.WidgetTree.RootWidget
                 local LV = ov:GetChildAt(0)
@@ -90,7 +94,7 @@ local function EnsureBuffRow()
                 pcall(function() s:SetHorizontalAlignment(h) s:SetVerticalAlignment(v) s:SetPadding(pad) end)
                 pcall(function() LV:RegenerateAllEntries() end)
             end)
-            if ok then Log("buffs turned into a row") else Log("buff row failed: " .. tostring(err)) end
+            if ok then BuffRowDone[k] = true Log("buffs turned into a row") else Failed(Tries(k)) Log("buff row failed: " .. tostring(err)) end
         end
     end
 end
@@ -228,8 +232,8 @@ end
 
 local function DecorateBuff(E)
     local k = E:GetFullName()
-    if BuffDeco[k] then return end
-    BuffDeco[k] = { W = E }
+    if BuffDeco[k] or not MayTry(Tries(k)) then return end
+    local d = { W = E }
     local ok, err = pcall(function()
         local box = E.WidgetTree.RootWidget
         local ov = box:GetContent()
@@ -274,12 +278,11 @@ local function DecorateBuff(E)
         icon:SetRenderTranslation({ X = 0, Y = BUFF_LIFT })
         bar:SetDesiredSizeOverride({ X = BUFF_BAR.W, Y = BUFF_BAR.H })
         bar:SetRenderTranslation({ X = 0, Y = BUFF_BAR_UP })
-        local d = BuffDeco[k]
         d.Box, d.Icon, d.Bar, d.Shade = box, icon, bar, shade
         pcall(ShadeBuff, d)
         pcall(LookAtBuff, d)   -- at once: after a respawn the poison that ended must not show until the next look
     end)
-    if not ok then Log("buff under the bars failed: " .. tostring(err)) end
+    if ok then BuffDeco[k] = d else Failed(Tries(k)) Log("buff under the bars failed: " .. tostring(err)) end
 end
 
 ---------------------------------------------------------------- the drink buff
@@ -312,9 +315,8 @@ local function RingTextures(outer)
 end
 
 function Drinks.Decorate(E, k, colour)
-    if Drinks.Deco[k] then return end
-    Drinks.Deco[k] = { W = E }
-    if not Survival then return end
+    if Drinks.Deco[k] or not Survival or not MayTry(Tries(k)) then return end
+    local d = { W = E }
     local ok, err = pcall(function()
         local tree = E.WidgetTree
         local root = tree.RootWidget
@@ -343,11 +345,10 @@ function Drinks.Decorate(E, k, colour)
         is:SetHorizontalAlignment(2) is:SetVerticalAlignment(2)
         pcall(function() icon:SetDesiredSizeOverride({ X = Drinks.ICON, Y = Drinks.ICON }) end)
         root:SetRenderTranslation({ X = 0, Y = -Drinks.LIFT })   -- level with the food rings
-        local d = Drinks.Deco[k]
         -- Root: the immersive mode fades it; the entry itself is the F9 element, whose hide and fade use its opacity
         d.Right, d.Left, d.Text, d.Lit, d.Root = right, left, text, "", root
     end)
-    if not ok then Log("drink ring failed: " .. tostring(err)) end
+    if ok then Drinks.Deco[k] = d else Failed(Tries(k)) Log("drink ring failed: " .. tostring(err)) end
 end
 
 -- Share of time left, 0..1: the seconds under the ring ("255" or "4:15") over the most seen for this entry.
@@ -428,7 +429,7 @@ end
 
 -- a new world or a player restart: every handle into the old HUD is dropped
 function M.Forget(sameWorld)
-    BuffItems = nil
+    BuffItems, BuildTries = nil, {}
     Present, Next = {}, {}
     BuffDeco, RingArt, Drinks.Deco, Drinks.Lists, Drinks.ListsKey, Drinks.Items = {}, {}, {}, {}, nil, nil
     if not sameWorld then BuffRowDone = {} end   -- the old world's lists are gone; a restart keeps the row

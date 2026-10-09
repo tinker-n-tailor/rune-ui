@@ -12,6 +12,7 @@ M.ROWS = {
     { Id = "runexp", On = "The XP shows under the bars.", Off = "The game's XP circle." },
     { Id = "slimlevel", On = "A level up shows under the bars. It needs XP under the bars.", Off = "The game's level up banner." },
     { Id = "aim", On = "The aim marks are gold, and the lock-on mark is a gold diamond.", Off = "The game's own crosshair and lock-on mark." },
+    { Id = "dialskin", On = "The day and night dial is a sun and moon icon. Show it in Layout.", Off = "The game's own day and night dial." },
     { Id = "baricons", On = "The game's icons show beside the bars.", Off = "No icons beside the bars." },
     { Id = "cdhoriz", On = "The cooldown tiles are in a row. Move them in Layout.", Off = "The cooldown tiles are in a column. Move them in Layout." },
     { Id = "questnext", On = "The quest tracker also lists up to 3 next steps.", Off = "The quest tracker shows the current step only." },

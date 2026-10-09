@@ -532,7 +532,7 @@ end
 -- the size changes and while a level up goes out, it is also painted about every frame, by a chain of delayed calls
 -- (chain.lua).
 local FAST = 8   -- ms between two calls of the chain
-local Chain = {}
+local Chain = { Name = "xp chain" }
 local function Moving(_, t) return W ~= nil and M.Moving(S, t) end
 local function Fast(ctx)
     if ctx.Chain then ctx.Chain.Run(Chain, ctx, FAST, Paint, Moving) end

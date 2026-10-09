@@ -3,7 +3,7 @@
 -- The marks show while RuneMap is not on screen, for the groups that the F8 map settings switch on, in the map's
 -- shapes: creatures (enemy red diamond, calm green diamond), ore, herbs, essence and rare trees.
 -- nearby.lua finds the things and decides what each one is.
--- With the setting "In immersive mode" at Compass, this is the immersive mode; with the map turned off in F8 it is always.
+-- With the setting "Keep in immersive mode" at Compass, this is the immersive mode; with the map turned off in F8 it is always.
 -- A mark sits at the bearing of its thing, at the scale of the game's own marks, and fades out at the edge.
 -- Far things are smaller and dimmer. The widgets are in the compass's own widget tree, so they fade, hide and move with it.
 -- A texture that only Lua holds is freed by the engine, and the next touch crashes the game: each picture sits in a
@@ -11,6 +11,8 @@
 -- Motion: the main loop runs about 16 times a second, too few for a smooth turn. While marks are wanted and a thing
 -- is near, a chain of delayed calls on the game thread (chain.lua) paints about every frame, as xp.lua does for a level up.
 -- The chain also runs while every thing is behind you: a mark must come in at the edge with no delay when you turn.
+-- A call of the chain reads the yaw and the player and nothing else, and draws only when they changed by a visible step
+-- or when the step read something new (a scan, a creature that moved). Before that, every call made 12 KB of garbage.
 -- main.lua loads this file with pcall, so an error here leaves the rest of the mod running.
 
 local M = {}
@@ -45,14 +47,15 @@ function M.Offset(dx, dy, yaw)
     return ((math.deg(math.atan(dy, dx)) - yaw + 540) % 360 - 180) * UNITS
 end
 
--- How a thing shows: its offset, its size and its opacity; nil past the edge. Rounded, so a tiny change is not written.
+-- How a thing shows: its offset, its scale (1 is SIZE units) and its opacity; nil past the edge. Rounded, so a tiny change
+-- is not written.
 function M.Look(dx, dy, yaw)
     local px = M.Offset(dx, dy, yaw)
     if math.abs(px) >= EDGE then return nil end
     local far = math.min(1, math.sqrt(dx * dx + dy * dy) / FAR)
-    local size = SIZE * (1 - (1 - SMALL) * far)
+    local scale = 1 - (1 - SMALL) * far
     local opacity = (1 - (1 - DIM) * far) * math.min(1, (EDGE - math.abs(px)) / FADE)
-    return Round(px, 10), Round(size, 10), Round(opacity, 100)
+    return Round(px, 10), Round(scale, 20), Round(opacity, 100)
 end
 
 -- The groups the map settings switch on: set is RuneMap's settings, creatures the layout's switch for them (the F8 row Creatures).
@@ -74,18 +77,20 @@ function M.Runs(on, things) return on and things > 0 end
 
 ---------------------------------------------------------------- the game
 
+local V = { X = 0, Y = 0 }   -- every vector we write: the engine copies it during the call, so one table does for all
 local function Obj(path) return StaticFindObject(path) end
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
 
 -- the widgets of the mod in the compass, and what changed in it; all dropped by Forget
 M.TexCache = {}   -- group -> the picture; reused while valid (main.lua's CachedTex)
-M.Chain = {}      -- the state of the chain of calls (chain.lua)
+M.Chain = { Name = "compass chain" }      -- the state of the chain of calls (chain.lua)
 
 local function Reset()
     M.Comp, M.Name, M.Made, M.Pool, M.Tex, M.Dia, M.DiaWas = nil, nil, {}, {}, {}, nil, nil
     M.Creatures, M.Resources, M.NextCreatures, M.NextResources, M.Key = {}, {}, 0, 0, nil
     M.Want, M.Lit, M.Dirty = false, 0, false
+    M.PC, M.Pawn, M.SeenYaw, M.SeenX, M.SeenY = nil, nil, nil, nil, nil
     if M.Ctx and M.Ctx.Chain then M.Ctx.Chain.Stop(M.Chain) end   -- a call still queued does nothing
 end
 
@@ -146,6 +151,10 @@ local function Build(ctx, comp, pc)
         local img = New("Image", "Mark" .. i)
         Add(icons, img)
         img:SetVisibility(1)
+        -- a mark changes its size by scale, not by a new brush (that copies a whole struct); the scale turns about the centre
+        local brush = img.Brush
+        brush.ImageSize = { X = SIZE, Y = SIZE }
+        img:SetBrush(brush)
         M.Pool[i] = { W = img }
     end
     local dia = Valid(comp.DirectionalDiamond, "middle mark")
@@ -156,39 +165,33 @@ local function Build(ctx, comp, pc)
 end
 
 -- one mark of the pool, written only where its value changed
-local function Put(m, group, px, size, opacity)
+local function Put(m, group, px, scale, opacity)
     if not m.W:IsValid() then error(GONE) end   -- freed by the game: a write would be a native write to a freed object
     if m.Group ~= group then
         local tex = M.Tex[group]
         if not tex:IsValid() then error(GONE) end
-        m.Group, m.Size = group, nil
+        m.Group = group
         m.W:SetBrushFromTexture(tex, false)
     end
-    if m.Size ~= size then
-        m.Size = size
-        local b = m.W.Brush
-        b.ImageSize = { X = size, Y = size }
-        m.W:SetBrush(b)
+    if m.Scale ~= scale then
+        m.Scale, V.X, V.Y = scale, scale, scale
+        m.W:SetRenderScale(V)
     end
-    if m.Px ~= px then m.Px = px m.W:SetRenderTranslation({ X = px, Y = DOWN }) end
+    if m.Px ~= px then
+        m.Px, V.X, V.Y = px, px, DOWN
+        m.W:SetRenderTranslation(V)
+    end
     if m.Opacity ~= opacity then m.Opacity = opacity m.W:SetRenderOpacity(opacity) end
     if not m.On then m.On = true m.W:SetVisibility(3) end
 end
 
--- the next free mark of the pool for a thing; the number used so far comes back. A creature moves: its place is read
--- now, and a creature that is gone is skipped. A resource stands still: its place was read at the scan.
-local function Draw(t, at, yaw, used)
-    if used >= POOL then return used end
-    local x, y = t.X, t.Y
-    if t.Moves then
-        local A = t.A
-        if not (A and A:IsValid()) then return used end
-        local p = A:K2_GetActorLocation()
-        x, y = p.X, p.Y
-    end
-    local px, size, opacity = M.Look(x - at.X, y - at.Y, yaw)
+-- the next free mark of the pool for a thing; the number used so far comes back. Every place was read before: a resource
+-- at the scan, a creature at the step (Refresh), which leaves X empty for a creature that is gone.
+local function Draw(t, ax, ay, yaw, used)
+    if used >= POOL or not t.X then return used end
+    local px, scale, opacity = M.Look(t.X - ax, t.Y - ay, yaw)
     if not px then return used end
-    Put(M.Pool[used + 1], t.Group, px, size, opacity)
+    Put(M.Pool[used + 1], t.Group, px, scale, opacity)
     return used + 1
 end
 
@@ -205,20 +208,29 @@ local function Hide(from)
     M.Lit = from - 1
 end
 
-local function Paint(ctx)
+-- Two struct reads (the yaw and the player) are all a call costs when nothing is new. It draws when the yaw moved 0.1
+-- degree, the player 10 units, or the step set M.Dirty (a scan, a creature that moved). The controller and the pawn are
+-- the step's (M.PC, M.Pawn): when they are not valid, the step reads them again.
+local function Paint()
     local comp = M.Comp
     if not (comp and comp:IsValid()) then return end
     -- the marks sit in the game's own row of icons: when the game clears it, the engine frees them
     if not (M.Icons:IsValid() and M.Pool[1].W:IsValid()) then error(GONE) end
-    if not M.Want then if M.Lit > 0 then Hide(1) end return end
-    local pc = ctx.Controller()
-    local pawn = pc and pc.Pawn
-    if not (pawn and pawn:IsValid()) then return end
+    if not M.Want then
+        if M.Lit > 0 then Hide(1) end
+        M.SeenYaw, M.Dirty = nil, false   -- the next paint after the marks come back draws
+        return
+    end
+    local pc, pawn = M.PC, M.Pawn
+    if not (pc and pc:IsValid() and pawn and pawn:IsValid()) then return end
     local at = pawn:K2_GetActorLocation()
-    local yaw = pc.ControlRotation.Yaw
+    local ax, ay, yaw = at.X, at.Y, pc.ControlRotation.Yaw
+    local seenYaw, seenX, seenY = Round(yaw, 10), Round(ax, 0.1), Round(ay, 0.1)
+    if not M.Dirty and seenYaw == M.SeenYaw and seenX == M.SeenX and seenY == M.SeenY then return end
+    M.SeenYaw, M.SeenX, M.SeenY, M.Dirty = seenYaw, seenX, seenY, false
     local used = 0
-    for _, t in ipairs(M.Creatures) do used = Draw(t, at, yaw, used) end
-    for _, t in ipairs(M.Resources) do used = Draw(t, at, yaw, used) end
+    for _, t in ipairs(M.Creatures) do used = Draw(t, ax, ay, yaw, used) end
+    for _, t in ipairs(M.Resources) do used = Draw(t, ax, ay, yaw, used) end
     Hide(used + 1)
 end
 
@@ -233,25 +245,42 @@ end
 
 -- Paint, a failure logged once; true when it went through
 local function Safe(ctx)
-    local ok, err = pcall(Paint, ctx)
+    local ok, err = pcall(Paint)
     if ok then return true end
     if string.find(tostring(err), GONE, 1, true) then Lost(ctx)
     else Once(ctx, "paint", "compass: marks not painted: " .. tostring(err)) end
     return false
 end
 
+-- Where each creature stands now, read at every other step (8 times a second) so that Paint never calls an actor: at
+-- every step the reads of a crowd of creatures made 10 MB of garbage a minute (measured 09-10-2026). A place is
+-- rounded to a unit, so a creature that stands still does not set M.Dirty. A creature that is gone has no place, and
+-- Draw skips it.
+local function Refresh()
+    M.Odd = not M.Odd
+    if M.Odd then return end
+    for _, t in ipairs(M.Creatures) do
+        local x, y
+        if t.A and t.A:IsValid() then
+            local p = t.A:K2_GetActorLocation()
+            x, y = Round(p.X, 1), Round(p.Y, 1)
+        end
+        if x ~= t.X or y ~= t.Y then t.X, t.Y, M.Dirty = x, y, true end
+    end
+end
+
 -- The things near the player, as the map has them: creatures every 2 s, resources every 10 s. The ones of a group that
--- is off, a dead creature, an empty rock and a group with no picture are left out.
+-- is off, a dead creature, an empty rock and a group with no picture are left out. Then the places of the creatures are read.
 local function Scan(ctx, now, groups, pawn)
     if now >= M.NextCreatures then
         M.NextCreatures = now + CREATURES_EVERY
         local list = {}
         if groups.Enemy or groups.Calm then
             for _, e in ipairs(ctx.Near.Creatures(ctx, pawn)) do
-                if not e.Dead and groups[e.Group] and M.Tex[e.Group] then list[#list + 1] = { A = e.A, Group = e.Group, Moves = true } end
+                if not e.Dead and groups[e.Group] and M.Tex[e.Group] then list[#list + 1] = { A = e.A, Group = e.Group } end
             end
         end
-        M.Creatures, M.Dirty = list, true
+        M.Creatures, M.Dirty, M.Odd = list, true, true   -- Odd: the new list is read at once (Refresh)
     end
     if now >= M.NextResources then
         M.NextResources = now + RESOURCES_EVERY
@@ -266,6 +295,7 @@ local function Scan(ctx, now, groups, pawn)
         end
         M.Resources, M.Dirty = list, true
     end
+    Refresh()
 end
 
 local function More() return M.Runs(M.Want, #M.Creatures + #M.Resources) end
@@ -312,6 +342,7 @@ function M.Tick(ctx)
     if want then
         local pc = ctx.Controller()
         local pawn = pc and pc.Pawn
+        M.PC, M.Pawn = pc, pawn   -- Paint uses these between two steps
         -- a group switched on or off shows at once, as on the map; the scan then runs again
         local sig = 0
         for _, g in ipairs(ORDER) do sig = sig * 2 + (groups[g] and 1 or 0) end
@@ -328,7 +359,7 @@ function M.Tick(ctx)
     end
     -- the chain paints between two steps; the step paints at once when the state or the things changed, and when there is no chain
     local moved = want ~= M.Want or M.Dirty
-    M.Want, M.Dirty = want, false
+    M.Want = want   -- Paint clears M.Dirty when it has drawn
     if moved or not (ctx.Chain and ctx.Chain.Alive(M.Chain, ALIVE)) then Safe(ctx) end
     if ctx.Chain then ctx.Chain.Run(M.Chain, ctx, FAST, Safe, More) end
 end

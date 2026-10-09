@@ -156,8 +156,10 @@ local function DressAll(ctx)
     for key in pairs(Handled) do if not live[key] then Handled[key] = nil end end
 end
 
--- once per widget scan (main.lua)
+-- Once per widget scan (main.lua). Not at the main menu: the classes are not loaded there, and a look for an object
+-- that the game has not loaded walks every object, 30 to 43 ms a scan (09-10-2026). ctx.InWorld: the HUD is there.
 function M.Scan(ctx)
+    if not ctx.InWorld() then return end
     Once(ctx, Steps.Normal, "class defaults of the enemy bar", OneColorDefaults(DEFAULTS.Normal))
     Once(ctx, Steps.Boss, "class defaults of the boss bar", OneColorDefaults(DEFAULTS.Boss))
     Once(ctx, Steps.Master, "the player's fill in the enemy bar", PlayerFill)

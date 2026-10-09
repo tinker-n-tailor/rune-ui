@@ -6,22 +6,23 @@
 local M = {}
 
 M.ROWS = { "Rune Map", "Faces north", "North mark", "Player name", "Creatures", "Ore", "Herbs", "Essence", "Rare trees",
-    "In immersive mode", "Zoom", "Drawing" }
+    "Keep in immersive mode", "Zoom", "Map refresh" }
 -- the group title above a row
-local HEADS = { Creatures = "What the map shows", ["In immersive mode"] = "Behaviour" }
--- the rows that are a plain On / Off, and the setting in runemap.lua each one flips. "In immersive mode" steps
--- through Nothing, Map and Compass (settings.lua STAY), Creatures through three values: Value and Change have them.
+local HEADS = { Creatures = "What the map shows", ["Keep in immersive mode"] = "Behaviour" }
+-- the rows that are a plain On / Off, and the setting in runemap.lua each one flips. "Keep in immersive mode" steps
+-- through Nothing, Map and Compass (settings.lua STAY), Creatures and "Map refresh" (settings.lua DRAWING) through three
+-- values: Value and Change have them.
 local SWITCH = { ["Rune Map"] = "Map", ["Faces north"] = "North", ["North mark"] = "Mark", ["Player name"] = "Name", Ore = "Ore",
     Herbs = "Herbs", Essence = "Essence", ["Rare trees"] = "Trees" }
 -- the rows with more than two values: the list shows "< value >", so a player sees that Left and Right give more
 -- than what is shown
-local CHOICE = { Creatures = true, ["In immersive mode"] = true, Zoom = true }
+local CHOICE = { Creatures = true, ["Keep in immersive mode"] = true, Zoom = true }
 
 M.Sel = 1   -- the selected row; the key handlers write it on UE4SS's own thread
-local RuneMap, Creatures, STAY = nil, { Visible = true }, { "Nothing" }
+local RuneMap, Creatures, STAY, DRAWING = nil, { Visible = true }, { "Nothing" }, {}
 
--- p: RuneMap (runemap.lua, nil when it did not load), Creatures (the layout's switch), Stay (settings.lua STAY)
-function M.Attach(p) RuneMap, Creatures, STAY = p.RuneMap, p.Creatures, p.Stay end
+-- p: RuneMap (runemap.lua, nil when it did not load), Creatures (the layout's switch), Stay (settings.lua STAY), Drawing (settings.lua DRAWING)
+function M.Attach(p) RuneMap, Creatures, STAY, DRAWING = p.RuneMap, p.Creatures, p.Stay, p.Drawing end
 
 function M.Value(i)
     local S = RuneMap and RuneMap.Set or {}
@@ -31,13 +32,12 @@ function M.Value(i)
         return S.Neutral and "All" or "Enemies only"
     end
     if row == "Zoom" then return RuneMap and string.format("%d%%", math.floor(200 / RuneMap.ZoomLevel() + 0.5)) or "-" end
-    if row == "Drawing" then return S.Smooth and "Smooth" or (S.Fastest and "Fastest" or "Faster") end
-    if row == "In immersive mode" then return S.Immersive or "Nothing" end
+    if row == "Map refresh" then return DRAWING[S.Smooth and 1 or (S.Fastest and 3 or 2)] or "-" end
+    if row == "Keep in immersive mode" then return S.Immersive or "Nothing" end
     return S[SWITCH[row]] and "On" or "Off"
 end
 
 local HINTS = {
-    ["Rune Map"] = { Off = "The map is off. The mod does not build it at all." },   -- On names the Layout key: Hint
     ["Faces north"] = { On = "North stays at the top of the map.", Off = "The map turns with the camera." },
     ["North mark"] = { On = "The mark on the gold ring shows where north is.", Off = "No north mark on the ring." },
     ["Player name"] = { On = "Your player name shows beside your arrow on the map.", Off = "Your player name does not show on the map. The names of other players stay." },
@@ -47,19 +47,21 @@ local HINTS = {
     Herbs = { On = "Wild herbs near you. A picked herb goes off the map.", Off = "No herbs on the map." },
     Essence = { On = "Rune essence near you.", Off = "No rune essence on the map." },
     ["Rare trees"] = { On = "Dead trees, yew, magic trees and anima bark near you.", Off = "No rare trees on the map." },
-    ["In immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
+    ["Keep in immersive mode"] = { Nothing = "The immersive mode hides the map and the compass.",
         Map = "The map and the quest tracker stay in the immersive mode. The compass is away." },   -- Compass: Hint
-    Drawing = { Smooth = "The map draws every frame. Switching might decrease performance.",
-        Faster = "The map draws every second frame. A bit choppy when you turn.", Fastest = "The map draws every fourth frame. The lightest, and the choppiest." },
+    ["Map refresh"] = { ["Every frame"] = "The map draws every frame. Switching might decrease performance.",
+        ["Every 2nd frame"] = "The map draws every second frame. A bit choppy when you turn.", ["Every 4th frame"] = "The map draws every fourth frame. The lightest, and the choppiest." },
 }
 -- the hint under the selected row i with the value v. keys: main.lua's key names.
 function M.Hint(i, v, keys)
     local row = M.ROWS[i]
     if row == "Zoom" then return "Closer or farther. The " .. keys.zoomout .. " and " .. keys.zoomin .. " keys do the same at any time." end
-    if row == "In immersive mode" and v == "Compass" then
+    if row == "Keep in immersive mode" and v == "Compass" then
         return "Only the compass stays, with the map marks. The map is away."
     end
     if row == "Rune Map" and v == "On" then return "The map is on. To only hide it, use Delete in " .. keys.editor .. "." end
+    -- the ring of the map was the clock: with the map off, the game's day and night dial is the way to see the time
+    if row == "Rune Map" and v == "Off" then return "The map is off. For the time of day, show the Day and night dial in " .. keys.editor .. "." end
     return HINTS[row] and HINTS[row][v] or ""
 end
 
@@ -88,7 +90,7 @@ end
 -- the keys: up and down pick a row
 function M.Pick(d) M.Sel = (M.Sel - 1 + d) % #M.ROWS + 1 end
 
--- left and right: the zoom row zooms; Creatures, In immersive mode and Drawing step through their values; every
+-- left and right: the zoom row zooms; Creatures, Keep in immersive mode and Map refresh step through their values; every
 -- other row switches
 function M.Change(d)
     if not RuneMap then return end
@@ -96,10 +98,10 @@ function M.Change(d)
     local row = M.ROWS[M.Sel]
     local step = d > 0 and 1 or -1
     if row == "Zoom" then RuneMap.ZoomBy(d > 0 and 1 / 1.25 or 1.25)
-    elseif row == "Drawing" then   -- Smooth, Faster, Fastest
+    elseif row == "Map refresh" then   -- every frame, every 2nd, every 4th
         local st = ((S.Smooth and 1 or (S.Fastest and 3 or 2)) - 1 + step) % 3 + 1
         S.Smooth, S.Fastest = st == 1, st == 3
-    elseif row == "In immersive mode" then
+    elseif row == "Keep in immersive mode" then
         local st = 1   -- the place of the value in STAY
         for i, name in ipairs(STAY) do if name == S.Immersive then st = i end end
         S.Immersive = STAY[(st - 1 + step) % #STAY + 1]

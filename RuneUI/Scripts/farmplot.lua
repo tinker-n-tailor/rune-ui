@@ -48,9 +48,9 @@ function M.Tick(ctx)
     for i, W in ipairs(list) do
         local k = keys[i]
         if not M.Done[k] and Ok(W) then
-            M.Done[k] = true
             local ok, err = pcall(Style, W)
-            if not ok and not M.Logged then M.Logged = true ctx.Log("farm plots: panel not styled: " .. tostring(err)) end
+            if ok then M.Done[k] = true  -- only a styled panel is done: one that failed is tried again at the next look
+            elseif not M.Logged then M.Logged = true ctx.Log("farm plots: panel not styled: " .. tostring(err)) end
         end
     end
 end

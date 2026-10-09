@@ -4,7 +4,7 @@
 -- fills; only the ring of that need. The menu buttons come back
 -- when a chat message comes, the quest tracker when a quest or its step changes, the party panel when a friend's
 -- health goes down. The wheel stays away. RuneMap and the game's compass stay away too, unless the map setting
--- "In immersive mode" keeps one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens
+-- "Keep in immersive mode" keeps one of them: Map keeps the map (and the quest tracker), Compass keeps the compass (M opens
 -- the big map). The tool bar never fades, because what matters can sit on it. Prompts, notifications, the area
 -- effects and warnings never fade either.
 -- Off at first; the F6 panel turns it on and sets how long a part stays (the layout keeps both, main.lua).
@@ -31,12 +31,18 @@ M.ErrorLogged = false   -- main.lua logs one failed step
 local Level = { bars = 1, menu = 1, quest = 1, party = 1, compass = 1, none = 1 }
 local Until = {}
 local RingLevel, RingUntil, RingLast = {}, {}, {}
-local Applied = {}   -- the last opacity written to the rows and the rings, so a full HUD costs no calls
+-- What was last written, by slot (Stale, Wrote): the widget and the opacity, so a step that changes nothing makes no call.
+-- RowMem: the bars' rows (1 to 3) and the trim line ("trim"); RingMem: the survival rings; DrinkMem: the drink rings.
+local RowMem, RingMem, DrinkMem = {}, {}, {}
+-- seconds between two repeats of a write that is held (below 1): the game can write its own opacity back (a row it
+-- makes again), and it must not show for longer than a blink
+local REASSERT = 0.25
+local NextReassert = 0
 local Texts = {}     -- by bar: { W = bar widget, List = its text widgets }
 local NextRead, LastTime, LastChat, LastQuest, LastHits = 0, nil, nil, nil, nil
 -- the drink rings, by entry name: the game keeps spare drink entries and reuses them, so each one fades on its own
 -- (one watched entry left the shown one unseen, in game 01-10-2026)
-local DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
+local DrinkLevel, DrinkUntil, DrinkLast = {}, {}, {}
 -- the good buffs, by entry: the time it shows until, the arrival it has seen, its own level, and the level last given
 local function ByEntry() return setmetatable({}, { __mode = "k" }) end
 local BuffUntil, BuffSeen, BuffLevel, BuffApplied = ByEntry(), ByEntry(), ByEntry(), ByEntry()
@@ -50,8 +56,9 @@ end
 
 -- Leaving the world: drop the handles into it, and show everything for a moment in the new one
 function M.Forget()
-    Texts, Applied, RingLevel, RingUntil, RingLast, LastChat, LastQuest, LastHits = {}, {}, {}, {}, {}, nil, nil, nil
-    DrinkLevel, DrinkUntil, DrinkLast, DrinkApplied = {}, {}, {}, {}
+    Texts, RowMem, RingMem, DrinkMem, RingLevel, RingUntil, RingLast = {}, {}, {}, {}, {}, {}, {}
+    LastChat, LastQuest, LastHits, NextReassert = nil, nil, nil, 0
+    DrinkLevel, DrinkUntil, DrinkLast = {}, {}, {}
     BuffUntil, BuffSeen, BuffLevel, BuffApplied = ByEntry(), ByEntry(), ByEntry(), ByEntry()
     for g in pairs(Level) do Level[g] = 1 end
     local t = os.clock() + SHOW_AT_START
@@ -59,6 +66,11 @@ function M.Forget()
     for i = 1, 3 do RingUntil[i] = t end
 end
 M.Forget()
+
+-- the text of one text widget, nil when it is not visible (named, so a pcall of it makes no closure)
+local function TextOf(T)
+    if T:IsVisible() then return T:GetText():ToString() end
+end
 
 -- the text of every visible text widget under a bar, joined; the list is found once per bar widget
 local function BarText(ctx, i, W)
@@ -69,7 +81,8 @@ local function BarText(ctx, i, W)
     end
     local s = ""
     for _, T in ipairs(c.List) do
-        pcall(function() if T:IsVisible() then s = s .. " " .. T:GetText():ToString() end end)
+        local ok, text = pcall(TextOf, T)
+        if ok and text then s = s .. " " .. text end
     end
     return s
 end
@@ -119,12 +132,21 @@ local function Ease(level, target, dt)
     return math.max(target, level - dt / FADE_OUT)
 end
 
-local function Put(key, W, o)
-    if W and W:IsValid() then W:SetRenderOpacity(o) end
-    Applied[key] = o
+-- Whether slot key of mem needs a write: W is a widget it was not written to, o a level it was not written at, or o is
+-- below 1 and a repeat is due (reassert). The game can make a widget again, so a faded one is written again once a
+-- second (REASSERT) and not at every step; a new handle (a rescan) is written at once. At 1 it is the game's own and
+-- is left alone after the first write.
+local function Stale(mem, key, W, o, reassert)
+    local m = mem[key]
+    return m == nil or m.W ~= W or m.O ~= o or (reassert and o < 1)
+end
+local function Wrote(mem, key, W, o)
+    local m = mem[key]
+    if not m then m = {} mem[key] = m end   -- one table for a slot, for the whole world
+    m.W, m.O = W, o
 end
 
-local function Fade(W, o) if W:IsValid() then W:SetRenderOpacity(o) end end   -- no closure per step
+local function Put(W, o) if W and W:IsValid() then W:SetRenderOpacity(o) end end
 
 -- 1 while the group g has a reason to show (or the mode is off), else 0
 local function Target(g, on, now) return (not on or (g ~= "none" and now < (Until[g] or 0))) and 1 or 0 end
@@ -142,7 +164,7 @@ end
 local function FadeRow(bars, i, level)
     local row = bars[i]:GetParent()
     if i == 3 and row:GetAddress() == bars[1]:GetParent():GetParent():GetAddress() then return end
-    Put("bars", row, level)
+    Put(row, level)
     FadeParticles(bars[i], i, level < 1)
 end
 
@@ -176,28 +198,41 @@ function M.Tick(ctx)
     LastTime = now
     local on = ctx.On() and not ctx.Editing()
     if on and now > NextRead then NextRead = now + 0.25 Read(ctx, now) end
-    -- the quest tracker sits under the map and goes with it: while the map stays (its setting "In immersive mode"),
+    -- the quest tracker sits under the map and goes with it: while the map stays (its setting "Keep in immersive mode"),
     -- the tracker stays too: a tracker that shows only at a new step is never seen
     if on and ctx.MapStays() then Until.quest = now + 1 end
-    -- the map setting "In immersive mode" at Compass: the game's compass stays, the map and the tracker do not. A
+    -- the map setting "Keep in immersive mode" at Compass: the game's compass stays, the map and the tracker do not. A
     -- compass hidden in F9 stays hidden: apply.lua's hide comes after this share.
     if on and ctx.CompassStays() then Until.compass = now + 1 end
     for g in pairs(Level) do Level[g] = Ease(Level[g], Target(g, on, now), dt) end
     StepBuffs(ctx, on, now, dt)
 
-    -- the bars' rows and the trim line: every step while faded, so a row the game makes again is faded too
+    -- A write goes out when the level or the widget changed, and again once a second while faded (Stale), so a row the
+    -- game makes again is faded too. A step in which nothing changes makes no call.
+    local reassert = now >= NextReassert
+    if reassert then NextReassert = now + REASSERT end
+    -- the bars' rows and the trim line
     local bars = ctx.Bars()
-    if Level.bars < 1 or Applied.bars ~= 1 then
-        for i = 1, 3 do pcall(FadeRow, bars, i, Level.bars) end
-        pcall(Put, "bars", ctx.Trim(), Level.bars)
-        Applied.bars = Level.bars
+    local level = Level.bars
+    for i = 1, 3 do
+        local bar = bars[i]
+        if Stale(RowMem, i, bar, level, reassert) then
+            pcall(FadeRow, bars, i, level)
+            Wrote(RowMem, i, bar, level)
+        end
+    end
+    local trim = ctx.Trim()
+    if Stale(RowMem, "trim", trim, level, reassert) then
+        pcall(Put, trim, level)
+        Wrote(RowMem, "trim", trim, level)
     end
     for i, b in pairs(ctx.Rings()) do
         local target = (not on or now < (RingUntil[i] or 0)) and 1 or 0
         RingLevel[i] = Ease(RingLevel[i] or 1, target, dt)
         local o = RingLevel[i]
-        if o < 1 or Applied[i] ~= 1 then
-            pcall(Put, i, b.Box, o)
+        if Stale(RingMem, i, b.Box, o, reassert) then
+            pcall(Put, b.Box, o)
+            Wrote(RingMem, i, b.Box, o)
         end
     end
     -- the drink ring sits beside them in the same widget, so it fades on its own.
@@ -206,9 +241,9 @@ function M.Tick(ctx)
         if d.Root then
             DrinkLevel[k] = Ease(DrinkLevel[k] or 1, (not on or now < (DrinkUntil[k] or 0)) and 1 or 0, dt)
             local o = DrinkLevel[k]
-            if o < 1 or DrinkApplied[k] ~= 1 then
-                pcall(Fade, d.Root, o)
-                DrinkApplied[k] = o
+            if Stale(DrinkMem, k, d.Root, o, reassert) then
+                pcall(Put, d.Root, o)
+                Wrote(DrinkMem, k, d.Root, o)
             end
         end
     end

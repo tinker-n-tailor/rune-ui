@@ -20,7 +20,7 @@ end
 
 function M.Section(t, name) if type(t[name]) ~= "table" then t[name] = {} end return t[name] end
 
--- What stays in the immersive mode for direction (the map setting "In immersive mode"). The file holds the
+-- What stays in the immersive mode for direction (the map setting "Keep in immersive mode"). The file holds the
 -- number: 0 Nothing, 1 Map, 2 Compass. An old On or Off, saved as 1 and 0, reads as Map and Nothing. A name typed
 -- by hand reads too. Anything else is Nothing.
 M.STAY = { "Nothing", "Map", "Compass" }
@@ -35,6 +35,18 @@ end
 function M.StayTo(name)
     for i, s in ipairs(M.STAY) do if s == name then return i - 1 end end
     return 0
+end
+
+-- The map setting "Map refresh". runeui.txt holds it as the two switches Smooth (every frame) and Fastest (every
+-- fourth frame), none of them for every second frame. Only Mod Menu's config.txt holds the name, and older
+-- versions wrote Smooth, Faster and Fastest there: DrawingFrom reads those too. It gives the place in DRAWING.
+M.DRAWING = { "Every frame", "Every 2nd frame", "Every 4th frame" }
+local OLD_DRAWING = { smooth = 1, faster = 2, fastest = 3 }
+function M.DrawingFrom(v)
+    if type(v) ~= "string" then return 2 end
+    local s = string.lower(v)
+    for i, name in ipairs(M.DRAWING) do if string.lower(name) == s then return i end end
+    return OLD_DRAWING[s] or 2
 end
 
 -- only plain decimal text is a number: tonumber also takes "0x1F", which would not come back the same
@@ -138,7 +150,8 @@ function M.Load(path)
 end
 
 -- written to a .tmp file first, so a crash during the write never leaves half a file. On Windows os.rename
--- does not replace an existing file, hence the remove before the second try.
+-- does not replace an existing file, hence the remove before the second try. A whole .tmp file stays until the
+-- file itself is written, as Load reads it when the file is gone.
 function M.Save(t, path, order)
     path = path or M.FILE
     local text, tmp = M.Format(t, order), path .. ".tmp"
@@ -147,12 +160,13 @@ function M.Save(t, path, order)
         local ok = f:write(text)
         f:close()
         if ok and (os.rename(tmp, path) or (os.remove(path) and os.rename(tmp, path))) then return true end
-        os.remove(tmp)
+        if not ok then os.remove(tmp) end
     end
     f = io.open(path, "w")
     if not f then return false end
     local ok = f:write(text)
     f:close()
+    if ok then os.remove(tmp) end
     return ok and true or false
 end
 

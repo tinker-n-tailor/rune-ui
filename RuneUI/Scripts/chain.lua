@@ -5,14 +5,15 @@
 -- A part keeps one table for its chain, { } to start with. Time is the time of the chain's last call. A chain that has not
 -- called for LOST seconds is taken as lost (a world change, a long stall), and a new one may start. Each chain has a token:
 -- a call that is still queued from a lost chain sees that its token is old and does nothing, so two chains never run.
--- main.lua loads this file with pcall and passes it to those parts as ctx.Chain.
+-- main.lua loads this file with pcall and passes it to those parts as ctx.Chain. It sets C.Add to perf.lua's Add:
+-- every call is counted under the chain's Name, as the step counts a part.
 
 local C = {}
 
 local LOST = 1   -- seconds without a call
 
--- Start a chain if step should run and none is running. ctx.Soon(ms, fn) is the game thread's delayed call (nil in an old
--- UE4SS: no chain). step(ctx, t) paints; a false result ends the chain. more(ctx, t) says whether to go on.
+-- Start a chain if step should run and none is running. ctx.Soon(ms, fn) is the game thread's delayed call.
+-- step(ctx, t) paints; a false result ends the chain. more(ctx, t) says whether to go on.
 -- True when a new chain started: its first call comes ms later, so a part that must not wait paints once itself.
 function C.Run(chain, ctx, ms, step, more)
     local now = os.clock()
@@ -21,9 +22,10 @@ function C.Run(chain, ctx, ms, step, more)
     local token = chain.Token
     local function Go()
         if token ~= chain.Token then return end
-        local t = os.clock()
+        local t, m0 = os.clock(), collectgarbage("count")
         chain.Time = t
         local ok, result = pcall(step, ctx, t)
+        if C.Add then C.Add(chain.Name or "chain", t, m0) end
         if not (ok and result ~= false and more(ctx, t) and pcall(ctx.Soon, ms, Go)) then chain.Time = nil end
     end
     chain.Time = now

@@ -92,16 +92,15 @@ function M.Tick(ctx)
         local k = keys[i]
         local r = M.Rows[k]
         if not r and Ok(W) then
-            r = { W = W }
-            M.Rows[k] = r
             local ok, res = pcall(Style, ctx, W)
-            if ok then r.Count = res elseif not M.Logged then M.Logged = true ctx.Log("pick-ups: row not styled: " .. tostring(res)) end
+            if ok then r = { W = W, Count = res } M.Rows[k] = r  -- only a styled row is kept: one that failed is tried again at the next look
+            elseif not M.Logged then M.Logged = true ctx.Log("pick-ups: row not styled: " .. tostring(res)) end
         end
         if not M.Lit then
             local okL, lit = pcall(LightNewWord)
             if okL then M.Lit = lit elseif not M.Logged then M.Logged = true ctx.Log("pick-ups: new word not lit: " .. tostring(lit)) end
         end
-        if r and Ok(W) and ctx.Embers then
+        if Ok(W) and ctx.Embers then
             M.Embers = M.Embers or ctx.Embers.New()
             ctx.Embers.Quiet(ctx, M.Embers, "pick-ups", W, k)
         end

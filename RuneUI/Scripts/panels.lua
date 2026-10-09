@@ -1,11 +1,11 @@
--- What the four panels share: Layout (F9), Rune Skin (F5), Rune Map (F8) and Immersion mode (F6). The head of each
+-- What the four panels share: Layout (F9), Rune Skin (F5), Rune Map (F8) and Immersive mode (F6). The head of each
 -- panel names the other three and their keys, the list shows the lines that fit, and the F9 list has its order.
 -- Pure Lua, no game calls, so tools/test-panels.js runs it without the game. main.lua stops when this file is missing.
 local M = {}
 
 -- Mode: the Mode of the panel's view. Key: the name of its key in main.lua's KEY and in the [keys] part of runeui.txt.
 M.LIST = { { Mode = "edit", Name = "Layout", Key = "editor" }, { Mode = "skin", Name = "Rune Skin", Key = "skin" },
-    { Mode = "map", Name = "Rune Map", Key = "map" }, { Mode = "camera", Name = "Immersion mode", Key = "camera" } }
+    { Mode = "map", Name = "Rune Map", Key = "map" }, { Mode = "camera", Name = "Immersive mode", Key = "camera" } }
 
 -- The other panels and their keys, as bound, into the view v. A panel that did not load has no key and is left out.
 function M.Links(v, keys)

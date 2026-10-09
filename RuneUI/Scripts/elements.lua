@@ -53,9 +53,16 @@ local Elements = {
     -- no widget of its own either: shown, the aim marks are gold and the lock-on orb is our diamond (aim.lua)
     { Id="aim",      Name="Gold crosshair and lock-on",     Custom="aim",
       A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
+    -- Full: the dial's widget covers the screen and its ring sits 65 units from the right edge and 90 from the top, 66
+    -- units wide (probes of 09-10-2026). Without Full a size other than 100% was scaled about the middle of the screen
+    -- and the dial left it; the old centre (1698, 80) put the F9 frame beside the dial.
     { Id="daynight", Name="Day and night dial",          Classes={"WBP_HUD_DayAndNight_C"},
-      NoClip=true, Opaque=true, A={1,0}, Center={X=1698, Y=80}, Size={X=52, Y=52} },
-    { Id="buffs",    Name="Buffs and debuffs",                         Classes={"WBP_HUD_EffectsDisplayLists_C"},
+      Full=true, NoClip=true, Opaque=true, A={1,0}, Center={X=1822, Y=123}, Size={X=66, Y=66} },
+    -- no widget of its own: shown, the day and night dial is the mod's sun and moon icon (dial.lua); hidden, the game's own
+    -- dial. On at first. The dial's own row above shows or hides it, and moves and sizes it.
+    { Id="dialskin", Name="Day and night icon",             Custom="dialskin",
+      A={0,0}, Center={X=960, Y=540}, Size={X=40, Y=40} },
+    { Id="buffs",    Name="Buffs and debuffs",                        Classes={"WBP_HUD_EffectsDisplayLists_C"},
       Full=true, A={0,1}, Center={X=151, Y=871}, Size={X=200, Y=85}, Sample="Buffs and debuffs" },
     -- NoRow: no row in the F9 list, as every notice in it has its own row. A saved layout that moved, sized or faded
     -- the group keeps that. A layout that hid the group shows the row, so the player can show the notices again.
@@ -189,7 +196,7 @@ local Defaults = {
     prompts={X=0, Y=-10}, armor={X=0, Y=-10}, itembrk={X=0, Y=-10}, status={X=0, Y=-20}, menuico={X=0, Y=-40},
     -- the same Y as "notify"
     banners={Y=-20}, upkeep={Y=-20}, tips={Y=-20},
-    legend={Visible=false}, wheel={Visible=false}, baricons={Visible=false}, immersive={Visible=false, Wait=8},
+    baricons={Visible=false}, immersive={Visible=false, Wait=8},
     -- 140 under the middle, clear of the party panel; a saved layout keeps its own place
     cooldowns={Y=140},
     questnext={Visible=false}, cdhoriz={Visible=false},

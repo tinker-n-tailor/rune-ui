@@ -71,6 +71,15 @@ local function Hide(e)
     if op ~= 0 then e.Label:SetRenderOpacity(0) end
 end
 
+-- one marker of the scan: its record, kept or made new, and whether it is yours. No closure: the scan reads some
+-- hundred markers every 2 s, and a closure for each was garbage.
+local function One(e, W, selfAddr)
+    if e and not (Alive(e.W) and e.W:GetAddress() == W:GetAddress()) then e = nil end   -- a freed slot, another widget
+    if not e then e = Look(W, selfAddr) end
+    if e and e.Own then Hide(e) return e, true end
+    return e, false
+end
+
 local function Scan(ctx)
     local selfAddr = SelfPicture()
     if not selfAddr then return end
@@ -79,13 +88,13 @@ local function Scan(ctx)
     local kept, own = {}, 0
     for i, W in ipairs(list) do
         local key = keys[i]
-        local e = Marks[key]
-        pcall(function()
-            if e and not (Alive(e.W) and e.W:GetAddress() == W:GetAddress()) then e = nil end   -- a freed slot, another widget
-            if not e then e = Look(W, selfAddr) end
-            if e and e.Own then Hide(e) own = own + 1 end
-        end)
-        kept[key] = e
+        local ok, e, mine = pcall(One, Marks[key], W, selfAddr)
+        if ok then
+            kept[key] = e
+            if mine then own = own + 1 end
+        else
+            kept[key] = Marks[key]   -- a read that failed: the record stays, with the opacity the switch puts back
+        end
     end
     Marks = kept
     Scans = Scans + 1
@@ -141,8 +150,16 @@ local function Restore(ctx)
     if n > 0 then ctx.Log("map name: on, your player name is back on " .. n .. " markers") end
 end
 
+-- The scan of every marker reads some hundred full names (finder.lua) and took up to 28 ms (measured 09-10-2026).
+-- The new markers come through Newcomers at once, so the scan is the net under them and runs every SCAN_EVERY seconds,
+-- not at every scan of the mod. The switch going off scans at once (Tick).
+local SCAN_EVERY = 10
+local NextScan = 0
 function M.Scan(ctx)
-    if not ctx.On() then Scan(ctx) end
+    local now = os.clock()
+    if ctx.On() or now < NextScan then return end
+    NextScan = now + SCAN_EVERY
+    Scan(ctx)
 end
 
 -- only the change of the switch: off looks at once (no wait for the scan), on puts the labels back once
@@ -160,7 +177,7 @@ end
 -- the markers may still stand, and the records are what the switch puts back (each is checked by its address on the next scan).
 function M.Forget(sameWorld)
     if not sameWorld then Marks, SelfAddr = {}, nil end
-    Waiting, Scans, Looks = {}, 0, 0
+    Waiting, Scans, Looks, NextScan = {}, 0, 0, 0
 end
 
 return M

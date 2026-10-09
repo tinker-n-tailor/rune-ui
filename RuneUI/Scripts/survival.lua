@@ -223,6 +223,10 @@ end
 -- the game's colours, lifted to at least half brightness so the dark red still reads on the dark ring.
 -- b.Low says that the need is in orange or red. The immersive mode shows a ring while it is low (immersive.lua), so
 -- this is the one place that knows it.
+-- A need that is low already when the world loads keeps a white icon in the game, and only the game's ring is orange
+-- or red (water at 0, read in game 09-10-2026). So a share of LOW or less is low too, and the icon then takes the
+-- ring's colour. Without it the immersive mode hid the ring of a need at 0.
+local LOW = 0.25
 local function Lift(c)
     local m = math.max(c.R, c.G, c.B)
     local k = (m > 0 and m < 0.5) and 0.5 / m or 1
@@ -232,8 +236,12 @@ end
 local function Warn(b)
     local ring, icon = b.Colour, ICON_TINT
     local c = b.GameIcon.ColorAndOpacity
-    b.Low = c.R < 0.99 or c.G < 0.99 or c.B < 0.99
-    if b.Low then ring, icon = Lift(b.GameRing.ColorAndOpacity), Lift(c) end
+    local red = c.R < 0.99 or c.G < 0.99 or c.B < 0.99
+    b.Low = red or (b.Value ~= nil and b.Value <= LOW)
+    if b.Low then
+        ring = Lift(b.GameRing.ColorAndOpacity)
+        icon = red and Lift(c) or ring
+    end
     b.Shown = { Ring = ring, Icon = icon }
     local key = string.format("%.2f %.2f %.2f %.2f %.2f %.2f", ring.R, ring.G, ring.B, icon.R, icon.G, icon.B)
     if key == b.Tint then return end

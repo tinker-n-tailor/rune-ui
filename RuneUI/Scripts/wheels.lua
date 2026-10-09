@@ -16,15 +16,16 @@ local FULL = { SpecifiedColor = WHITE, ColorUseRule = 0 }
 
 -- Wheels: key -> { Def, W, Full, Path, PanelPath, Panel, Switch, Slice, Slot, Part, Border, Text, Cost, Head, Marks, Hand, Styled }. J: the journal of
 -- the writes (wheelparts.lua). On: our look is on the widgets. First: when the first wheel of this world was found.
+-- Tex: the pictures of this world's wheels, each read from the disk once (wheelparts.lua's Tex).
 -- old: the state that goes. The count and the time of its searches stay, so lost wheels bring no search on every step.
 local function Fresh(old)
-    return { Wheels = {}, J = nil, On = false, Next = 0, First = nil, Sweeps = old and old.Sweeps or 0, LastSweep = old and old.LastSweep or -math.huge }
+    return { Wheels = {}, J = nil, Tex = {}, On = false, Next = 0, First = nil, Sweeps = old and old.Sweeps or 0, LastSweep = old and old.LastSweep or -math.huge }
 end
 local S = Fresh()
 local Logged, Linked = {}, false
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log("wheels: " .. msg) end end
 
-local Ok, ArtDir   -- wheelparts.lua's, taken on the first step
+local Ok   -- wheelparts.lua's, taken on the first step
 local function Cls(o) return o:GetClass():GetFName():ToString() end
 
 -- One search of every image and border for the parts of the wheels in found, kept by name. The parts are no
@@ -86,10 +87,12 @@ local function Look(ctx, P, now)
             end
         end
     end
-    if #fresh == 0 then return end
-    S.First = S.First or now
-    if have + #fresh < #P.WHEELS and now - S.First < WAIT then return end
-    if now - S.LastSweep < GAP then return end
+    if #fresh == 0 then return false end
+    -- Not in the step that first sees a wheel: at the start of a world that step holds the first build of the other
+    -- parts too, and with this search it was 164 ms long (the perf line by longest run, 09-10-2026).
+    if not S.First then S.First, S.Next = now, now + FAST return false end
+    if have + #fresh < #P.WHEELS and now - S.First < WAIT then return false end
+    if now - S.LastSweep < GAP then return false end
     S.Sweeps, S.LastSweep = S.Sweeps + 1, now
     local t0 = os.clock()
     Sweep(P, fresh)
@@ -101,12 +104,13 @@ local function Look(ctx, P, now)
         found[#found + 1] = w.Def.Key .. " " .. n .. " slots"
     end
     ctx.Log(string.format("wheels: %s; parts searched in %.0f ms", table.concat(found, ", "), (os.clock() - t0) * 1000))
+    return true
 end
 
--- A picture from the Art folder with outer as its owner; nil and one log line when it does not load. The caller
+-- A picture from the Art folder, read once for the world; nil and one log line when it does not load. The caller
 -- puts it on a brush at once: a texture that only Lua holds is freed by the engine.
 local function Load(ctx, outer, file)
-    local ok, tex = pcall(ctx.CachedTex, {}, file, outer, ArtDir .. file)
+    local ok, tex = pcall(ctx.Parts.Tex, ctx, S.Tex, outer, file)
     if ok then return tex end
     Once(ctx, file, tostring(tex))
 end
@@ -125,7 +129,7 @@ local function Books(ctx, w)
     if not ok then Once(ctx, "books", "Q: no spellbook diamonds: " .. tostring(err)) end
 end
 
--- Our look on one wheel. Each picture is loaded once for the wheel and stays on the brushes of its images.
+-- Our look on one wheel. tex: what Load gave for each file in this run, so a file that is missing is asked for once.
 local function Style(ctx, P, w)
     local d, J, pre, tex = w.Def, S.J, w.Def.Key .. "/", {}
     local function Tex(file)
@@ -147,6 +151,8 @@ local function Style(ctx, P, w)
     -- the game draws the middle name above the ring's middle: d.Name moves it down by that many units
     local okN, mid = pcall(function() return d.Name and w.W[d.Name[1]] end)
     if okN and mid and mid:IsValid() then P.Set(J, pre .. "name", mid, "Move", { X = 0, Y = d.Name[2] }) end
+    local okW, long = pcall(function() return d.Wrap and w.W[d.Wrap[1]] end)
+    if okW and long and long:IsValid() then P.Set(J, pre .. "wrap", long, "Wrap", d.Wrap[2]) end
     for name, I in pairs(w.Part) do
         if name == "CenterBg" then
             if Tex(d.Centre) then P.Set(J, pre .. name, I, "Picture", Tex(d.Centre)) end
@@ -275,7 +281,7 @@ function M.Tick(ctx)
     if not P then return end   -- wheelparts.lua did not load: main.lua logged it
     if not Linked then
         Linked = true
-        Ok, ArtDir = P.Ok, P.ART_DIR
+        Ok = P.Ok
         -- each file alone: one that did not load (main.lua logged it) must not stop the Init of the other
         if ctx.Spells then ctx.Spells.Init(P) end
         if ctx.Meters then ctx.Meters.Init(P, function(key, msg) Once(ctx, key, msg) end) end
@@ -295,16 +301,23 @@ function M.Tick(ctx)
         S = Fresh(S)
         S.Next = now + SLOW
     end
+    -- The search of the parts and the look of one wheel each take some tens of ms (10 pictures are decoded for the
+    -- three wheels). All in one step was a hitch of 164 ms at the start of a world (09-10-2026), so a step does one
+    -- of them and the next comes after FAST.
+    local busy = false
     if S.Sweeps < MAX_SWEEPS then
-        local okL, errL = pcall(Look, ctx, P, now)
-        if not okL then Once(ctx, "look", "search failed: " .. tostring(errL)) end
+        local okL, swept = pcall(Look, ctx, P, now)
+        if not okL then Once(ctx, "look", "search failed: " .. tostring(swept)) end
+        busy = okL and swept
     end
     S.J = S.J or P.Journal(ctx.Log)
     for _, w in pairs(S.Wheels) do
         if not w.Styled then
-            S.On = true
-            local okS, errS = pcall(Style, ctx, P, w)
-            if not okS then w.Styled = true Once(ctx, "style" .. w.Def.Key, "not styled: " .. tostring(errS)) end
+            if busy then S.Next = now + FAST else
+                busy, S.On = true, true
+                local okS, errS = pcall(Style, ctx, P, w)
+                if not okS then w.Styled = true Once(ctx, "style" .. w.Def.Key, "not styled: " .. tostring(errS)) end
+            end
         elseif w.FontAt and now >= w.FontAt then
             pcall(ctx.Spells.Fonts, ctx, P, S.J, w, now)
         elseif w.SparksAt and now >= w.SparksAt then
@@ -313,14 +326,14 @@ function M.Tick(ctx)
     end
     local R, Q = S.Wheels.R, S.Wheels.Q
     local okR, errR = pcall(function()
-        if not (R and R.W:GetVisibility() == OPEN) then return end
+        if not (R and R.Styled and R.W:GetVisibility() == OPEN) then return end
         S.Next = now + FAST
         Quick(ctx, P, R)
     end)
     if not okR then Once(ctx, "quick", "R wheel step failed: " .. tostring(errR)) end
     -- the texts in the middle of Q change with the picked spell: they are fitted again while the wheel is open
     local okQ, errQ = pcall(function()
-        if not (Q and Opened(ctx, P, Q)) then return end
+        if not (Q and Q.Styled and Opened(ctx, P, Q)) then return end
         S.Next = now + FAST
         Once(ctx, "qopen", "the Q wheel reads open")
         Books(ctx, Q)

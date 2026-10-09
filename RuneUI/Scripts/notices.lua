@@ -16,13 +16,14 @@ local CYCLE = 2                 -- seconds a page of the "banners" row stays
 local AGAIN = 1                 -- seconds between two looks for an entry of the row that does not show yet
 
 -- What each row shows: a list of entries. Item is the class of the entry; Page and Pages are names of children of
--- the entry's switcher; Texts is name of a text of the entry -> sample text. Colour: the entry's own colour has
+-- the entry's switcher; Texts is name of a text of the entry -> sample text. Hide: parts of the entry that are
+-- collapsed while it shows (the tip keeps the key line of the game's last tip, "View In Map", seen 09-10-2026). Colour: the entry's own colour has
 -- alpha 0 at rest, so it is set to 1. Home: the entry rests pushed aside by its render translation, so it is set to 0.
 -- Of the entries of one class (the pick-ups have five) the first collapsed one shows. A pick-up row shows without
 -- its dark band: pickups.lua takes the band away, and the preview shows the row as it is in play.
 local SHOW = {
     upkeep  = { { Item = "WBP_PlayerUpkeepNotification_Item_C" } },
-    tips    = { { Item = "WBP_TutorialNotifications_Item_C",
+    tips    = { { Item = "WBP_TutorialNotifications_Item_C", Hide = { "InputEntryWidget" },
                   Texts = { TitleTextBlock = "Tutorial tip", BodyTextBlock = "A tip of the game shows here." } } },
     itembrk = { { Item = "WBP_Notification_ItemBreak_Item_C", Texts = { BrokenTextBlock = "Bronze Pickaxe broke!" } } },
     quests  = { { Item = "WBP_QuestAndUnlocks_Item_C" } },
@@ -64,9 +65,9 @@ local function PageIndexes(sw, names)
     return found
 end
 
--- remember the old values of one entry, then show it
-local function Show(shot, item)
-    local e = { Shot = shot, Item = item, Texts = {} }
+-- remember the old values of one entry in the list into, then show it
+local function Show(shot, item, into)
+    local e = { Shot = shot, Item = item, Texts = {}, Hidden = {} }
     e.Vis, e.Opacity = item:GetVisibility(), item:GetRenderOpacity()
     local names = shot.Pages or (shot.Page and { shot.Page })
     if names then
@@ -81,6 +82,10 @@ local function Show(shot, item)
         local w = item[name]
         if Ok(w) then e.Texts[#e.Texts + 1] = { W = w, Was = w:GetText():ToString(), Text = text } end
     end
+    for _, name in ipairs(shot.Hide or {}) do
+        local w = item[name]
+        if Ok(w) then e.Hidden[#e.Hidden + 1] = { W = w, Was = w:GetVisibility() } end
+    end
     if shot.Colour then
         local c = item.ColorAndOpacity
         e.Colour = { R = c.R, G = c.G, B = c.B, A = c.A }
@@ -89,13 +94,29 @@ local function Show(shot, item)
         local t = item.RenderTransform.Translation
         e.Home = { X = t.X, Y = t.Y }
     end
-    M.Shown[#M.Shown + 1] = e   -- remembered before the first write, so a failed write is still undone
+    into[#into + 1] = e   -- remembered before the first write, so a failed write is still undone
     item:SetVisibility(SHOWN)
     item:SetRenderOpacity(1.0)
     if e.Pages then e.Switcher:SetActiveWidgetIndex(e.Pages[1]) end
     for _, t in ipairs(e.Texts) do t.W:SetText(FText(t.Text)) end
+    for _, h in ipairs(e.Hidden) do h.W:SetVisibility(COLLAPSED) end
     if e.Colour then item:SetColorAndOpacity({ R = e.Colour.R, G = e.Colour.G, B = e.Colour.B, A = 1.0 }) end
     if e.Home then item:SetRenderTranslation({ X = 0, Y = 0 }) end
+end
+
+-- Shows the first collapsed entry of a shot and remembers it in the list into; with none collapsed, nothing shows.
+-- hint.lua calls this too, with a list of its own.
+local function Open(ctx, shot, into)
+    M.Log = ctx.Log
+    Try("find " .. shot.Item, function()
+        for _, item in ipairs((ctx.Find(shot.Item))) do
+            -- a notice that plays is not collapsed, and it is not ours
+            if Ok(item) and item:GetVisibility() == COLLAPSED then
+                Try("show " .. shot.Item, function() Show(shot, item, into) end)
+                return
+            end
+        end
+    end)
 end
 
 -- An entry of the row that does not show yet is looked for again every AGAIN seconds: the first answer of ctx.Find
@@ -106,15 +127,7 @@ local function ShowRow(ctx, id)
     local on = {}
     for _, e in ipairs(M.Shown) do on[e.Shot] = true end
     for _, shot in ipairs(SHOW[id] or {}) do
-        if not on[shot] then Try("find " .. shot.Item, function()
-            for _, item in ipairs((ctx.Find(shot.Item))) do
-                -- a notice that plays is not collapsed, and it is not ours
-                if Ok(item) and item:GetVisibility() == COLLAPSED then
-                    Try("show " .. shot.Item, function() Show(shot, item) end)
-                    return
-                end
-            end
-        end) end
+        if not on[shot] then Open(ctx, shot, M.Shown) end
     end
 end
 
@@ -134,14 +147,25 @@ local function Undo(e)
     for _, t in ipairs(e.Texts) do
         Try("hide", function() if Ok(t.W) then t.W:SetText(FText(t.Was)) end end)
     end
+    for _, h in ipairs(e.Hidden) do
+        Try("hide", function() if Ok(h.W) then h.W:SetVisibility(h.Was) end end)
+    end
     if e.Colour then Try("hide", function() e.Item:SetColorAndOpacity(e.Colour) end) end
     if e.Home then Try("hide", function() e.Item:SetRenderTranslation(e.Home) end) end
 end
 
+-- puts back what Open wrote into a list
+local function Close(list)
+    for _, e in ipairs(list) do Undo(e) end
+end
+
 local function Restore()
-    for _, e in ipairs(M.Shown) do Undo(e) end
+    Close(M.Shown)
     M.Shown = {}
 end
+
+M.Open, M.Close = Open, Close
+M.TipItem, M.TipHide = SHOW.tips[1].Item, SHOW.tips[1].Hide   -- the game's tutorial tip, which hint.lua shows too
 
 -- a respawn keeps the widgets: put everything back. A new world: its widgets are gone, so no call on them
 function M.Forget(sameWorld)

@@ -7,8 +7,9 @@
 -- SizeBox_0 > Overlay_31 [ItemImage, EquippedImage, .., DurabilityBar, StackSizeText, ..]. ItemImage's material
 -- (MI_Item_Selected) draws the square and the item: "Background Opacity" and "Background Texture Opacity" are
 -- its square. EquippedImage is seen (visibility 4) on the slot in use, else collapsed.
--- The game builds a slot new when its item changes, so each step looks at every slot again: a new one is painted
--- whole, a known one costs about twenty calls. main.lua moves the bar as "toolbar" and loads this file with pcall.
+-- The game builds a slot new when its item changes, so every slot is proved again about once a second (one slot in
+-- each look): a new one is painted whole. A known slot costs the checks that its parts are still alive, and one
+-- read of the equipped mark. main.lua moves the bar as "toolbar" and loads this file with pcall.
 -- The edge is an outline, and an outline ignores the opacity of the widgets above it (see cooldowns.lua). While the
 -- tool wheel is open, the game sets the bag's main panel, 8 widgets above the bar, to opacity 0 (probes of
 -- 03-10-2026): the bar went and our edges stayed. So the edge takes the opacity of every widget from the bar up to
@@ -23,6 +24,8 @@ local BACK = 0.32    -- the square's opacity: the cooldown tiles' 32%
 local INSET = 3.25   -- the game's square is this much smaller than the slot on each side (screenshot, 02-10-2026)
 local TEXT = 11      -- the cooldown tiles' seconds; the game's number is 12
 local EVERY = 0.15   -- seconds between two looks: the edge follows the item in hand without a wait to be seen
+local PROVE = 7      -- looks between two proofs of one slot, about a second: the structure, and the material's values
+local OPACITY = 0.25 -- seconds between two reads of the opacity above the bar
 
 local function Lin1(c) if c <= 0.04045 then return c / 12.92 end return ((c + 0.055) / 1.055) ^ 2.4 end
 local function Lin(r, g, b, a) return { R = Lin1(r), G = Lin1(g), B = Lin1(b), A = a or 1.0 } end
@@ -31,7 +34,8 @@ local GOLD = Lin(0.89, 0.72, 0.35, 1.0)     -- #e3b85a, the slot in use
 local CREAM = Lin(0.945, 0.902, 0.784)      -- #f1e6c8, the numbers
 local TRACK = Lin(0.086, 0.071, 0.051, 0.5) -- #16120d at 50%, behind the durability
 
-M.Slots = {}   -- "instance:index" -> what Paint found in that slot
+M.Slots = {}   -- bar number -> place in the bar (0 to 7) -> what Paint found in that slot
+local Bars = {}      -- bar number -> what the bar keeps between looks (Refresh, Tick)
 local Names = nil   -- the material's value names, made on first use
 local Logged = {}
 local function Once(ctx, key, msg) if not Logged[key] then Logged[key] = true ctx.Log(msg) end end
@@ -72,12 +76,12 @@ local function Edge(S, used, op)
 end
 
 -- The opacity of the bar on the screen: its own times that of every widget above it. The widgets are found once
--- for each bar: the parents in a tree, then the widget that holds the tree, up to the top of the HUD.
-local Above = {}
-local function Opacity(n, bar)
-    local C = Above[n]
-    if not (C and C.Addr == bar:GetAddress()) then
-        C = { Addr = bar:GetAddress() }
+-- for each bar: the parents in a tree, then the widget that holds the tree, up to the top of the HUD. Returns nil
+-- when one of them is gone: the chain is found again at the next read.
+local function Opacity(B, bar)
+    local C = B.Above
+    if not C then
+        C = {}
         local w = bar
         while Ok(w) and #C < 20 do
             C[#C + 1] = w
@@ -88,11 +92,12 @@ local function Opacity(n, bar)
             end
             w = p
         end
-        Above[n] = C
+        B.Above = C
     end
     local op = 1
-    for _, w in ipairs(C) do
-        if not w:IsValid() then Above[n] = nil return 1 end   -- found again at the next look
+    for j = 1, #C do
+        local w = C[j]
+        if not w:IsValid() then B.Above = nil return nil end
         op = op * w:GetRenderOpacity()
     end
     return op
@@ -158,15 +163,18 @@ local function Paint(ctx, W, ov, inv, idx)
     return S
 end
 
--- A known slot, on every look: the square and the edge of the slot in use. The square's
--- values are written when the material is a new one, and once a second in case the game wrote its own again.
-local function Keep(S, now, op)
+-- A known slot, on every look: the edge of the slot in use, and the material of the square. The material is read at
+-- every look (a struct and an object made for each read): a new item brings a new material, and with a read once a
+-- second the game's dark square showed for up to a second (seen in the game, 09-10-2026). Its values are written
+-- when the material is a new one, and once a second in case the game wrote its own again. turn: this look is the
+-- slot's turn.
+local function Keep(S, turn, op)
     local m = S.Item.Brush.ResourceObject
     if Ok(m) then
         local a = m:GetAddress()
-        if a ~= S.MatAddr then S.MatAddr, S.MatAt, S.MatOk = a, 0, m:GetClass():GetFName():ToString() == "MaterialInstanceDynamic" end
-        if S.MatOk and now >= S.MatAt then
-            S.MatAt = now + 1
+        local new = a ~= S.MatAddr
+        if new then S.MatAddr, S.MatOk = a, m:GetClass():GetFName():ToString() == "MaterialInstanceDynamic" end
+        if S.MatOk and (new or turn) then
             m:SetScalarParameterValue(Names.Back, BACK)
             m:SetScalarParameterValue(Names.Tex, 0.0)
         end
@@ -175,15 +183,21 @@ local function Keep(S, now, op)
     Edge(S, v ~= nil and v ~= 1 and v ~= 2, op)   -- 1 collapsed, 2 hidden
 end
 
--- Known: the same slot, the same inner slot in it, and every part Keep calls still there. A part that the game
+-- Held: every part that Keep calls is alive. This is the check of each look, and it costs one call per part.
+local function Held(S)
+    return S.Ov:IsValid() and S.Item:IsValid() and S.Edge:IsValid() and (not S.Eq or S.Eq:IsValid())
+end
+
+-- Proved: the same slot, the same inner slot in it, and every part Keep calls still there. A part that the game
 -- took out of the slot reads valid until the engine frees it, so the edge is also asked for its parent: that
 -- finds a slot whose inner parts the game cleared. A new inner overlay or a new ItemImage alone in a kept slot is
 -- not found until the engine frees the old one, about a minute (which parts the game builds new is not known,
--- 02-10-2026).
+-- 02-10-2026). This runs once a second for each slot, and at once for a slot that Held does not pass.
 -- The inner slot is first looked for where it was; only when it is not there does the walk by name run.
-local function Look(ctx, key, W, now, op)
-    if not Ok(W) then M.Slots[key] = nil return end
-    local S = M.Slots[key]
+local function Look(ctx, grid, slots, i)
+    local W = grid:GetChildAt(i)
+    if not Ok(W) then slots[i] = nil return end
+    local S = slots[i]
     local known = false
     if S and S.WAddr == W:GetAddress() and S.Ov:IsValid() then
         local inv, idx = S.Ov:GetChildAt(S.InvIdx), S.InvIdx
@@ -202,14 +216,38 @@ local function Look(ctx, key, W, now, op)
         local inv, idx
         if Ok(ov) then inv, idx = Child(ov, "InventorySlot") end
         S = inv and Paint(ctx, W, ov, inv, idx) or nil
-        M.Slots[key] = S
+        slots[i] = S
         if S then M.Painted = (M.Painted or 0) + 1 end
     end
-    if S then Keep(S, now, op) end
 end
 
-function M.Forget() M.Slots = {} Above = {} end
+-- One slot of a bar, on one look. turn: the slot is proved on this look.
+local function Visit(ctx, B, i, turn)
+    local slots = B.Slots
+    local S = slots[i]
+    if turn or (S and not Held(S)) then
+        Look(ctx, B.Grid, slots, i)
+        S = slots[i]
+    end
+    if S then Keep(S, turn, B.Op) end
+end
 
+-- The grid of the bar, how many slots it has, and whether it is the bar of the last look. A new bar is proved whole.
+local function Refresh(B, bar)
+    local addr = bar:GetAddress()
+    if addr ~= B.Addr then B.Addr, B.Above, B.OpAt, B.Fresh = addr, nil, 0, true end
+    local tree = bar.WidgetTree
+    local grid = Ok(tree) and tree.RootWidget
+    B.Grid = Ok(grid) and grid or nil
+    B.Count = B.Grid and B.Grid:GetChildrenCount() or 0
+end
+
+function M.Forget() M.Slots = {} Bars = {} end
+
+-- The slot's turn comes once in PROVE looks, and a slot is proved at once only when a part of it stopped being alive.
+-- The grid is a handle from a property: it is read again when the engine freed it (Ok), not only on the bar's turn.
+-- The bar is looked at in the bag too: it sits in the bag while the bag is open (apply.lua), and a slot the game
+-- builds there gets its look at once.
 function M.Tick(ctx)
     local now = os.clock()
     if now < (M.Next or 0) then return end
@@ -217,15 +255,31 @@ function M.Tick(ctx)
     if not Names then Names = { Back = FName("Background Opacity"), Tex = FName("Background Texture Opacity") } end
     for n, bar in ipairs(ctx.ById("toolbar").Instances) do
         if Ok(bar) then
-            local tree = bar.WidgetTree
-            local grid = Ok(tree) and tree.RootWidget
-            if Ok(grid) then
-                local okO, op = pcall(Opacity, n, bar)
-                if not okO then Once(ctx, "opacity", "tool bar: opacity not read: " .. tostring(op)) op = 1 end
-                for i = 0, grid:GetChildrenCount() - 1 do
-                    local ok, err = pcall(Look, ctx, n .. ":" .. i, grid:GetChildAt(i), now, op)
+            local B = Bars[n]
+            if not B then
+                B = { Slots = {}, K = 0, OpAt = 0, Op = 1, Count = 0, Fresh = true }
+                Bars[n], M.Slots[n] = B, B.Slots
+            end
+            local k = B.K
+            B.K = (k + 1) % PROVE
+            if k == 0 or not Ok(B.Grid) then
+                local okR, errR = pcall(Refresh, B, bar)
+                if not okR then Once(ctx, "bar", "tool bar: the bar not read: " .. tostring(errR)) B.Grid = nil end
+            end
+            if now >= B.OpAt then
+                B.OpAt = now + OPACITY
+                local okO, op = pcall(Opacity, B, bar)
+                if not okO then Once(ctx, "opacity", "tool bar: opacity not read: " .. tostring(op)) B.Op = 1
+                elseif op then B.Op = op
+                else B.OpAt = 0 end
+            end
+            if Ok(B.Grid) then
+                local fresh = B.Fresh
+                for i = 0, B.Count - 1 do
+                    local ok, err = pcall(Visit, ctx, B, i, fresh or i % PROVE == k)
                     if not ok then Once(ctx, "slot", "tool bar: a slot not painted: " .. tostring(err)) end
                 end
+                if B.Count > 0 then B.Fresh = nil end
             end
         end
     end

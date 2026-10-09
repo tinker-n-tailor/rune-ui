@@ -264,7 +264,7 @@ local function Restore(ctx)
         end
         pcall(Undiamond)
     end
-    Saved = {}   -- anything left belonged to the widgets of an old world
+    Saved = { Ring = Saved.Ring }   -- the rest belonged to the widgets of an old world; the ring picture is kept until it is put back
     M.Marks, M.Host, M.Orb = {}, nil, nil
     return true
 end

@@ -2,6 +2,31 @@
 
 All changes to Rune UI, newest first.
 
+## [Unreleased]
+
+## [1.11] - 2026-10-10
+
+### Added
+
+- A one-time notice after a fresh install: F9 moves, resizes and hides the HUD.
+- A sun and moon icon for the day and night dial.
+
+### Changed
+
+- The mod is much lighter, and the hitches are gone.
+- After a fresh install, the combat key hints and the tool wheel hint of the game show.
+- Clearer names for some settings.
+
+### Removed
+
+- Support for an old UE4SS. The mod needs the UE4SS experimental build.
+
+### Fixed
+
+- A long item name in the tool wheel goes to a second line.
+- In immersive mode, the ring of a need that is at 0 now shows.
+- Small fixes.
+
 ## [1.10] - 2026-10-08
 
 ### Added

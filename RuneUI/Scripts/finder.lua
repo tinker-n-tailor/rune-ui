@@ -2,17 +2,16 @@
 -- element. No part searches on its own: they ask FindClass. main.lua loads this file, gives it its own names (Init) and
 -- the parts that FindAll reads (Attach), registers NewWidget for the game's reports, and calls FindAll on every scan.
 --
--- Found, FindCache, NextSearch, ClassNames, Searches and Settle get a new value from time to time (here, in Forget,
+-- Found, FindCache, NextSearch, ClassNames and Searches get a new value from time to time (here, in Forget,
 -- and Searches in perf.lua), so every read and write of them goes through the table, never through a local copy.
 -- Reports and Arrivals stay the same two tables for the whole run; only their fields change.
 
 local M = {}
 
--- From main.lua (Init): the element list, layout.lua's ById and Hud, the log, and the time until which a new world
--- settles. That time is a function, as main.lua gives it a new value in every world.
-local Elements, ById, Hud, Log, SettleUntil
+-- From main.lua (Init): the element list, layout.lua's ById and Hud, and the log.
+local Elements, ById, Hud, Log
 function M.Init(ctx)
-    Elements, ById, Hud, Log, SettleUntil = ctx.Elements, ctx.ById, ctx.Hud, ctx.Log, ctx.SettleUntil
+    Elements, ById, Hud, Log = ctx.Elements, ctx.ById, ctx.Hud, ctx.Log
 end
 -- The parts that FindAll reads. main.lua loads them after this file, before the timer starts.
 local Buffs, Survival, Avatar, RuneMap, Cooldowns, QuestTracker, Party
@@ -58,14 +57,14 @@ end
 -- The game reports every new widget, so the search above runs once per world, not every 10 s. It walked
 -- 7000 to 10000 widgets in 10 to 50 ms (probe of 01-10-2026). UE4SS calls NewWidget on the game
 -- thread, as it does the step (its source at 44afb36d: a widget made on a loading thread waits for the next engine
--- tick). On: the report is registered, where the timer starts; an old UE4SS keeps the timed search.
+-- tick). The report is registered where the timer starts (main.lua).
 -- Wanted: the classes FindClass was asked for; a widget of another class is not kept. Dropped: the classes not kept
 -- since the last search. Walk: why the next scan must search (false: no search). Retry: the scans that still match
 -- the parts again after a kept widget, as a new widget has no tree and no parent yet. Seen, Kept, Time, Max: for
 -- the perf line; the reports run outside the step, so its times do not count them.
 -- Fresh: a widget was kept since the last scan, so the step scans soon (TickBody).
 -- Quiet: the classes wanted with FindQuiet.
-local Reports = { On = false, Wanted = {}, Quiet = {}, Dropped = {}, Walk = "start", Retry = 0, Fresh = false, Quick = 0, Seen = 0, Kept = 0, Time = 0, Max = 0 }
+local Reports = { Wanted = {}, Quiet = {}, Dropped = {}, Walk = "start", Retry = 0, Fresh = false, Quick = 0, Seen = 0, Kept = 0, Time = 0, Max = 0 }
 -- Arrivals: for a class that a part asks about with TakeArrivals, the widgets reported since it last asked.
 -- The 2 s scan is too late for the map name: a map makes new markers, and the player name shows beside the arrow
 -- until the scan (probe of 05-10-2026). Only handles are kept, nothing is read here. Forget empties them.
@@ -99,7 +98,7 @@ local function NewWidget(W)
     local took = os.clock() - t0
     Reports.Time, Reports.Max = Reports.Time + took, math.max(Reports.Max, took)
 end
--- Without the timed search a class's list only grows. Before FindClass reads it, drop the widgets that are gone, a
+-- Between two searches a class's list only grows. Before FindClass reads it, drop the widgets that are gone, a
 -- freed slot that now holds an object of another class, and a widget listed twice (reported, and found by a search).
 local function StillOf(W, className) return W:IsValid() and M.ClassNames[ClassAddress(W)] == className and W:GetAddress() end
 local function Compact(className)
@@ -111,10 +110,31 @@ local function Compact(className)
     M.Found[className] = keep
 end
 
+-- One widget of a class into out and keys when it is a live one and its full name ends with one of pathEnds. Named,
+-- not a function made in the loop: a scan of a class with some hundred widgets made a closure for each.
+local function ParentOf(W) return W:GetParent() end
+local function Take(W, pathEnds, useParent, out, keys)
+    if not (W and W:IsValid()) then return end
+    local full = W:GetFullName()
+    local ok = not pathEnds
+    if pathEnds then
+        for _, p in ipairs(pathEnds) do if string.find(full, p) then ok = true end end
+    end
+    if ok and string.find(full, "/Engine/Transient%.") then   -- live widgets only; /Game paths are templates
+        local climbed = false
+        for _ = 1, (useParent or 0) do
+            local okp, P = pcall(ParentOf, W)
+            if okp and P and P:IsValid() then W, climbed = P, true end
+        end
+        if climbed then full = W:GetFullName() end
+        out[#out + 1], keys[#keys + 1] = W, full
+    end
+end
+
 -- Returns the widgets and, as a second list, their full names (read here once, so no caller reads them again).
 -- A cached answer is checked for widgets gone since; the lists are shared, so callers only read them.
 local function FindClass(className, pathEnds, useParent)
-    if Reports.On and not Reports.Wanted[className] then
+    if not Reports.Wanted[className] then
         Reports.Wanted[className] = true
         -- the last search has every widget of the class, unless one was made since and not kept
         if Reports.Dropped[className] and not Reports.Walk then Reports.Walk = "new class" end
@@ -129,26 +149,10 @@ local function FindClass(className, pathEnds, useParent)
         return hit.W, hit.K
     end
     local out, keys = {}, {}
-    if Reports.On then Compact(className) end
+    Compact(className)
     for _, W in ipairs(M.Found[className] or {}) do
         -- one object that cannot be read (a world being unloaded) must not stop the whole scan
-        pcall(function()
-            if not (W and W:IsValid()) then return end
-            local full = W:GetFullName()
-            local ok = not pathEnds
-            if pathEnds then
-                for _, p in ipairs(pathEnds) do if string.find(full, p) then ok = true end end
-            end
-            if ok and string.find(full, "/Engine/Transient%.") then   -- live widgets only; /Game paths are templates
-                local climbed = false
-                for _ = 1, (useParent or 0) do
-                    local okp, P = pcall(function() return W:GetParent() end)
-                    if okp and P and P:IsValid() then W, climbed = P, true end
-                end
-                if climbed then full = W:GetFullName() end
-                out[#out + 1], keys[#keys + 1] = W, full
-            end
-        end)
+        pcall(Take, W, pathEnds, useParent, out, keys)
     end
     if not Reports.Quiet[className] then M.FindCache[ck] = { W = out, K = keys } end
     return out, keys
@@ -189,21 +193,13 @@ local function ReadHud()
     Hud.VW, Hud.VH, Hud.S, Hud.W, Hud.H = vw, vh, s, vw / s, vh / s
 end
 
--- The search for every widget costs 14 ms (probe of 29-09-2026). Once a world has settled, the game makes almost no
--- new HUD widgets (buff entries, maybe a held-action prompt). So the search runs every 2 s for the first half minute
--- of a world and while F9 or F8 is open, else every 10 s. It runs at once when a widget it found is gone, or when
--- the number of buffs changes (a new buff can bring a new entry widget, and its ring should not wait).
--- A widget the game makes new waits 10 s at most for its place. Between searches the widgets of the last one are used.
--- Forget drops them. This is the way of an old UE4SS only: with the game's reports (Reports) the search runs
--- once per world, and NextSearch times the matching of the parts to the widgets kept.
+-- The search for every widget costs 14 ms (probe of 29-09-2026). With the game's reports (Reports) it runs once per
+-- world, and NextSearch times the matching of the parts to the widgets kept: every 10 s, and at once when a widget a
+-- part found is gone, or when the number of buffs changes (a new buff can bring a new entry widget, and its ring
+-- should not wait).
 M.NextSearch = 0
 -- the full searches since the last perf line: how many, their time, and what set each off (PerfLog)
 M.Searches = { N = 0, Sum = 0, Max = 0, Why = {} }
--- After a new world or a respawn the HUD is searched on every scan, up to 30 s, so its parts are found as the game
--- builds them. Three searches in a row that find the same number of parts end that early: the rest cost 10 to
--- 50 ms each for nothing (hitches of 90 to 110 ms after a teleport and a respawn; probe of 01-10-2026). A part
--- the game builds later waits for the 10 s search. Forget starts it again. An old UE4SS only, as the timer is.
-M.Settle = { Last = -1, Same = 0, Done = false }
 -- A freed widget's slot can go to a new object that still reads valid, so the name is compared too.
 -- AddInstance adds each widget and its name together. Avatar and RuneMap are ours and re-added each pass.
 local function AnyGone()
@@ -217,27 +213,20 @@ local function AnyGone()
     end
     return false
 end
--- editing: F9 or F8 is open. buffsNew: the step saw the buff count change. Returns true when a search ran.
--- Without one, the game's widgets of the last pass are kept: AnyGone has just seen every one alive under its own
+-- buffsNew: the step saw the buff count change. Returns true when the parts were matched again.
+-- Without that, the game's widgets of the last pass are kept: AnyGone has just seen every one alive under its own
 -- name, and the same answer costs a name read and a path check per widget, and a walk into the legend, every pass.
 -- Ours (the avatar, RuneMap, the cooldown tiles) are built after this in the same step, so they are
 -- taken again on every pass.
-local function FindAll(editing, buffsNew)
+local function FindAll(buffsNew)
     local now = os.clock()
     local buffs = (Buffs and Buffs.Changed()) or buffsNew   -- read on every pass, so the count stays current
-    local searched = false
-    local why
-    if Reports.On then
-        -- The game reports new widgets (Reports): a full search only when one is owed. The parts are matched again,
-        -- from the widgets kept, on what set off a search before; that reads some tens of widgets, not all of them.
-        why = Reports.Walk
-        searched = Reports.Retry > 0 or now > M.NextSearch or buffs or AnyGone()
-        if searched and not why then M.FindCache, M.NextSearch = {}, now + 10 end
-        if Reports.Retry > 0 then Reports.Retry = Reports.Retry - 1 end
-    else
-        why = (now > M.NextSearch and "timer") or (now < SettleUntil() + 30 and not M.Settle.Done and "settle") or (editing and "editor")
-            or (buffs and "buffs") or AnyGone()
-    end
+    -- A full search only when one is owed (Walk). The parts are matched again, from the widgets kept, on what set
+    -- off a search before; that reads some tens of widgets, not all of them.
+    local why = Reports.Walk
+    local searched = Reports.Retry > 0 or now > M.NextSearch or buffs or AnyGone()
+    if searched and not why then M.FindCache, M.NextSearch = {}, now + 10 end
+    if Reports.Retry > 0 then Reports.Retry = Reports.Retry - 1 end
     if why then
         local t0 = os.clock()
         SearchWidgets()
@@ -279,16 +268,6 @@ local function FindAll(editing, buffsNew)
             end
         end
     end
-    if why == "settle" then
-        local n = 0
-        for _, E in ipairs(Elements) do if not E.Custom then n = n + #E.Instances end end
-        M.Settle.Same = (n > 0 and n == M.Settle.Last) and M.Settle.Same + 1 or 0
-        M.Settle.Last = n
-        if M.Settle.Same >= 2 then
-            M.Settle.Done = true
-            Log(string.format("settled: %d HUD parts found, back to the 10 s search", n))
-        end
-    end
     pcall(ReadHud)
     return searched
 end
@@ -299,10 +278,10 @@ function M.Forget(sameWorld)
     for c in pairs(Arrivals) do Arrivals[c] = {} end
     Reports.Walk = sameWorld and "restart" or "new world"
     if not sameWorld then M.ClassNames = {} end   -- a class of the old world may be unloaded, and its address reused
-    M.Settle = { Last = -1, Same = 0, Done = false }
 end
 
 M.Reports, M.Arrivals, M.ARRIVALS_MAX = Reports, Arrivals, ARRIVALS_MAX
-M.ClassName, M.SearchWidgets, M.TakeArrivals, M.NewWidget = ClassName, SearchWidgets, TakeArrivals, NewWidget
+M.ClassName, M.ClassAddress, M.ClassNameOf = ClassName, ClassAddress, ClassNameOf
+M.SearchWidgets, M.TakeArrivals, M.NewWidget = SearchWidgets, TakeArrivals, NewWidget
 M.FindClass, M.FindQuiet, M.AddInstance, M.FindAll = FindClass, FindQuiet, AddInstance, FindAll
 return M

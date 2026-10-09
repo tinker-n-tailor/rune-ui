@@ -53,7 +53,7 @@ Left of the line: the game's own HUD. Right of it: Rune UI.
 - **F7** in the editor saves the layout and goes to the next of three profiles.
 - **F5** opens Rune Skin: the switches of the looks.
 - **F8** opens the Rune Map settings.
-- **F6** opens the immersion mode settings, with the camera.
+- **F6** opens the immersive mode settings, with the camera.
 
 Every key and setting is in `README.txt` in the mod folder.
 

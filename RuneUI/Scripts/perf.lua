@@ -1,14 +1,51 @@
 -- The perf lines in UE4SS.log, every 60 s: what the mod costs the game, the game's frame rate beside it, and what the
 -- widget search did. main.lua loads this file and gives it its own names (Init). The table this file returns is the
--- counter of the step's times: main.lua's step adds to its fields (Ticks, Sum, Max, Watch, Scans, ScanSum, ScanMax),
--- calls CountFrames on every step and Write when From is 60 s old. Write sets the fields back in place.
+-- counter of the step's times: main.lua's step adds to its fields (Ticks, Sum, Max, Watch, Scans, ScanSum, ScanMax;
+-- Long: the steps of 8 ms or more), calls CountFrames on every step and Write when From is 60 s old. Write sets the fields back in place.
 
 -- From main.lua (Init): the log, layout.lua's ById, the element list, the map (runemap.lua, nil when it did not load)
 -- and the widget search (finder.lua), whose counters the third line reads and sets back. Reports: the finder's table.
-local Log, ById, Elements, RuneMap, Finder, Reports
+-- Actors: main.lua's count of the game's reports of new actors (the bed names), read and set back here too.
+local Log, ById, Elements, RuneMap, Finder, Reports, Actors
 
 -- What the mod costs the game, logged every 60 s
-local Perf = { From = os.clock(), Ticks = 0, Sum = 0, Max = 0, Watch = 0, Scans = 0, ScanSum = 0, ScanMax = 0 }
+local Perf = { From = os.clock(), Ticks = 0, Sum = 0, Max = 0, Watch = 0, Long = 0, Scans = 0, ScanSum = 0, ScanMax = 0 }
+
+-- The cost by part: the time and the Lua memory each one made since the last perf line. main.lua's step and
+-- chain.lua's calls take the clock and the count before a part runs and give them to Add after it. KB counts only
+-- growth: a collection inside the part would make the count fall, and that is not the part's doing.
+local By = {}
+-- The runs of one part that took LONG or more, at most 12 a minute, as "name ms (KB)". The KB has its sign: a count
+-- that fell inside the run says the collector freed memory in it.
+local LONG = 0.008
+local Long, LongN = {}, 0
+function Perf.Add(name, t0, m0)
+    local took, grew = os.clock() - t0, collectgarbage("count") - m0
+    local s = By[name]
+    if not s then s = { N = 0, Sum = 0, Max = 0, KB = 0 } By[name] = s end
+    s.N, s.Sum, s.Max = s.N + 1, s.Sum + took, math.max(s.Max, took)
+    if grew > 0 then s.KB = s.KB + grew end
+    if took >= LONG then
+        LongN = LongN + 1
+        if #Long < 12 then Long[#Long + 1] = string.format("%s %.0f ms (%+.0f KB)", name, took * 1000, grew) end
+    end
+end
+
+-- The line of the parts: the top ones by the field given, as "name ms (max ms, KB)"
+local function TopLine(field, n)
+    local list = {}
+    for name, s in pairs(By) do list[#list + 1] = { Name = name, S = s } end
+    table.sort(list, function(a, b) return a.S[field] > b.S[field] end)
+    local out = {}
+    for i = 1, math.min(n, #list) do
+        local s = list[i].S
+        out[i] = string.format("%s %.0f ms (max %.1f, %.0f KB)", list[i].Name, s.Sum * 1000, s.Max * 1000, s.KB)
+    end
+    return table.concat(out, "; ")
+end
+-- On: once a minute a full collection, and the memory left after it: what the mod holds, not what it has not
+-- cleaned yet. A full collection of a big heap takes tens of ms, so this is for a measuring build only.
+local FULL_COLLECT = false
 -- The game's frame rate beside it, by what RuneMap does. The engine's frame counter
 -- against the clock counts every frame, not a sample. Only while the HUD is on screen: menus and loading screens
 -- are left out, and so is a step where the state changed.
@@ -73,28 +110,41 @@ local function PerfLog(now)
     table.sort(why)
     Log(string.format("perf: %d full searches, avg %.0f ms, max %.0f ms (%s); %s", Finder.Searches.N,
         Finder.Searches.Sum / math.max(1, Finder.Searches.N) * 1000, Finder.Searches.Max * 1000, table.concat(why, ", "),
-        Reports.On and string.format("%d new widgets reported in %.0f ms, max %.0f ms, %d kept", Reports.Seen,
-            Reports.Time * 1000, Reports.Max * 1000, Reports.Kept) or "no reports, timed search"))
-    if Reports.On then
-        -- the kept lists, as FindClass reads a whole list when the parts are matched again: their size and the longest
-        local n, top, topN = 0, "none", 0
-        for c in pairs(Reports.Wanted) do
-            local k = #(Finder.Found[c] or {})
-            n = n + k
-            if k > topN then top, topN = c, k end
-        end
-        Log(string.format("perf: %d widgets in the kept lists, the longest %s with %d; %d scans brought by a kept widget", n, top, topN, Reports.Quick))
+        string.format("%d new widgets reported in %.0f ms, max %.0f ms, %d kept; %d actors reported in %.0f ms", Reports.Seen,
+            Reports.Time * 1000, Reports.Max * 1000, Reports.Kept, Actors.N, Actors.Time * 1000)))
+    -- the kept lists, as FindClass reads a whole list when the parts are matched again: their size and the longest
+    local n, top, topN = 0, "none", 0
+    for c in pairs(Reports.Wanted) do
+        local k = #(Finder.Found[c] or {})
+        n = n + k
+        if k > topN then top, topN = c, k end
+    end
+    Log(string.format("perf: %d widgets in the kept lists, the longest %s with %d; %d scans brought by a kept widget", n, top, topN, Reports.Quick))
+    if next(By) then
+        Log("perf: by time: " .. TopLine("Sum", 8))
+        Log("perf: by memory made: " .. TopLine("KB", 6))
+        -- a part that ran long once and little in all is in neither line above: the hitch of a world's start hid so
+        Log("perf: by longest run: " .. TopLine("Max", 5))
+        By = {}
+    end
+    Log(string.format("perf: %d steps of %d ms or more; %d long runs: %s", P.Long, LONG * 1000, LongN, table.concat(Long, "; ")))
+    Long, LongN = {}, 0
+    if FULL_COLLECT then
+        local before, t0 = collectgarbage("count"), os.clock()
+        collectgarbage("collect")
+        Log(string.format("perf: full collection: %.0f KB before, %.0f KB after, %.0f ms", before, collectgarbage("count"), (os.clock() - t0) * 1000))
     end
     Finder.Searches = { N = 0, Sum = 0, Max = 0, Why = {} }
     Reports.Seen, Reports.Kept, Reports.Time, Reports.Max, Reports.Quick = 0, 0, 0, 0, 0
+    Actors.N, Actors.Time = 0, 0
     -- in place: main.lua's step writes into this same table
-    P.From, P.Ticks, P.Sum, P.Max, P.Watch, P.Scans, P.ScanSum, P.ScanMax = now, 0, 0, 0, 0, 0, 0, 0
+    P.From, P.Ticks, P.Sum, P.Max, P.Watch, P.Long, P.Scans, P.ScanSum, P.ScanMax = now, 0, 0, 0, 0, 0, 0, 0, 0
     Fps.By = {}
 end
 
 function Perf.Init(ctx)
     Log, ById, Elements, RuneMap, Finder = ctx.Log, ctx.ById, ctx.Elements, ctx.RuneMap, ctx.Finder
-    Reports = Finder.Reports
+    Reports, Actors = Finder.Reports, ctx.Actors or { N = 0, Time = 0 }
 end
 Perf.CountFrames, Perf.Write = CountFrames, PerfLog
 return Perf

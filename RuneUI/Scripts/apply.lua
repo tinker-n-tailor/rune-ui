@@ -26,14 +26,26 @@ local OrigOpacity = {}
 local Written = {}
 local SAME = 0.002   -- an opacity reads back as a 32-bit number
 
--- k: the widget's full name, read once per scan (FindAll)
+local function ReadOpacity(W) return W:GetRenderOpacity() end   -- named, so a pcall of it makes no closure
+
+-- True when the widget does not hold `value` (read back as a 32-bit number). The game writes its own opacity over ours
+-- (a notice's fade, a prompt that fades in), so a held value is read back, and written only when it is not there: a
+-- write makes the engine draw the widget again. A write on a timer would show a hidden notice for a moment (seen for
+-- the level up notice, which the game fades from 0 to 1 and back). When the read runs: see LOOK.
+local function Differs(W, value) return math.abs(W:GetRenderOpacity() - value) > SAME end
+
+-- k: the widget's full name, read once per scan (FindAll). Written only when it is not what we wrote last, or the game
+-- changed it since. Returns true when the game had written over the value that we hold.
 local function SetOpacity(W, k, value)
     if OrigOpacity[k] == nil then
-        local ok, o = pcall(function() return W:GetRenderOpacity() end)
+        local ok, o = pcall(ReadOpacity, W)
         OrigOpacity[k] = ok and o or 1.0
     end
+    local held = Written[k] == value
+    if held and not Differs(W, value) then return false end
     W:SetRenderOpacity(value)
     Written[k] = value
+    return held
 end
 
 -- Back to the game's opacity, but only a widget that still holds what we wrote: when the game has written since, its
@@ -54,18 +66,21 @@ end
 -- cannot be more solid than its parent).
 local IsUW, Tint = {}, {}   -- by the widget's full name: user widget or not, and the colour's alpha last set
 local UWClass = nil
+local function TestUserWidget(W)
+    if not (UWClass and UWClass:IsValid()) then UWClass = StaticFindObject("/Script/UMG.UserWidget") end
+    return W:IsA(UWClass)
+end
 local function IsUserWidget(W, k)
     local v = IsUW[k]
     if v == nil then
-        v = false
-        pcall(function()
-            if not (UWClass and UWClass:IsValid()) then UWClass = StaticFindObject("/Script/UMG.UserWidget") end
-            v = W:IsA(UWClass)
-        end)
+        local ok, is = pcall(TestUserWidget, W)
+        v = ok and is == true
         IsUW[k] = v
     end
     return v
 end
+-- the colour's write, named for the same reason as ReadOpacity; the table is what the call needs
+local function SetTint(W, a) W:SetColorAndOpacity({ R = 1, G = 1, B = 1, A = a }) end
 local function OwnOpacity(E)
     local P = E.Inside and ById(E.Inside)
     if not P then return E.Opacity end
@@ -74,47 +89,101 @@ end
 
 -- The parts of a Parts element, found once per widget (E.PartsW, by the widget's full name). The legend's: every
 -- page of its switcher but the world page, and the world page's prompt list (widget dump, 29-09-2026).
+local function CollectParts(W, parts)
+    local sw = Survival.Find(W, "Switcher")
+    for i = 0, sw:GetChildrenCount() - 1 do
+        local page = sw:GetChildAt(i)
+        if page:GetFName():ToString() == "InputLegendWidgetWorld" then page = Survival.Find(page, "SizeBox_0") end
+        if page then parts[#parts + 1] = page end
+    end
+end
 local function PartsOf(E, W, k)
     local parts = E.PartsW[k]
     if parts then return parts end
     parts = {}
-    local ok, err = pcall(function()
-        local sw = Survival.Find(W, "Switcher")
-        for i = 0, sw:GetChildrenCount() - 1 do
-            local page = sw:GetChildAt(i)
-            if page:GetFName():ToString() == "InputLegendWidgetWorld" then page = Survival.Find(page, "SizeBox_0") end
-            if page then parts[#parts + 1] = page end
-        end
-    end)
+    local ok, err = pcall(CollectParts, W, parts)
     if ok and #parts > 0 then E.PartsW[k] = parts   -- none yet (a HUD still being built): tried again next step
     elseif not E.PartsLogged then E.PartsLogged = true Log(E.Id .. ": parts not found, hidden whole: " .. tostring(err)) end
     return parts
 end
 
 local Unclipped = {}
+-- The pieces of ApplyOne that run in a pcall. Each is a named function that takes what it needs: a function made inside
+-- the step is garbage at every run.
+local function Unclip(W)
+    local P = W
+    for _ = 1, 3 do
+        if not (P and P:IsValid()) then break end
+        P:SetClipping(0)   -- inherit: do not cut children at this box's edge
+        P = P:GetParent()
+    end
+end
+local function PlaceKeepFull(W, E, x, y, scale)
+    local px, py = Layout.Pivot(E)   -- the element's own pivot: the child fills the same box
+    for i = 0, W:GetChildrenCount() - 1 do
+        local c = W:GetChildAt(i)
+        if c:GetFName():ToString() == E.KeepFull then
+            c:SetRenderTransformPivot({ X = px, Y = py })
+            c:SetRenderScale({ X = 1 / scale, Y = 1 / scale })
+            c:SetRenderTranslation({ X = -x / scale, Y = -y / scale })
+        end
+    end
+end
+-- A part of a Parts element held at o. Read first, written only when it is not at o (see Differs): true then.
+local function HoldPart(P, o)
+    if P:IsValid() and Differs(P, o) then P:SetRenderOpacity(o) return true end
+    return false
+end
+local function RedrawAt(W, E, L)
+    local op = W:GetRenderOpacity()
+    if op > 0 and op ~= L.Drawn then
+        local R = W[E.Redraw]
+        if R and R:IsValid() then R:RequestRender() end
+    end
+    L.Drawn = op
+end
+
+-- Every call into the engine makes garbage, a read too (about 100 bytes; 43 widgets with two calls each at every step
+-- were 7 MB a minute, 09-10-2026). So a step whose values are the ones of the step before calls nothing for a widget,
+-- not even IsValid. A value that is held against the game (a hidden element, a fade, hidden parts) is read back every
+-- LOOK seconds. The first time the game is found to have written over one, the element is read at every step from
+-- then on (E.Fought, for the whole session): its first fade can show for LOOK seconds, no later one does.
+-- A scan step (force) does not count: it can bring a new widget under an old name, which holds the game's value.
+local LOOK = 0.25
+local HELD, EVERY = 1, 2   -- L.Watch: the widget needs a look at the LOOK rate, or at every step
+local function Fought(E)
+    if E.Fought then return end
+    E.Fought = true
+    Log(E.Id .. ": the game writes its opacity over ours, so it is read at every step")
+end
+
 -- EditMode, MapMode: the editor (F9) or the map settings (F8) are open, as ApplyAll got them for this step.
 -- force: write the move, size and pivot even when they are the values last written. Otherwise they are written
 -- only when they change: every step wrote three calls per widget (about 80 calls a step, 30-09-2026). Every scan
 -- forces them, as the bars' colours are set again on every scan in case the game set them back.
-local function ApplyOne(W, k, x, y, scale, E, isSelected, force, EditMode, MapMode)
+-- look: this step reads the held values back (see LOOK).
+local function ApplyOne(W, k, x, y, scale, E, isSelected, force, EditMode, MapMode, look)
+    local map = E.Custom == "map"
+    -- the immersive mode's share, exactly 1 when shown; RuneMap takes it in its own opacity (see MapCtx)
+    local imm = (Immersive and not map) and Immersive.Factor(E) or 1.0
+    local op = map and 1.0 or OwnOpacity(E)
+    local px, py
+    if E.Full and E.Center then px, py = Layout.Pivot(E) end
+    local L = E.Last[k]
+    if L and not force and L.X == x and L.Y == y and L.S == scale and L.PX == px and L.PY == py and L.Vis == E.Visible
+        and L.Op == op and L.Imm == imm and L.Edit == EditMode and L.Map == MapMode and L.Sel == isSelected
+        and (not L.Watch or (L.Watch == HELD and not look and not E.Fought)) then return end
     if not (W and W:IsValid()) then return end
     if E.NoClip then
         if not Unclipped[k] then
             Unclipped[k] = true
-            pcall(function()
-                local P = W
-                for _ = 1, 3 do
-                    if not (P and P:IsValid()) then break end
-                    P:SetClipping(0)   -- inherit: do not cut children at this box's edge
-                    P = P:GetParent()
-                end
-            end)
+            pcall(Unclip, W)
         end
     end
-    local L = E.Last[k]
     if not L then L = {} E.Last[k] = L end
-    if E.Full and E.Center then
-        local px, py = Layout.Pivot(E)
+    local wasSolid = L.Solid   -- the step before held the widget solid (E.Opaque), so a faded one is the game's doing
+    L.Vis, L.Op, L.Imm, L.Edit, L.Map, L.Sel, L.Watch, L.Solid = E.Visible, op, imm, EditMode, MapMode, isSelected, nil, nil
+    if px then
         if force or L.PX ~= px or L.PY ~= py then
             W:SetRenderTransformPivot({ X = px, Y = py })
             L.PX, L.PY = px, py
@@ -125,30 +194,15 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force, EditMode, MapMo
     if force or L.S ~= scale then W:SetRenderScale({ X = scale, Y = scale }) L.S = scale end
     -- KeepFull: a child that fills the element and must still fill the screen. It gets the inverse of the element's
     -- move and size, about the same middle: the element maps p to c + s*(p - c) + t, the child q to c + (q - c)/s - t/s.
-    if E.KeepFull and moved then
-        pcall(function()
-            local px, py = Layout.Pivot(E)   -- the element's own pivot: the child fills the same box
-            for i = 0, W:GetChildrenCount() - 1 do
-                local c = W:GetChildAt(i)
-                if c:GetFName():ToString() == E.KeepFull then
-                    c:SetRenderTransformPivot({ X = px, Y = py })
-                    c:SetRenderScale({ X = 1 / scale, Y = 1 / scale })
-                    c:SetRenderTranslation({ X = -x / scale, Y = -y / scale })
-                end
-            end
-        end)
-    end
+    if E.KeepFull and moved then pcall(PlaceKeepFull, W, E, x, y, scale) end
     -- fade: the share of the opacity that goes into the render opacity. RuneMap sets its own (runemap.lua): its
     -- gold rings need it too.
     local fade = 1.0
-    -- the immersive mode's share, exactly 1 when shown; RuneMap takes it in its own opacity (see MapCtx)
-    local imm = (Immersive and E.Custom ~= "map") and Immersive.Factor(E) or 1.0
-    if E.Custom ~= "map" then
-        local op = OwnOpacity(E)
+    if not map then
         if not IsUserWidget(W, k) then
             fade = op
         elseif (Tint[k] or 1.0) ~= op then
-            pcall(function() W:SetColorAndOpacity({ R = 1, G = 1, B = 1, A = op }) end)
+            pcall(SetTint, W, op)
             Tint[k] = op
         end
     end
@@ -156,47 +210,59 @@ local function ApplyOne(W, k, x, y, scale, E, isSelected, force, EditMode, MapMo
     -- an element of its own (the menu buttons in the legend) can still show. Its parts are found once per widget;
     -- none found (no survival.lua, a changed game): the whole widget hides as before.
     local parts = E.Parts and PartsOf(E, W, k)
+    if parts and #parts == 0 then L.Watch = HELD end   -- a HUD still being built: PartsOf tries again at the next look
     local shown = E.Visible or (parts and #parts > 0)
     if shown and parts and #parts > 0 then
         local o = E.Visible and 1.0 or 0.0
         if EditMode then   -- the editor's dimming goes on the parts; the widget stays whole for what lives inside it
             if isSelected then o = E.Visible and 1.0 or 0.6 else o = E.Visible and 0.3 or 0.1 end
         end
-        -- every step while hidden, as immersive.lua does with the bars: the game may fade a prompt back in
+        -- while hidden, each part is looked at and written only if it is not at o: the game may fade a prompt back
+        -- in (HoldPart). Shown, a part is written once, when o changes back to 1.
         if o < 1 or E.PartsOp[k] ~= o then
-            for _, P in ipairs(parts) do pcall(function() if P:IsValid() then P:SetRenderOpacity(o) end end) end
+            local held = E.PartsOp[k] == o
+            for _, P in ipairs(parts) do
+                local okP, wrote = pcall(HoldPart, P, o)
+                if okP and wrote and held and not force then Fought(E) end
+            end
             E.PartsOp[k] = o
+            if o < 1 then L.Watch = HELD end
         end
     end
+    local hold   -- the opacity that the widget is held at; nil: the game's own stands
     if EditMode and parts and #parts > 0 then
-        SetOpacity(W, k, 1.0)
+        hold = 1.0
     elseif EditMode then
         if isSelected then
             -- solid, the gold corners round it pulse instead; dim when hidden
-            if shown then SetOpacity(W, k, fade) else SetOpacity(W, k, 0.6) end
+            hold = shown and fade or 0.6
         else
-            SetOpacity(W, k, shown and 0.3 * fade or 0.1)
+            hold = shown and 0.3 * fade or 0.1
         end
-    elseif not shown and not (MapMode and E.Custom == "map") then   -- F8 shows a hidden map
-        SetOpacity(W, k, 0.0)
+    elseif not shown and not (MapMode and map) then   -- F8 shows a hidden map
+        hold = 0.0
     elseif E.Opaque then
-        W:SetRenderOpacity(fade)   -- the dial looked faded; keep it fully solid
+        -- the dial looked faded; keep it fully solid
+        if Differs(W, fade) then
+            W:SetRenderOpacity(fade)
+            if wasSolid and not force then Fought(E) end
+        end
+        Written[k] = nil   -- the editor's dimming is over: the solid value is the one that stands
+        L.Solid, L.Watch = true, HELD
     elseif fade * imm < 1.0 then
-        SetOpacity(W, k, fade * imm)
+        hold = fade * imm
     elseif next(Written) ~= nil then
         RestoreOpacity(W, k, E.Idle)   -- leave the game's own fading alone when the element is shown
     end
+    if hold then
+        if SetOpacity(W, k, hold) and not force then Fought(E) end
+        L.Watch = HELD
+    end
     -- the part drawn on request (E.Redraw) is asked to draw again at every opacity the element has while it is seen:
-    -- when it comes back, and at each step of a fade
+    -- when it comes back, and at each step of a fade. The game fades it too, so its opacity is read at every step.
     if E.Redraw then
-        pcall(function()
-            local op = W:GetRenderOpacity()
-            if op > 0 and op ~= L.Drawn then
-                local R = W[E.Redraw]
-                if R and R:IsValid() then R:RequestRender() end
-            end
-            L.Drawn = op
-        end)
+        pcall(RedrawAt, W, E, L)
+        L.Watch = EVERY
     end
 end
 
@@ -244,8 +310,12 @@ end
 
 -- EditMode, MapMode, Selected: the editor's state at this step. They are main.lua's own values, which the keys write on
 -- UE4SS's thread, so they come as plain values and are not read from a table here.
+local NextLook = 0
+local ApplyLogged = {}   -- by element id: its first error is logged, the others are not
 local function ApplyAll(force, EditMode, MapMode, Selected)
     local now = os.clock()
+    local look = now >= NextLook
+    if look then NextLook = now + LOOK end
     if now >= (Bag.Next or 0) then   -- ten looks a second are enough: the bar moves within a blink of the bag
         Bag.Next = now + 0.1
         local okBag, open = pcall(BagOpen)
@@ -256,7 +326,11 @@ local function ApplyAll(force, EditMode, MapMode, Selected)
         local sel = EditMode and (i == Selected or (E.Inside == "notify" and Elements[Selected].Id == "notify"))
         local lx, ly, ls = LocalTransform(E)
         if Bag.Open and E.Id == "toolbar" and not EditMode then lx, ly, ls = 0, 0, 1 end   -- the editor shows the saved place
-        for n, W in ipairs(E.Instances) do ApplyOne(W, E.Keys[n], lx, ly, ls, E, sel, force, EditMode, MapMode) end
+        for n, W in ipairs(E.Instances) do
+            -- one widget that throws must not stop the elements after it
+            local ok, err = pcall(ApplyOne, W, E.Keys[n], lx, ly, ls, E, sel, force, EditMode, MapMode, look)
+            if not ok and not ApplyLogged[E.Id] then ApplyLogged[E.Id] = true Log(E.Id .. ": apply failed: " .. tostring(err)) end
+        end
     end
 end
 
